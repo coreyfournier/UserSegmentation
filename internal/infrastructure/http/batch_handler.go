@@ -18,8 +18,8 @@ func (h *BatchHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
 		return
 	}
-	if len(req.Users) == 0 {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "users array is required"})
+	if len(req.Subjects) == 0 {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "subjects array is required"})
 		return
 	}
 

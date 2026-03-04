@@ -14,7 +14,7 @@ func (s *PercentageStrategy) Evaluate(seg *model.Segment, ctx *EvalContext) (Res
 	if seg.Percentage == nil || len(seg.Percentage.Buckets) == 0 {
 		return Result{}, false
 	}
-	bucket := s.Hasher.Bucket(ctx.UserKey, seg.Percentage.Salt)
+	bucket := s.Hasher.Bucket(ctx.SubjectKey, seg.Percentage.Salt)
 	cumulative := 0
 	for _, b := range seg.Percentage.Buckets {
 		cumulative += b.Weight

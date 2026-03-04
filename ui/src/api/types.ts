@@ -82,13 +82,13 @@ export interface Warning {
 }
 
 export interface EvaluateRequest {
-  user_key: string;
+  subject_key: string;
   context: Record<string, unknown>;
   layers?: string[];
 }
 
 export interface EvaluateResponse {
-  user_key: string;
+  subject_key: string;
   layers: Record<string, LayerResult>;
   warnings?: Warning[];
   evaluated_at: string;

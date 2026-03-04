@@ -35,10 +35,10 @@ export default function StaticConfig({ value, onChange }: Props) {
           onChange={(e) => onChange({ ...value, default: e.target.value })}
         />
       </div>
-      <label>Mappings (user_key → segment)</label>
+      <label>Mappings (subject_key → segment)</label>
       <table className={styles.table}>
         <thead>
-          <tr><th>User Key</th><th>Segment</th><th></th></tr>
+          <tr><th>Subject Key</th><th>Segment</th><th></th></tr>
         </thead>
         <tbody>
           {entries.map(([k, v]) => (

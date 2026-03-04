@@ -18,8 +18,8 @@ func (h *EvaluateHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
 		return
 	}
-	if req.UserKey == "" {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "user_key is required"})
+	if req.SubjectKey == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "subject_key is required"})
 		return
 	}
 

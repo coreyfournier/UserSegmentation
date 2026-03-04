@@ -50,7 +50,7 @@ Three interfaces in `internal/domain/ports/` define the architecture boundaries:
 
 - **SegmentStore** — `Get() *Snapshot` / `Swap(*Snapshot)` — lock-free reads via `atomic.Pointer`
 - **ConfigSource** — `Load() (*Snapshot, error)` — loads config from external source
-- **Hasher** — `Bucket(userKey, salt string) int` — deterministic hash bucketing [0, 100)
+- **Hasher** — `Bucket(subjectKey, salt string) int` — deterministic hash bucketing [0, 100)
 
 ### Evaluation Flow
 

@@ -2,10 +2,10 @@ package strategy
 
 import "github.com/segmentation-service/segmentation/internal/domain/model"
 
-// EvalContext holds the user key and merged context map (including cross-layer results).
+// EvalContext holds the subject key and merged context map (including cross-layer results).
 type EvalContext struct {
-	UserKey string
-	Context map[string]interface{}
+	SubjectKey string
+	Context    map[string]interface{}
 }
 
 // Result is the outcome of a strategy evaluation.

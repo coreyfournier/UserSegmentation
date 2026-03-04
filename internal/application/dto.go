@@ -1,15 +1,15 @@
 package application
 
-// EvaluateRequest is the input DTO for single-user evaluation.
+// EvaluateRequest is the input DTO for single-subject evaluation.
 type EvaluateRequest struct {
-	UserKey string                 `json:"user_key"`
-	Context map[string]interface{} `json:"context"`
-	Layers  []string               `json:"layers,omitempty"`
+	SubjectKey string                 `json:"subject_key"`
+	Context    map[string]interface{} `json:"context"`
+	Layers     []string               `json:"layers,omitempty"`
 }
 
 // EvaluateResponse is the output DTO for evaluation.
 type EvaluateResponse struct {
-	UserKey     string                    `json:"user_key"`
+	SubjectKey  string                    `json:"subject_key"`
 	Layers      map[string]LayerResultDTO `json:"layers"`
 	Warnings    []WarningDTO              `json:"warnings,omitempty"`
 	EvaluatedAt string                    `json:"evaluated_at"`
@@ -30,9 +30,9 @@ type WarningDTO struct {
 	Message string `json:"message"`
 }
 
-// BatchEvaluateRequest is the input DTO for multi-user evaluation.
+// BatchEvaluateRequest is the input DTO for multi-subject evaluation.
 type BatchEvaluateRequest struct {
-	Users []EvaluateRequest `json:"users"`
+	Subjects []EvaluateRequest `json:"subjects"`
 }
 
 // BatchEvaluateResponse is the output DTO for batch evaluation.

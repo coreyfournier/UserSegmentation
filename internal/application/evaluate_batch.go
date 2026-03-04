@@ -19,23 +19,23 @@ func NewBatchEvaluateUseCase(evaluateUC *EvaluateUseCase) *BatchEvaluateUseCase 
 func (uc *BatchEvaluateUseCase) Execute(req BatchEvaluateRequest) (*BatchEvaluateResponse, error) {
 	start := time.Now()
 
-	results := make([]EvaluateResponse, len(req.Users))
+	results := make([]EvaluateResponse, len(req.Subjects))
 	var wg sync.WaitGroup
-	wg.Add(len(req.Users))
+	wg.Add(len(req.Subjects))
 
-	for i, user := range req.Users {
+	for i, subj := range req.Subjects {
 		go func(idx int, u EvaluateRequest) {
 			defer wg.Done()
 			resp, err := uc.evaluateUC.Execute(u)
 			if err != nil {
 				results[idx] = EvaluateResponse{
-					UserKey: u.UserKey,
-					Layers:  make(map[string]LayerResultDTO),
+					SubjectKey: u.SubjectKey,
+					Layers:     make(map[string]LayerResultDTO),
 				}
 				return
 			}
 			results[idx] = *resp
-		}(i, user)
+		}(i, subj)
 	}
 
 	wg.Wait()

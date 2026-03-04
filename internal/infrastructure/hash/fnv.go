@@ -7,9 +7,9 @@ import (
 // FNV implements ports.Hasher using FNV-1a.
 type FNV struct{}
 
-// Bucket returns a deterministic bucket index [0, 100) for the given user key and salt.
-func (f *FNV) Bucket(userKey, salt string) int {
+// Bucket returns a deterministic bucket index [0, 100) for the given subject key and salt.
+func (f *FNV) Bucket(subjectKey, salt string) int {
 	h := hash_fnv.New32a()
-	_, _ = h.Write([]byte(salt + ":" + userKey))
+	_, _ = h.Write([]byte(salt + ":" + subjectKey))
 	return int(h.Sum32() % 100)
 }

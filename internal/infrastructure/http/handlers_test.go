@@ -16,7 +16,7 @@ import (
 
 type testHasher struct{}
 
-func (h *testHasher) Bucket(_, _ string) int { return 0 }
+func (h *testHasher) Bucket(_, _ string) int { return 0 } // implements ports.Hasher
 
 func setupTestServer() (*http.ServeMux, *store.Memory) {
 	memStore := store.NewMemory()
@@ -62,7 +62,7 @@ func setupTestServer() (*http.ServeMux, *store.Memory) {
 func TestEvaluateHandler_Success(t *testing.T) {
 	mux, _ := setupTestServer()
 
-	body := `{"user_key":"vip","context":{}}`
+	body := `{"subject_key":"vip","context":{}}`
 	req := httptest.NewRequest("POST", "/v1/evaluate", bytes.NewBufferString(body))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
@@ -79,7 +79,7 @@ func TestEvaluateHandler_Success(t *testing.T) {
 	}
 }
 
-func TestEvaluateHandler_MissingUserKey(t *testing.T) {
+func TestEvaluateHandler_MissingSubjectKey(t *testing.T) {
 	mux, _ := setupTestServer()
 
 	body := `{"context":{}}`
@@ -95,7 +95,7 @@ func TestEvaluateHandler_MissingUserKey(t *testing.T) {
 func TestBatchHandler_Success(t *testing.T) {
 	mux, _ := setupTestServer()
 
-	body := `{"users":[{"user_key":"vip","context":{}},{"user_key":"other","context":{}}]}`
+	body := `{"subjects":[{"subject_key":"vip","context":{}},{"subject_key":"other","context":{}}]}`
 	req := httptest.NewRequest("POST", "/v1/evaluate/batch", bytes.NewBufferString(body))
 	w := httptest.NewRecorder()
 	mux.ServeHTTP(w, req)

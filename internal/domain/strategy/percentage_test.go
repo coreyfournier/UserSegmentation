@@ -10,7 +10,7 @@ type mockHasher struct {
 	bucket int
 }
 
-func (m *mockHasher) Bucket(userKey, salt string) int {
+func (m *mockHasher) Bucket(subjectKey, salt string) int {
 	return m.bucket
 }
 
@@ -38,7 +38,7 @@ func TestPercentageStrategy(t *testing.T) {
 
 	for _, tt := range tests {
 		s := &PercentageStrategy{Hasher: &mockHasher{bucket: tt.bucket}}
-		res, ok := s.Evaluate(seg, &EvalContext{UserKey: "user"})
+		res, ok := s.Evaluate(seg, &EvalContext{SubjectKey: "user"})
 		if !ok || res.Segment != tt.want {
 			t.Errorf("bucket=%d: got %v %v, want %s", tt.bucket, res, ok, tt.want)
 		}
@@ -48,7 +48,7 @@ func TestPercentageStrategy(t *testing.T) {
 func TestPercentageStrategy_NoBuckets(t *testing.T) {
 	seg := &model.Segment{Strategy: "percentage"}
 	s := &PercentageStrategy{Hasher: &mockHasher{}}
-	_, ok := s.Evaluate(seg, &EvalContext{UserKey: "user"})
+	_, ok := s.Evaluate(seg, &EvalContext{SubjectKey: "user"})
 	if ok {
 		t.Error("expected no match with nil percentage config")
 	}

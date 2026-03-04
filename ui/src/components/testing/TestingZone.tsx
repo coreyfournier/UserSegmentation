@@ -11,7 +11,7 @@ export default function TestingZone() {
   const { data: layers } = useLayers();
   const evaluate = useEvaluate();
 
-  const [userKey, setUserKey] = useState('');
+  const [subjectKey, setSubjectKey] = useState('');
   const [selectedLayers, setSelectedLayers] = useState<string[]>([]);
   const [context, setContext] = useState<Record<string, unknown>>({});
   const [result, setResult] = useState<EvaluateResponse | null>(null);
@@ -32,7 +32,7 @@ export default function TestingZone() {
   const handleEvaluate = () => {
     evaluate.mutate(
       {
-        user_key: userKey,
+        subject_key: subjectKey,
         context,
         layers: selectedLayers.length ? selectedLayers : undefined,
       },
@@ -46,10 +46,10 @@ export default function TestingZone() {
       <div className={styles.grid}>
         <div className={styles.input}>
           <div className="form-group">
-            <label>User Key</label>
+            <label>Subject Key</label>
             <input
-              value={userKey}
-              onChange={(e) => setUserKey(e.target.value)}
+              value={subjectKey}
+              onChange={(e) => setSubjectKey(e.target.value)}
               placeholder="user-123"
             />
           </div>
@@ -81,7 +81,7 @@ export default function TestingZone() {
           <button
             className="btn-primary"
             onClick={handleEvaluate}
-            disabled={!userKey || evaluate.isPending}
+            disabled={!subjectKey || evaluate.isPending}
           >
             {evaluate.isPending ? 'Evaluating...' : 'Evaluate'}
           </button>

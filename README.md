@@ -77,7 +77,7 @@ Evaluate a single user across all (or selected) layers.
 **Request:**
 ```json
 {
-  "user_key": "user-123",
+  "subject_key": "user-123",
   "context": { "country": "US", "plan": "premium", "age": 25, "tags": ["beta"] },
   "layers": ["base-tier", "promotions"]
 }
@@ -86,7 +86,7 @@ Evaluate a single user across all (or selected) layers.
 **Response:**
 ```json
 {
-  "user_key": "user-123",
+  "subject_key": "user-123",
   "layers": {
     "base-tier": { "segment": "pro", "strategy": "rule", "reason": "rule:premium-plan" },
     "promotions": { "segment": "summer-sale", "strategy": "rule", "reason": "rule:pro-summer-promo" }
@@ -121,9 +121,9 @@ See `config/segments.json` for a complete example with all strategies, promotion
 
 | Strategy | Description |
 |---|---|
-| `static` | Direct user key → segment mapping with default |
+| `static` | Direct subject key → segment mapping with default |
 | `rule` | Composite AND/OR rule tree; first match wins |
-| `percentage` | FNV-1a hash bucketing with weighted segments |
+| `percentage` | FNV-1a hash bucketing with weighted segments (deterministic — same subject always gets the same bucket given the same salt and weights) |
 
 ### Rule Structure
 

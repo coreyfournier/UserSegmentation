@@ -16,7 +16,7 @@ export default function ResultDisplay({ result }: Props) {
   return (
     <div>
       <div className={styles.meta}>
-        <span>User: <strong>{result.user_key}</strong></span>
+        <span>Subject: <strong>{result.subject_key}</strong></span>
         <span>Duration: <strong>{result.duration_us}us</strong></span>
       </div>
 

@@ -31,8 +31,8 @@ type EvalResult struct {
 	Warnings []model.Warning
 }
 
-// Evaluate evaluates a user across the specified layers (or all if filterLayers is nil).
-func (e *Evaluator) Evaluate(snap *model.Snapshot, userKey string, ctx map[string]interface{}, filterLayers []string, now time.Time) *EvalResult {
+// Evaluate evaluates a subject across the specified layers (or all if filterLayers is nil).
+func (e *Evaluator) Evaluate(snap *model.Snapshot, subjectKey string, ctx map[string]interface{}, filterLayers []string, now time.Time) *EvalResult {
 	result := &EvalResult{
 		Layers: make(map[string]*model.Assignment, len(snap.Layers)),
 	}
@@ -60,7 +60,7 @@ func (e *Evaluator) Evaluate(snap *model.Snapshot, userKey string, ctx map[strin
 	}
 
 	for _, layer := range layers {
-		lr := e.evaluateLayer(&layer, userKey, evalCtx, now)
+		lr := e.evaluateLayer(&layer, subjectKey, evalCtx, now)
 
 		// Inject cross-layer result regardless of filter
 		if lr.Assignment != nil {
@@ -83,7 +83,7 @@ func (e *Evaluator) Evaluate(snap *model.Snapshot, userKey string, ctx map[strin
 	return result
 }
 
-func (e *Evaluator) evaluateLayer(layer *model.Layer, userKey string, ctx map[string]interface{}, now time.Time) *LayerResult {
+func (e *Evaluator) evaluateLayer(layer *model.Layer, subjectKey string, ctx map[string]interface{}, now time.Time) *LayerResult {
 	lr := &LayerResult{}
 
 	for i := range layer.Segments {
@@ -98,8 +98,8 @@ func (e *Evaluator) evaluateLayer(layer *model.Layer, userKey string, ctx map[st
 		lr.Warnings = append(lr.Warnings, validation.CheckRequiredFields(seg, ctx)...)
 
 		evalCtx := &strategy.EvalContext{
-			UserKey: userKey,
-			Context: ctx,
+			SubjectKey: subjectKey,
+			Context:    ctx,
 		}
 
 		// Check overrides first
