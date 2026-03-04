@@ -1,0 +1,26 @@
+.toggle {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 12px;
+}
+
+.fields {
+  display: grid;
+  gap: 0;
+}
+
+.type {
+  font-weight: 400;
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
+.json {
+  width: 100%;
+  min-height: 200px;
+}
+
+.hint {
+  color: var(--text-muted);
+  font-size: 13px;
+}

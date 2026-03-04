@@ -48,6 +48,7 @@ func main() {
 	evaluateUC := application.NewEvaluateUseCase(memStore, evaluator)
 	batchUC := application.NewBatchEvaluateUseCase(evaluateUC)
 	reloadUC := application.NewReloadUseCase(fileSource, memStore)
+	adminUC := application.NewAdminUseCase(memStore, fileSource)
 
 	// Config watcher
 	watcher := infraConfig.NewWatcher(fileSource, memStore, *configPath, 500*time.Millisecond)
@@ -55,7 +56,7 @@ func main() {
 	defer watcher.Stop()
 
 	// HTTP server
-	srv := infraHTTP.NewServer(*addr, evaluateUC, batchUC, reloadUC, memStore)
+	srv := infraHTTP.NewServer(*addr, evaluateUC, batchUC, reloadUC, adminUC, memStore)
 
 	// Graceful shutdown
 	go func() {

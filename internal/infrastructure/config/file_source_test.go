@@ -4,6 +4,8 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/segmentation-service/segmentation/internal/domain/model"
 )
 
 func TestFileSource_Load(t *testing.T) {
@@ -72,5 +74,64 @@ func TestFileSource_InvalidJSON(t *testing.T) {
 	_, err := fs.Load()
 	if err == nil {
 		t.Error("expected error for invalid JSON")
+	}
+}
+
+func TestFileSource_Save(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "out.json")
+	fs := NewFileSource(path)
+
+	snap := &model.Snapshot{
+		Version: 10,
+		Layers: []model.Layer{
+			{Name: "saved", Order: 1, Segments: []model.Segment{}},
+		},
+	}
+	if err := fs.Save(snap); err != nil {
+		t.Fatalf("Save failed: %v", err)
+	}
+
+	// Verify by loading back
+	loaded, err := fs.Load()
+	if err != nil {
+		t.Fatalf("Load after Save failed: %v", err)
+	}
+	if loaded.Version != 10 {
+		t.Errorf("expected version 10, got %d", loaded.Version)
+	}
+	if len(loaded.Layers) != 1 || loaded.Layers[0].Name != "saved" {
+		t.Errorf("unexpected layers after Save: %v", loaded.Layers)
+	}
+}
+
+func TestFileSource_SaveAtomic(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "atomic.json")
+
+	// Write initial file
+	fs := NewFileSource(path)
+	initial := &model.Snapshot{Version: 1, Layers: []model.Layer{}}
+	fs.Save(initial)
+
+	// Overwrite with new version
+	updated := &model.Snapshot{Version: 2, Layers: []model.Layer{
+		{Name: "new", Order: 1, Segments: []model.Segment{}},
+	}}
+	if err := fs.Save(updated); err != nil {
+		t.Fatalf("Save failed: %v", err)
+	}
+
+	loaded, _ := fs.Load()
+	if loaded.Version != 2 {
+		t.Errorf("expected version 2, got %d", loaded.Version)
+	}
+
+	// No temp files should remain
+	entries, _ := os.ReadDir(dir)
+	for _, e := range entries {
+		if e.Name() != "atomic.json" {
+			t.Errorf("unexpected file left behind: %s", e.Name())
+		}
 	}
 }

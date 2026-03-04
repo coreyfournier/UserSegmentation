@@ -4,12 +4,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 	"sort"
 
 	"github.com/segmentation-service/segmentation/internal/domain/model"
 )
 
-// FileSource loads segment configuration from a JSON file.
+// FileSource loads and saves segment configuration from/to a JSON file.
 type FileSource struct {
 	path string
 }
@@ -37,4 +38,36 @@ func (fs *FileSource) Load() (*model.Snapshot, error) {
 	})
 
 	return &snap, nil
+}
+
+// Save atomically writes the snapshot to disk (write tmp then rename).
+func (fs *FileSource) Save(snap *model.Snapshot) error {
+	data, err := json.MarshalIndent(snap, "", "  ")
+	if err != nil {
+		return fmt.Errorf("marshaling config: %w", err)
+	}
+
+	dir := filepath.Dir(fs.path)
+	tmp, err := os.CreateTemp(dir, "segments-*.tmp")
+	if err != nil {
+		return fmt.Errorf("creating temp file: %w", err)
+	}
+	tmpPath := tmp.Name()
+
+	if _, err := tmp.Write(data); err != nil {
+		tmp.Close()
+		os.Remove(tmpPath)
+		return fmt.Errorf("writing temp file: %w", err)
+	}
+	if err := tmp.Close(); err != nil {
+		os.Remove(tmpPath)
+		return fmt.Errorf("closing temp file: %w", err)
+	}
+
+	if err := os.Rename(tmpPath, fs.path); err != nil {
+		os.Remove(tmpPath)
+		return fmt.Errorf("renaming temp file: %w", err)
+	}
+
+	return nil
 }

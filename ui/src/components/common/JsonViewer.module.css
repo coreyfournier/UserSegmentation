@@ -1,0 +1,10 @@
+.pre {
+  background: #1e293b;
+  color: #e2e8f0;
+  padding: 16px;
+  border-radius: var(--radius);
+  overflow: auto;
+  font-size: 13px;
+  line-height: 1.6;
+  max-height: 500px;
+}

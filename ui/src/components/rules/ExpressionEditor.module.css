@@ -1,0 +1,23 @@
+.row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.field {
+  flex: 1;
+}
+
+.field input {
+  font-size: 13px;
+  padding: 6px 8px;
+}
+
+.value {
+  flex: 1;
+}
+
+.value input {
+  font-size: 13px;
+  padding: 6px 8px;
+}

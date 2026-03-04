@@ -1,0 +1,34 @@
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 8px;
+}
+
+.table th {
+  text-align: left;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted);
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--border);
+}
+
+.table td {
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--border);
+}
+
+.table td input {
+  padding: 4px 8px;
+  font-size: 13px;
+}
+
+.valid {
+  color: var(--success);
+  font-weight: 600;
+}
+
+.invalid {
+  color: var(--danger);
+  font-weight: 600;
+}
