@@ -1,0 +1,114 @@
+{
+  "version": 3,
+  "layers": [
+    {
+      "name": "base-tier",
+      "order": 1,
+      "segments": [
+        {
+          "id": "user-tier",
+          "strategy": "static",
+          "static": {
+            "mappings": {
+              "user-vip-001": "platinum",
+              "user-pro-001": "pro"
+            },
+            "default": "standard"
+          }
+        }
+      ]
+    },
+    {
+      "name": "experiments",
+      "order": 2,
+      "segments": [
+        {
+          "id": "checkout-flow",
+          "strategy": "percentage",
+          "percentage": {
+            "salt": "checkout-v2",
+            "buckets": [
+              { "segment": "control", "weight": 50 },
+              { "segment": "new-checkout", "weight": 50 }
+            ]
+          },
+          "overrides": [
+            {
+              "ruleName": "enterprise-skip",
+              "enabled": true,
+              "successEvent": "control",
+              "expression": { "field": "layer:base-tier", "operator": "eq", "value": "platinum" }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "promotions",
+      "order": 3,
+      "segments": [
+        {
+          "id": "summer-sale",
+          "strategy": "rule",
+          "promotion": {
+            "effective_from": "2026-06-01T00:00:00Z",
+            "effective_until": "2026-08-31T23:59:59Z"
+          },
+          "inputSchema": {
+            "country": { "type": "string", "required": true },
+            "plan": { "type": "string", "required": false }
+          },
+          "rules": [
+            {
+              "ruleName": "pro-summer-promo",
+              "operator": "And",
+              "successEvent": "summer-sale",
+              "errorMessage": "User not eligible for summer promo",
+              "enabled": true,
+              "rules": [
+                {
+                  "ruleName": "tier-check",
+                  "expression": { "field": "layer:base-tier", "operator": "in", "value": ["pro", "platinum"] }
+                },
+                {
+                  "ruleName": "region-check",
+                  "expression": { "field": "country", "operator": "in", "value": ["US", "CA"] }
+                }
+              ]
+            }
+          ],
+          "default": "none"
+        }
+      ]
+    },
+    {
+      "name": "features",
+      "order": 4,
+      "segments": [
+        {
+          "id": "dark-mode",
+          "strategy": "rule",
+          "rules": [
+            {
+              "ruleName": "beta-users",
+              "operator": "Or",
+              "successEvent": "enabled",
+              "enabled": true,
+              "rules": [
+                {
+                  "ruleName": "has-beta-tag",
+                  "expression": { "field": "tags", "operator": "contains", "value": "beta" }
+                },
+                {
+                  "ruleName": "is-pro-tier",
+                  "expression": { "field": "layer:base-tier", "operator": "in", "value": ["pro", "platinum"] }
+                }
+              ]
+            }
+          ],
+          "default": "disabled"
+        }
+      ]
+    }
+  ]
+}
