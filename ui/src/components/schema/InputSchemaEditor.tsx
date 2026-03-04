@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import type { InputSchema, FieldType } from '../../api/types';
 import styles from './InputSchemaEditor.module.css';
 
@@ -15,11 +15,12 @@ export default function InputSchemaEditor({ value, onChange }: Props) {
   const [newField, setNewField] = useState('');
   const [newType, setNewType] = useState<FieldType>('string');
   const [newReq, setNewReq] = useState(false);
+  const addRowRef = useRef<HTMLTableRowElement>(null);
 
   const remove = (field: string) => {
     const s = { ...schema };
     delete s[field];
-    onChange(Object.keys(s).length ? s : undefined);
+    onChange(Object.keys(s).length ? s : {});
   };
 
   const add = () => {
@@ -28,6 +29,19 @@ export default function InputSchemaEditor({ value, onChange }: Props) {
     setNewField('');
     setNewType('string');
     setNewReq(false);
+  };
+
+  const handleRowBlur = (e: React.FocusEvent) => {
+    if (!newField) return;
+    if (addRowRef.current?.contains(e.relatedTarget as Node)) return;
+    add();
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      add();
+    }
   };
 
   const toggleRequired = (field: string) => {
@@ -59,8 +73,8 @@ export default function InputSchemaEditor({ value, onChange }: Props) {
               <td><button className="btn-danger btn-sm" onClick={() => remove(f)}>x</button></td>
             </tr>
           ))}
-          <tr>
-            <td><input value={newField} onChange={(e) => setNewField(e.target.value)} placeholder="field name" /></td>
+          <tr ref={addRowRef} onBlur={handleRowBlur}>
+            <td><input value={newField} onChange={(e) => setNewField(e.target.value)} onKeyDown={handleKeyDown} placeholder="field name" /></td>
             <td>
               <select value={newType} onChange={(e) => setNewType(e.target.value as FieldType)}>
                 {TYPES.map((t) => <option key={t} value={t}>{t}</option>)}

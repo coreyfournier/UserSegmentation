@@ -1,0 +1,20 @@
+services:
+  api:
+    build: .
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./config:/config
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8080/v1/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+
+  ui:
+    build: ./ui
+    ports:
+      - "3000:80"
+    depends_on:
+      api:
+        condition: service_healthy

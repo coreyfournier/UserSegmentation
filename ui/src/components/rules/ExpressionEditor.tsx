@@ -1,4 +1,4 @@
-import type { Expression, InputSchema, Operator } from '../../api/types';
+import type { Expression, InputSchema } from '../../api/types';
 import OperatorSelect from './OperatorSelect';
 import styles from './ExpressionEditor.module.css';
 

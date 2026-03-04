@@ -1,8 +1,8 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useLayers } from '../../api/layers';
 import { useUpdateSegment } from '../../api/segments';
-import type { Segment, StrategyType, InputSchema } from '../../api/types';
+import type { Segment, StrategyType } from '../../api/types';
 import StrategyPicker from './StrategyPicker';
 import StaticConfig from './StaticConfig';
 import PercentageConfig from './PercentageConfig';
@@ -24,30 +24,36 @@ export default function SegmentEditor() {
   const layerNames = layers?.map((l) => l.name) ?? [];
 
   const [seg, setSeg] = useState<Segment | null>(null);
+  const segRef = useRef(seg);
+  segRef.current = seg;
 
   useEffect(() => {
-    if (original) setSeg(structuredClone(original));
+    if (original && !segRef.current) setSeg(structuredClone(original));
   }, [original]);
 
   if (!seg) return <p>Loading segment...</p>;
 
-  const update = (partial: Partial<Segment>) => setSeg({ ...seg, ...partial });
+  const update = (partial: Partial<Segment>) =>
+    setSeg((prev) => (prev ? { ...prev, ...partial } : prev));
 
   const switchStrategy = (strategy: StrategyType) => {
-    const next: Partial<Segment> = { strategy };
-    if (strategy === 'static') next.static = seg.static ?? { mappings: {}, default: '' };
-    if (strategy === 'percentage') next.percentage = seg.percentage ?? { salt: '', buckets: [] };
-    if (strategy === 'rule') {
-      next.rules = seg.rules ?? [];
-      next.default = seg.default ?? '';
-    }
-    update(next);
+    setSeg((prev) => {
+      if (!prev) return prev;
+      const next: Partial<Segment> = { strategy };
+      if (strategy === 'static') next.static = prev.static ?? { mappings: {}, default: '' };
+      if (strategy === 'percentage') next.percentage = prev.percentage ?? { salt: '', buckets: [] };
+      if (strategy === 'rule') {
+        next.rules = prev.rules ?? [];
+        next.default = prev.default ?? '';
+      }
+      return { ...prev, ...next };
+    });
   };
 
   const handleSave = () => {
-    if (!layerName || !segId) return;
+    if (!layerName || !segId || !segRef.current) return;
     updateSegment.mutate(
-      { layerName, segId, segment: seg },
+      { layerName, segId, segment: segRef.current },
       { onSuccess: () => navigate('/layers') }
     );
   };
