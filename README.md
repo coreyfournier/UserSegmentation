@@ -2,6 +2,28 @@
 
 A high-performance, deterministic segmentation engine built in Go. Evaluates users across multiple **layers** with support for **composite AND/OR rules** (inspired by [Microsoft Rules Engine](https://microsoft.github.io/RulesEngine/)), **time-bound promotions**, **cross-layer dependencies**, and **hot-reloading** configuration.
 
+## Screenshots
+
+### Layer Management
+View and manage all segmentation layers with their segments, strategies, and ordering.
+
+![Layers Page](docs/screenshots/layers-page.png)
+
+### Testing Zone
+Evaluate users in real-time with JSON context input. Results are color-coded by strategy (blue = static, green = rule, purple = percentage).
+
+![Testing Results](docs/screenshots/testing-results.png)
+
+### Segment Editor
+Configure segments with strategy selection, promotion time windows, input schema validation, and composite AND/OR rule trees with cross-layer references.
+
+![Segment Editor](docs/screenshots/segment-editor.png)
+
+### Config Import/Export
+Export and import full configuration snapshots as JSON for backup or environment migration.
+
+![Config Export](docs/screenshots/config-exported.png)
+
 ## Key Features
 
 - **Layered evaluation** — Independent segmentation dimensions evaluated in order (tiers, experiments, promotions, features)
