@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"time"
 
 	"github.com/segmentation-service/segmentation/internal/domain/model"
 )
@@ -41,7 +42,12 @@ func (fs *FileSource) Load() (*model.Snapshot, error) {
 }
 
 // Save atomically writes the snapshot to disk (write tmp then rename).
+// Stamps last_modified here in the repository layer since timestamps
+// are a file-persistence concern, not needed by other storage backends.
 func (fs *FileSource) Save(snap *model.Snapshot) error {
+	now := time.Now().UTC()
+	snap.LastModified = &now
+
 	data, err := json.MarshalIndent(snap, "", "  ")
 	if err != nil {
 		return fmt.Errorf("marshaling config: %w", err)

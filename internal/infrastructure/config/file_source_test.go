@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/segmentation-service/segmentation/internal/domain/model"
 )
@@ -102,6 +103,12 @@ func TestFileSource_Save(t *testing.T) {
 	}
 	if len(loaded.Layers) != 1 || loaded.Layers[0].Name != "saved" {
 		t.Errorf("unexpected layers after Save: %v", loaded.Layers)
+	}
+	if loaded.LastModified == nil {
+		t.Fatal("expected last_modified to be set after Save")
+	}
+	if time.Since(*loaded.LastModified) > 5*time.Second {
+		t.Errorf("last_modified too old: %v", loaded.LastModified)
 	}
 }
 

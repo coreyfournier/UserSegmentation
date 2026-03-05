@@ -1,5 +1,7 @@
 package model
 
+import "time"
+
 // Layer is an independent dimension of segmentation evaluated in order.
 type Layer struct {
 	Name     string    `json:"name"`
@@ -9,6 +11,7 @@ type Layer struct {
 
 // Snapshot is an immutable, pre-validated configuration loaded atomically.
 type Snapshot struct {
-	Version int     `json:"version"`
-	Layers  []Layer `json:"layers"`
+	Version      int        `json:"version"`
+	LastModified *time.Time `json:"last_modified,omitempty"`
+	Layers       []Layer    `json:"layers"`
 }
