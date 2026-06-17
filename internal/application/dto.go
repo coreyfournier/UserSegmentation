@@ -18,9 +18,10 @@ type EvaluateResponse struct {
 
 // LayerResultDTO is a single layer's assignment in the response.
 type LayerResultDTO struct {
-	Segment  string `json:"segment"`
-	Strategy string `json:"strategy"`
-	Reason   string `json:"reason"`
+	Segment     string                 `json:"segment"`
+	Strategy    string                 `json:"strategy"`
+	Reason      string                 `json:"reason"`
+	Expressions map[string]interface{} `json:"expressions,omitempty"`
 }
 
 // WarningDTO represents a validation warning.

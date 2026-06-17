@@ -1,5 +1,6 @@
 {
-  "version": 3,
+  "version": 14,
+  "last_modified": "2026-06-17T02:05:56.696505749Z",
   "layers": [
     {
       "name": "base-tier",
@@ -10,11 +11,105 @@
           "strategy": "static",
           "static": {
             "mappings": {
-              "user-vip-001": "platinum",
-              "user-pro-001": "pro"
+              "user-pro-001": "pro",
+              "user-vip-001": "platinum"
             },
             "default": "standard"
           }
+        }
+      ]
+    },
+    {
+      "name": "CT Rule",
+      "order": 1,
+      "segments": [
+        {
+          "id": "IsCT",
+          "strategy": "rule",
+          "static": {
+            "mappings": {},
+            "default": ""
+          },
+          "rules": [
+            {
+              "ruleName": "CT_Check",
+              "operator": "And",
+              "successEvent": "true",
+              "errorMessage": "Failed to determine if the employee is in CT",
+              "rules": [
+                {
+                  "ruleName": "",
+                  "expression": {
+                    "field": "UserState",
+                    "operator": "eq",
+                    "value": "CT"
+                  }
+                }
+              ]
+            }
+          ],
+          "default": "false",
+          "inputSchema": {
+            "UserState": {
+              "type": "string",
+              "required": true
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Risk Rating",
+      "order": 1,
+      "segments": [
+        {
+          "id": "IsRisky",
+          "strategy": "expression",
+          "expressions": [
+            {
+              "name": "RiskRating",
+              "type": "number",
+              "expression": "(PayCheckRaiting * .5) + (CompanyRating * .8)"
+            }
+          ],
+          "rules": [
+            {
+              "ruleName": "RiskEval",
+              "operator": "And",
+              "successEvent": "true",
+              "rules": [
+                {
+                  "ruleName": "",
+                  "expression": {
+                    "field": "RiskRating",
+                    "operator": "gte",
+                    "value": 1
+                  }
+                }
+              ]
+            }
+          ],
+          "default": "false",
+          "inputSchema": {
+            "CompanyRating": {
+              "type": "number",
+              "required": true
+            },
+            "PayCheckRaiting": {
+              "type": "number",
+              "required": true
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "dSDsd",
+      "order": 1,
+      "segments": [
+        {
+          "id": "expression test",
+          "strategy": "expression"
         }
       ]
     },
@@ -28,8 +123,14 @@
           "percentage": {
             "salt": "checkout-v2",
             "buckets": [
-              { "segment": "control", "weight": 50 },
-              { "segment": "new-checkout", "weight": 50 }
+              {
+                "segment": "control",
+                "weight": 50
+              },
+              {
+                "segment": "new-checkout",
+                "weight": 50
+              }
             ]
           },
           "overrides": [
@@ -37,7 +138,11 @@
               "ruleName": "enterprise-skip",
               "enabled": true,
               "successEvent": "control",
-              "expression": { "field": "layer:base-tier", "operator": "eq", "value": "platinum" }
+              "expression": {
+                "field": "layer:base-tier",
+                "operator": "eq",
+                "value": "platinum"
+              }
             }
           ]
         }
@@ -50,34 +155,54 @@
         {
           "id": "summer-sale",
           "strategy": "rule",
+          "rules": [
+            {
+              "ruleName": "pro-summer-promo",
+              "operator": "And",
+              "enabled": true,
+              "successEvent": "summer-sale",
+              "errorMessage": "User not eligible for summer promo",
+              "rules": [
+                {
+                  "ruleName": "tier-check",
+                  "expression": {
+                    "field": "layer:base-tier",
+                    "operator": "in",
+                    "value": [
+                      "pro",
+                      "platinum"
+                    ]
+                  }
+                },
+                {
+                  "ruleName": "region-check",
+                  "expression": {
+                    "field": "country",
+                    "operator": "in",
+                    "value": [
+                      "US",
+                      "CA"
+                    ]
+                  }
+                }
+              ]
+            }
+          ],
+          "default": "none",
           "promotion": {
             "effective_from": "2026-06-01T00:00:00Z",
             "effective_until": "2026-08-31T23:59:59Z"
           },
           "inputSchema": {
-            "country": { "type": "string", "required": true },
-            "plan": { "type": "string", "required": false }
-          },
-          "rules": [
-            {
-              "ruleName": "pro-summer-promo",
-              "operator": "And",
-              "successEvent": "summer-sale",
-              "errorMessage": "User not eligible for summer promo",
-              "enabled": true,
-              "rules": [
-                {
-                  "ruleName": "tier-check",
-                  "expression": { "field": "layer:base-tier", "operator": "in", "value": ["pro", "platinum"] }
-                },
-                {
-                  "ruleName": "region-check",
-                  "expression": { "field": "country", "operator": "in", "value": ["US", "CA"] }
-                }
-              ]
+            "country": {
+              "type": "string",
+              "required": true
+            },
+            "plan": {
+              "type": "string",
+              "required": false
             }
-          ],
-          "default": "none"
+          }
         }
       ]
     },
@@ -92,16 +217,27 @@
             {
               "ruleName": "beta-users",
               "operator": "Or",
-              "successEvent": "enabled",
               "enabled": true,
+              "successEvent": "enabled",
               "rules": [
                 {
                   "ruleName": "has-beta-tag",
-                  "expression": { "field": "tags", "operator": "contains", "value": "beta" }
+                  "expression": {
+                    "field": "tags",
+                    "operator": "contains",
+                    "value": "beta"
+                  }
                 },
                 {
                   "ruleName": "is-pro-tier",
-                  "expression": { "field": "layer:base-tier", "operator": "in", "value": ["pro", "platinum"] }
+                  "expression": {
+                    "field": "layer:base-tier",
+                    "operator": "in",
+                    "value": [
+                      "pro",
+                      "platinum"
+                    ]
+                  }
                 }
               ]
             }

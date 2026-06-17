@@ -1,4 +1,5 @@
 import type { Expression, InputSchema } from '../../api/types';
+import { parseNumericInput } from '../../utils/parse';
 import OperatorSelect from './OperatorSelect';
 import styles from './ExpressionEditor.module.css';
 
@@ -26,11 +27,9 @@ export default function ExpressionEditor({ value, onChange, schema, layerNames }
     if (op === 'in') {
       return raw.split(',').map((s) => s.trim()).filter(Boolean);
     }
-    const n = Number(raw);
-    if (!isNaN(n) && raw.trim() !== '') return n;
     if (raw === 'true') return true;
     if (raw === 'false') return false;
-    return raw;
+    return parseNumericInput(raw);
   };
 
   return (

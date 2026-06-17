@@ -6,16 +6,17 @@ interface Props {
   onChange: (s: StrategyType) => void;
 }
 
-const options: { value: StrategyType; label: string }[] = [
+export const STRATEGY_OPTIONS: { value: StrategyType; label: string }[] = [
   { value: 'static', label: 'Static' },
   { value: 'rule', label: 'Rule' },
   { value: 'percentage', label: 'Percentage' },
+  { value: 'expression', label: 'Expression' },
 ];
 
 export default function StrategyPicker({ value, onChange }: Props) {
   return (
     <div className={styles.picker}>
-      {options.map((o) => (
+      {STRATEGY_OPTIONS.map((o) => (
         <label key={o.value} className={`${styles.option} ${value === o.value ? styles.active : ''}`}>
           <input
             type="radio"

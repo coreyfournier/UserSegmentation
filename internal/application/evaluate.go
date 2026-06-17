@@ -44,9 +44,10 @@ func (uc *EvaluateUseCase) Execute(req EvaluateRequest) (*EvaluateResponse, erro
 
 	for name, a := range result.Layers {
 		resp.Layers[name] = LayerResultDTO{
-			Segment:  a.Segment,
-			Strategy: a.Strategy,
-			Reason:   a.Reason,
+			Segment:     a.Segment,
+			Strategy:    a.Strategy,
+			Reason:      a.Reason,
+			Expressions: a.Expressions,
 		}
 	}
 

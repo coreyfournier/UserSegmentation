@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import type { InputSchema } from '../../api/types';
+import { parseNumericInput } from '../../utils/parse';
 import styles from './ContextEditor.module.css';
 
 interface Props {
@@ -31,7 +32,7 @@ export default function ContextEditor({ value, onChange, schemas }: Props) {
   const updateField = (field: string, raw: string) => {
     const type = allFields.get(field);
     let parsed: unknown = raw;
-    if (type === 'number') parsed = Number(raw) || 0;
+    if (type === 'number') parsed = parseNumericInput(raw);
     else if (type === 'boolean') parsed = raw === 'true';
     else if (type === 'array') parsed = raw.split(',').map((s) => s.trim()).filter(Boolean);
     onChange({ ...value, [field]: parsed });

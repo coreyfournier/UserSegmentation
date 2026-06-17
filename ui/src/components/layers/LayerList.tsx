@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { useLayers, useCreateLayer, useUpdateLayer, useDeleteLayer } from '../../api/layers';
 import { useCreateSegment } from '../../api/segments';
-import type { Layer, Segment } from '../../api/types';
+import type { Layer, Segment, StrategyType } from '../../api/types';
+import { STRATEGY_OPTIONS } from '../segments/StrategyPicker';
 import LayerCard from './LayerCard';
 import LayerForm from './LayerForm';
 import Modal from '../common/Modal';
@@ -21,7 +22,7 @@ export default function LayerList() {
   const [deleting, setDeleting] = useState<string | null>(null);
   const [addSegTo, setAddSegTo] = useState<string | null>(null);
   const [newSegId, setNewSegId] = useState('');
-  const [newSegStrategy, setNewSegStrategy] = useState<'static' | 'rule' | 'percentage'>('static');
+  const [newSegStrategy, setNewSegStrategy] = useState<StrategyType>('static');
 
   if (isLoading) return <p>Loading...</p>;
   if (error) return <ErrorBanner message={(error as Error).message} />;
@@ -113,6 +114,11 @@ export default function LayerList() {
                 rules: [],
                 default: '',
               }),
+              ...(newSegStrategy === 'expression' && {
+                expressions: [],
+                rules: [],
+                default: '',
+              }),
             };
             createSegment.mutate(
               { layerName: addSegTo, segment: seg },
@@ -128,11 +134,11 @@ export default function LayerList() {
             <label>Strategy</label>
             <select
               value={newSegStrategy}
-              onChange={(e) => setNewSegStrategy(e.target.value as 'static' | 'rule' | 'percentage')}
+              onChange={(e) => setNewSegStrategy(e.target.value as StrategyType)}
             >
-              <option value="static">Static</option>
-              <option value="rule">Rule</option>
-              <option value="percentage">Percentage</option>
+              {STRATEGY_OPTIONS.map((o) => (
+                <option key={o.value} value={o.value}>{o.label}</option>
+              ))}
             </select>
           </div>
           <div className="form-row" style={{ justifyContent: 'flex-end' }}>

@@ -2,10 +2,11 @@ import { useState, useEffect, useRef } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useLayers } from '../../api/layers';
 import { useUpdateSegment } from '../../api/segments';
-import type { Segment, StrategyType } from '../../api/types';
+import type { Segment, StrategyType, InputSchema } from '../../api/types';
 import StrategyPicker from './StrategyPicker';
 import StaticConfig from './StaticConfig';
 import PercentageConfig from './PercentageConfig';
+import ExpressionConfig from './ExpressionConfig';
 import RuleConfig from './RuleConfig';
 import RuleTreeBuilder from '../rules/RuleTreeBuilder';
 import PromotionEditor from '../promotion/PromotionEditor';
@@ -46,8 +47,24 @@ export default function SegmentEditor() {
         next.rules = prev.rules ?? [];
         next.default = prev.default ?? '';
       }
+      if (strategy === 'expression') {
+        next.expressions = prev.expressions ?? [];
+        next.rules = prev.rules ?? [];
+        next.default = prev.default ?? '';
+      }
       return { ...prev, ...next };
     });
+  };
+
+  // For expression strategy, merge inputSchema with expression-defined fields so rules
+  // can reference computed fields in the field autocomplete.
+  const effectiveSchema = (s: Segment): InputSchema | undefined => {
+    if (s.strategy !== 'expression' || !s.expressions?.length) return s.inputSchema;
+    const merged: InputSchema = { ...s.inputSchema };
+    for (const def of s.expressions) {
+      if (def.name) merged[def.name] = { type: def.type, required: false };
+    }
+    return merged;
   };
 
   const handleSave = () => {
@@ -114,10 +131,31 @@ export default function SegmentEditor() {
             layerNames={layerNames}
           />
         )}
+        {seg.strategy === 'expression' && (
+          <>
+            <div className="form-group" style={{ marginBottom: 16 }}>
+              <label>Expressions</label>
+              <ExpressionConfig
+                value={seg.expressions ?? []}
+                onChange={(e) => update({ expressions: e })}
+              />
+            </div>
+            <RuleConfig
+              rules={seg.rules ?? []}
+              overrides={seg.overrides ?? []}
+              onRulesChange={(r) => update({ rules: r })}
+              onOverridesChange={(r) => update({ overrides: r })}
+              defaultValue={seg.default ?? ''}
+              onDefaultChange={(v) => update({ default: v })}
+              schema={effectiveSchema(seg)}
+              layerNames={layerNames}
+            />
+          </>
+        )}
       </section>
 
-      {/* Overrides for non-rule strategies */}
-      {seg.strategy !== 'rule' && (
+      {/* Overrides for non-rule/non-expression strategies */}
+      {seg.strategy !== 'rule' && seg.strategy !== 'expression' && (
         <section className={`card ${styles.section}`}>
           <h3>Overrides</h3>
           <div style={{ marginBottom: 8 }}>

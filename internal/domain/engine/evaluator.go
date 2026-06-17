@@ -121,9 +121,10 @@ func (e *Evaluator) evaluateLayer(layer *model.Layer, subjectKey string, ctx map
 		}
 		if res, ok := strat.Evaluate(seg, evalCtx); ok {
 			lr.Assignment = &model.Assignment{
-				Segment:  res.Segment,
-				Strategy: seg.Strategy,
-				Reason:   res.Reason,
+				Segment:     res.Segment,
+				Strategy:    seg.Strategy,
+				Reason:      res.Reason,
+				Expressions: res.Expressions,
 			}
 			return lr
 		}

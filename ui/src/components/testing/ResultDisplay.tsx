@@ -9,6 +9,7 @@ const STRATEGY_COLORS: Record<string, string> = {
   static: '#3b82f6',
   rule: '#22c55e',
   percentage: '#8b5cf6',
+  expression: '#06b6d4',
   override: '#f97316',
 };
 
@@ -32,6 +33,15 @@ export default function ResultDisplay({ result }: Props) {
             <span>strategy: <strong>{lr.strategy}</strong></span>
           </div>
           <div className={styles.reason}>reason: {lr.reason}</div>
+          {lr.expressions && Object.keys(lr.expressions).length > 0 && (
+            <div className={styles.expressions}>
+              {Object.entries(lr.expressions).map(([k, v]) => (
+                <span key={k} className={styles.expr}>
+                  {k}: <strong>{String(v)}</strong>
+                </span>
+              ))}
+            </div>
+          )}
         </div>
       ))}
 

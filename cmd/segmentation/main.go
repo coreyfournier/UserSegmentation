@@ -41,6 +41,7 @@ func main() {
 		"static":     &strategy.StaticStrategy{},
 		"rule":       &strategy.RuleStrategy{},
 		"percentage": &strategy.PercentageStrategy{Hasher: hasher},
+		"expression": &strategy.ExpressionStrategy{},
 	}
 	evaluator := engine.NewEvaluator(strategies)
 

@@ -10,8 +10,9 @@ type EvalContext struct {
 
 // Result is the outcome of a strategy evaluation.
 type Result struct {
-	Segment string
-	Reason  string
+	Segment     string
+	Reason      string
+	Expressions map[string]interface{}
 }
 
 // Strategy evaluates a segment definition against the given context.

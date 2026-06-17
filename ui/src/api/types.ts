@@ -1,7 +1,7 @@
 export type FieldType = 'string' | 'number' | 'boolean' | 'array';
 export type Operator = 'eq' | 'neq' | 'gt' | 'gte' | 'lt' | 'lte' | 'in' | 'contains';
 export type CompositeOperator = 'And' | 'Or';
-export type StrategyType = 'static' | 'rule' | 'percentage';
+export type StrategyType = 'static' | 'rule' | 'percentage' | 'expression';
 
 export interface SchemaField {
   type: FieldType;
@@ -46,11 +46,18 @@ export interface StaticConfig {
   default: string;
 }
 
+export interface ExpressionDef {
+  name: string;
+  type: FieldType;
+  expression: string;
+}
+
 export interface Segment {
   id: string;
   strategy: StrategyType;
   static?: StaticConfig;
   percentage?: PercentageConfig;
+  expressions?: ExpressionDef[];
   rules?: Rule[];
   overrides?: Rule[];
   default?: string;
@@ -73,6 +80,7 @@ export interface LayerResult {
   segment: string;
   strategy: string;
   reason: string;
+  expressions?: Record<string, unknown>;
 }
 
 export interface Warning {
