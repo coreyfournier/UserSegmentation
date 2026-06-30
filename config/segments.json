@@ -245,6 +245,118 @@
           "default": "disabled"
         }
       ]
+    },
+    {
+      "name": "ct-fee-override",
+      "order": 5,
+      "segments": [
+        {
+          "id": "ct-fee",
+          "strategy": "expression",
+          "expressions": [
+            {
+              "name": "CTTotal",
+              "type": "number",
+              "expression": "sum(map(filter(Employees, {.State == \"CT\"}), {.TransferSpendThisMonth}))"
+            },
+            {
+              "name": "TransferFee",
+              "type": "number",
+              "expression": "CTTotal > 30.0 ? 0.0 : (CTTotal + 4.0 > 30.0 ? 30.0 - CTTotal : 4.0)"
+            }
+          ],
+          "rules": [
+            {
+              "ruleName": "fee-waived",
+              "successEvent": "fee-waived",
+              "expression": { "field": "CTTotal", "operator": "gt", "value": 30 }
+            },
+            {
+              "ruleName": "fee-partial",
+              "successEvent": "fee-partial",
+              "expression": { "field": "CTTotal", "operator": "gt", "value": 26 }
+            }
+          ],
+          "default": "fee-standard",
+          "inputSchema": {
+            "Employees": { "type": "array", "required": true }
+          }
+        }
+      ]
+    },
+    {
+      "name": "ewa-eligibility",
+      "order": 5,
+      "segments": [
+        {
+          "id": "ewa-eligibility",
+          "strategy": "expression",
+          "expressions": [
+            { "name": "MaxAllowed", "type": "number",  "expression": "min(EarnedWages * 0.5, StateCap)" },
+            { "name": "Eligible",   "type": "boolean", "expression": "DaysWorked >= 14 && RequestedAmount <= MaxAllowed" }
+          ],
+          "rules": [
+            {
+              "ruleName": "ineligible-tenure",
+              "successEvent": "ineligible-tenure",
+              "expression": { "field": "DaysWorked", "operator": "lt", "value": 14 }
+            },
+            {
+              "ruleName": "ineligible-amount",
+              "successEvent": "ineligible-amount",
+              "expression": { "field": "Eligible", "operator": "eq", "value": false }
+            }
+          ],
+          "default": "eligible",
+          "inputSchema": {
+            "EarnedWages":     { "type": "number", "required": true },
+            "StateCap":        { "type": "number", "required": true },
+            "DaysWorked":      { "type": "number", "required": true },
+            "RequestedAmount": { "type": "number", "required": true }
+          }
+        }
+      ]
+    },
+    {
+      "name": "ewa-risk",
+      "order": 6,
+      "segments": [
+        {
+          "id": "ewa-risk",
+          "strategy": "expression",
+          "expressions": [
+            { "name": "Z",            "type": "number", "expression": "w0 + sum(map(Signals, {.weight * .score * exp(-.age_sec / .tau_sec)}))" },
+            { "name": "P",            "type": "number", "expression": "1.0 / (1.0 + exp(-Z))" },
+            { "name": "M",            "type": "number", "expression": "Fee - AchCost" },
+            { "name": "RiskCeiling",  "type": "number", "expression": "(M * (1.0 - P) - AchCost * P) / (P + Lambda * P * (1.0 - P))" },
+            { "name": "NetPayCap",    "type": "number", "expression": "Alpha * NetPay" },
+            { "name": "Offered",      "type": "number", "expression": "max(0.0, min(RiskCeiling, NetPayCap))" },
+            { "name": "BindingLimit", "type": "string", "expression": "RiskCeiling < NetPayCap ? \"risk-ceiling\" : \"net-pay-cap\"" }
+          ],
+          "rules": [
+            {
+              "ruleName": "below-minimum",
+              "successEvent": "decline",
+              "expression": { "field": "Offered", "operator": "lt", "value": 1 }
+            },
+            {
+              "ruleName": "risk-limited",
+              "successEvent": "approve-risk-ceiling",
+              "expression": { "field": "BindingLimit", "operator": "eq", "value": "risk-ceiling" }
+            }
+          ],
+          "default": "approve-net-pay-cap",
+          "inputSchema": {
+            "Signals": { "type": "array",  "required": true },
+            "w0":      { "type": "number", "required": true },
+            "Fee":     { "type": "number", "required": true },
+            "AchCost": { "type": "number", "required": true },
+            "Lambda":  { "type": "number", "required": true },
+            "Alpha":   { "type": "number", "required": true },
+            "NetPay":  { "type": "number", "required": true }
+          }
+        }
+      ]
     }
   ]
 }
