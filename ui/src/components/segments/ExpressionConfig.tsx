@@ -1,4 +1,5 @@
 import type { ExpressionDef, FieldType } from '../../api/types';
+import ExpressionHelpPanel from './ExpressionHelpPanel';
 import styles from './ExpressionConfig.module.css';
 
 interface Props {
@@ -71,6 +72,7 @@ export default function ExpressionConfig({ value, onChange }: Props) {
       <button className="btn-ghost btn-sm" style={{ marginTop: 8 }} onClick={add}>
         + Add Expression
       </button>
+      <ExpressionHelpPanel />
     </div>
   );
 }
