@@ -11,12 +11,13 @@ interface Props {
 export default function LayerForm({ initial, onSubmit, onCancel, submitLabel = 'Create' }: Props) {
   const [name, setName] = useState(initial?.name ?? '');
   const [order, setOrder] = useState(initial?.order ?? 1);
+  const [defaultLanguage, setDefaultLanguage] = useState(initial?.defaultLanguage ?? 'en');
 
   return (
     <form
       onSubmit={(e) => {
         e.preventDefault();
-        onSubmit({ name, order });
+        onSubmit({ name, order, defaultLanguage: defaultLanguage.trim() || undefined });
       }}
     >
       <div className="form-group">
@@ -32,6 +33,17 @@ export default function LayerForm({ initial, onSubmit, onCancel, submitLabel = '
           min={0}
           required
         />
+      </div>
+      <div className="form-group">
+        <label>Default Language</label>
+        <input
+          value={defaultLanguage}
+          onChange={(e) => setDefaultLanguage(e.target.value)}
+          placeholder="en"
+        />
+        <p style={{ fontSize: 11, color: 'var(--text-muted)', margin: '4px 0 0' }}>
+          Fallback locale used when a requested message language is missing.
+        </p>
       </div>
       <div className="form-row" style={{ justifyContent: 'flex-end' }}>
         <button type="button" className="btn-ghost" onClick={onCancel}>

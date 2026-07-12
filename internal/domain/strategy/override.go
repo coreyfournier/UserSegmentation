@@ -15,7 +15,9 @@ func EvalOverrides(overrides []model.Rule, ctx *EvalContext) (Result, bool) {
 			if event == "" {
 				event = r.RuleName
 			}
-			return Result{Segment: event, Reason: "override:" + r.RuleName}, true
+			res := Result{Segment: event, Reason: "override:" + r.RuleName}
+			applyMessages(&res, r.Messages, ctx)
+			return res, true
 		}
 	}
 	return Result{}, false

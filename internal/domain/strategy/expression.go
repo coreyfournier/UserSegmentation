@@ -96,7 +96,13 @@ func (s *ExpressionStrategy) Evaluate(seg *model.Segment, ctx *EvalContext) (Res
 		computed[def.Name] = val
 	}
 
-	enrichedCtx := &EvalContext{SubjectKey: ctx.SubjectKey, Context: enriched}
+	enrichedCtx := &EvalContext{
+		SubjectKey:      ctx.SubjectKey,
+		Context:         enriched,
+		Languages:       ctx.Languages,
+		RenderAll:       ctx.RenderAll,
+		DefaultLanguage: ctx.DefaultLanguage,
+	}
 	res, ok := (&RuleStrategy{}).Evaluate(seg, enrichedCtx)
 	if ok && len(computed) > 0 {
 		res.Expressions = computed

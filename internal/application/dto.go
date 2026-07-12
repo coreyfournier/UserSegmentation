@@ -5,6 +5,10 @@ type EvaluateRequest struct {
 	SubjectKey string                 `json:"subject_key"`
 	Context    map[string]interface{} `json:"context"`
 	Layers     []string               `json:"layers,omitempty"`
+	// Languages requests localized messages for the winning rule/override/default
+	// of each layer. RenderAll returns every defined locale (testing aid).
+	Languages []string `json:"languages,omitempty"`
+	RenderAll bool     `json:"render_all,omitempty"`
 }
 
 // EvaluateResponse is the output DTO for evaluation.
@@ -22,6 +26,7 @@ type LayerResultDTO struct {
 	Strategy    string                 `json:"strategy"`
 	Reason      string                 `json:"reason"`
 	Expressions map[string]interface{} `json:"expressions,omitempty"`
+	Messages    map[string]string      `json:"messages,omitempty"`
 }
 
 // WarningDTO represents a validation warning.

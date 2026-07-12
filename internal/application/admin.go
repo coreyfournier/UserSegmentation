@@ -32,6 +32,7 @@ func (uc *AdminUseCase) ReplaceSnapshot(snap *model.Snapshot) error {
 	uc.mu.Lock()
 	defer uc.mu.Unlock()
 
+	snap.StripNestedMessages()
 	if err := validation.ValidateSnapshot(snap); err != nil {
 		return err
 	}
@@ -72,6 +73,7 @@ func (uc *AdminUseCase) UpdateLayer(name string, updated model.Layer) (*model.Sn
 	}
 	snap.Layers[idx].Name = updated.Name
 	snap.Layers[idx].Order = updated.Order
+	snap.Layers[idx].DefaultLanguage = updated.DefaultLanguage
 	return uc.commitSnapshot(snap)
 }
 
@@ -156,6 +158,7 @@ func (uc *AdminUseCase) cloneSnapshot() *model.Snapshot {
 
 func (uc *AdminUseCase) commitSnapshot(snap *model.Snapshot) (*model.Snapshot, error) {
 	snap.Version++
+	snap.StripNestedMessages()
 	if err := validation.ValidateSnapshot(snap); err != nil {
 		return nil, err
 	}
