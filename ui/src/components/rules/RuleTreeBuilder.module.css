@@ -2,6 +2,13 @@
   margin-top: 8px;
 }
 
+.orderHint {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin: 2px 0 8px;
+  font-style: italic;
+}
+
 .addButtons {
   display: flex;
   gap: 8px;

@@ -8,12 +8,15 @@ interface Props {
   rule: Rule;
   onChange: (r: Rule) => void;
   onDelete: () => void;
+  index?: number;
+  total?: number;
+  onMove?: (dir: -1 | 1) => void;
   depth?: number;
   schema?: InputSchema;
   layerNames?: string[];
 }
 
-export default function RuleNode({ rule, onChange, onDelete, depth = 0, schema, layerNames }: Props) {
+export default function RuleNode({ rule, onChange, onDelete, index, total, onMove, depth = 0, schema, layerNames }: Props) {
   const color = DEPTH_COLORS[depth % DEPTH_COLORS.length];
   const isLeaf = !!rule.expression;
 
@@ -26,6 +29,15 @@ export default function RuleNode({ rule, onChange, onDelete, depth = 0, schema, 
   const deleteChild = (idx: number) => {
     const rules = [...(rule.rules ?? [])];
     rules.splice(idx, 1);
+    onChange({ ...rule, rules });
+  };
+
+  // Children evaluate in array order (short-circuit), so position matters.
+  const moveChild = (idx: number, dir: -1 | 1) => {
+    const rules = [...(rule.rules ?? [])];
+    const target = idx + dir;
+    if (target < 0 || target >= rules.length) return;
+    [rules[idx], rules[target]] = [rules[target], rules[idx]];
     onChange({ ...rule, rules });
   };
 
@@ -53,10 +65,40 @@ export default function RuleNode({ rule, onChange, onDelete, depth = 0, schema, 
   };
 
   const enabled = rule.enabled !== false;
+  const childCount = (rule.rules ?? []).length;
+  const groupHint =
+    (rule.operator ?? 'And') === 'Or'
+      ? 'Any match wins — evaluated in order, stops at the first match.'
+      : 'All must pass — evaluated in order, stops at the first failure.';
 
   return (
     <div className={styles.node} style={{ borderLeftColor: color }}>
       <div className={styles.header}>
+        {index !== undefined && (
+          <span className={styles.position} title="Evaluation order">{index + 1}</span>
+        )}
+        {onMove && (
+          <span className={styles.moveButtons}>
+            <button
+              className="btn-ghost btn-sm"
+              onClick={() => onMove(-1)}
+              disabled={index === 0}
+              title="Move up"
+              aria-label="Move up"
+            >
+              ▲
+            </button>
+            <button
+              className="btn-ghost btn-sm"
+              onClick={() => onMove(1)}
+              disabled={total !== undefined && index !== undefined && index === total - 1}
+              title="Move down"
+              aria-label="Move down"
+            >
+              ▼
+            </button>
+          </span>
+        )}
         {isLeaf ? (
           <span className={styles.badge} style={{ background: color }}>LEAF</span>
         ) : (
@@ -117,12 +159,16 @@ export default function RuleNode({ rule, onChange, onDelete, depth = 0, schema, 
 
       {!isLeaf && (
         <div className={styles.children}>
+          {childCount > 1 && <p className={styles.orderHint}>{groupHint}</p>}
           {(rule.rules ?? []).map((child, i) => (
             <RuleNode
               key={i}
               rule={child}
               onChange={(r) => updateChild(i, r)}
               onDelete={() => deleteChild(i)}
+              index={i}
+              total={childCount}
+              onMove={(dir) => moveChild(i, dir)}
               depth={depth + 1}
               schema={schema}
               layerNames={layerNames}

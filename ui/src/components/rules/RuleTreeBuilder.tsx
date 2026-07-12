@@ -23,6 +23,15 @@ export default function RuleTreeBuilder({ rules, onChange, schema, layerNames, l
     onChange(next);
   };
 
+  // Rules are evaluated top to bottom, so array position determines priority.
+  const moveRule = (idx: number, dir: -1 | 1) => {
+    const target = idx + dir;
+    if (target < 0 || target >= rules.length) return;
+    const next = [...rules];
+    [next[idx], next[target]] = [next[target], next[idx]];
+    onChange(next);
+  };
+
   const addTopLevel = () => {
     onChange([
       ...rules,
@@ -40,12 +49,16 @@ export default function RuleTreeBuilder({ rules, onChange, schema, layerNames, l
   return (
     <div className={styles.builder}>
       <label>{label}</label>
+      <p className={styles.orderHint}>Evaluated top to bottom — the first matching rule wins.</p>
       {rules.map((rule, i) => (
         <RuleNode
           key={i}
           rule={rule}
           onChange={(r) => updateRule(i, r)}
           onDelete={() => deleteRule(i)}
+          index={i}
+          total={rules.length}
+          onMove={(dir) => moveRule(i, dir)}
           schema={schema}
           layerNames={layerNames}
         />

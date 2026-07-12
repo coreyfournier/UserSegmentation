@@ -22,6 +22,41 @@
   text-transform: uppercase;
 }
 
+.position {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 4px;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-muted);
+  background: var(--bg-card);
+  border: 1px solid var(--border, #d1d5db);
+  border-radius: 10px;
+}
+
+.moveButtons {
+  display: inline-flex;
+  flex-direction: column;
+  gap: 1px;
+  line-height: 1;
+}
+
+.moveButtons button {
+  padding: 0 6px;
+  font-size: 9px;
+  line-height: 1.3;
+}
+
+.orderHint {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin: 0 0 6px;
+  font-style: italic;
+}
+
 .opSelect {
   font-weight: 700;
   font-size: 13px;
