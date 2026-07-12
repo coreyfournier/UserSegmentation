@@ -16,13 +16,30 @@ func (s *RuleStrategy) Evaluate(seg *model.Segment, ctx *EvalContext) (Result, b
 			if event == "" {
 				event = r.RuleName
 			}
-			return Result{Segment: event, Reason: "rule:" + r.RuleName}, true
+			res := Result{Segment: event, Reason: "rule:" + r.RuleName}
+			applyMessages(&res, r.Messages, ctx)
+			return res, true
 		}
 	}
 	if seg.Default != "" {
-		return Result{Segment: seg.Default, Reason: "rule:default"}, true
+		res := Result{Segment: seg.Default, Reason: "rule:default"}
+		applyMessages(&res, seg.DefaultMessages, ctx)
+		return res, true
 	}
 	return Result{}, false
+}
+
+// applyMessages renders the raw localized templates against the eval context and
+// attaches the rendered messages and any render errors to res.
+func applyMessages(res *Result, raw map[string]string, ctx *EvalContext) {
+	if len(raw) == 0 {
+		return
+	}
+	rr := RenderMessages(raw, ctx.Context, ctx.Languages, ctx.RenderAll, ctx.DefaultLanguage)
+	if len(rr.Rendered) > 0 {
+		res.Messages = rr.Rendered
+	}
+	res.RenderErrors = append(res.RenderErrors, rr.Errors...)
 }
 
 // evaluateRule recursively evaluates a rule node.

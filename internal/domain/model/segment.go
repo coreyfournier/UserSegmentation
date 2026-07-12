@@ -28,6 +28,9 @@ type Segment struct {
 	Rules       []Rule            `json:"rules,omitempty"`
 	Overrides   []Rule            `json:"overrides,omitempty"`
 	Default     string            `json:"default,omitempty"`
-	Promotion   *Promotion        `json:"promotion,omitempty"`
-	InputSchema InputSchema       `json:"inputSchema,omitempty"`
+	// DefaultMessages are optional localized templates keyed by language code,
+	// rendered when the segment falls back to Default.
+	DefaultMessages map[string]string `json:"defaultMessages,omitempty"`
+	Promotion       *Promotion        `json:"promotion,omitempty"`
+	InputSchema     InputSchema       `json:"inputSchema,omitempty"`
 }

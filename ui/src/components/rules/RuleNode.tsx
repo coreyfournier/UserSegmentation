@@ -1,5 +1,6 @@
 import type { Rule, InputSchema, CompositeOperator } from '../../api/types';
 import ExpressionEditor from './ExpressionEditor';
+import MessagesEditor from './MessagesEditor';
 import styles from './RuleNode.module.css';
 
 const DEPTH_COLORS = ['#3b82f6', '#22c55e', '#f97316', '#8b5cf6', '#ec4899'];
@@ -155,6 +156,17 @@ export default function RuleNode({ rule, onChange, onDelete, index, total, onMov
             layerNames={layerNames}
           />
         </div>
+      )}
+
+      {/* Messages are only rendered for top-level rules (the one whose successEvent
+          wins). Nested child rules are boolean conditions — their messages are never
+          read — so the editor is hidden there. */}
+      {depth === 0 && (
+        <MessagesEditor
+          value={rule.messages}
+          onChange={(m) => onChange({ ...rule, messages: m })}
+          hint="Rendered when this rule wins. Use ${field} for variables and expressions."
+        />
       )}
 
       {!isLeaf && (

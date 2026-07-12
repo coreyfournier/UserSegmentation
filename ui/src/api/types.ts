@@ -24,6 +24,8 @@ export interface Rule {
   errorMessage?: string;
   expression?: Expression;
   rules?: Rule[];
+  /** Optional localized message templates keyed by language code (e.g. "en"). */
+  messages?: Record<string, string>;
 }
 
 export interface Promotion {
@@ -61,6 +63,8 @@ export interface Segment {
   rules?: Rule[];
   overrides?: Rule[];
   default?: string;
+  /** Localized messages rendered when the segment falls back to `default`. */
+  defaultMessages?: Record<string, string>;
   promotion?: Promotion;
   inputSchema?: InputSchema;
 }
@@ -69,6 +73,8 @@ export interface Layer {
   name: string;
   order: number;
   segments: Segment[];
+  /** Fallback locale for message rendering; empty means "en". */
+  defaultLanguage?: string;
 }
 
 export interface Snapshot {
@@ -81,6 +87,7 @@ export interface LayerResult {
   strategy: string;
   reason: string;
   expressions?: Record<string, unknown>;
+  messages?: Record<string, string>;
 }
 
 export interface Warning {
@@ -93,6 +100,8 @@ export interface EvaluateRequest {
   subject_key: string;
   context: Record<string, unknown>;
   layers?: string[];
+  languages?: string[];
+  render_all?: boolean;
 }
 
 export interface EvaluateResponse {

@@ -42,6 +42,16 @@ export default function ResultDisplay({ result }: Props) {
               ))}
             </div>
           )}
+          {lr.messages && Object.keys(lr.messages).length > 0 && (
+            <div className={styles.messages}>
+              {Object.entries(lr.messages).map(([lang, text]) => (
+                <div key={lang} className={styles.message}>
+                  <span className={styles.lang}>{lang}</span>
+                  <span>{text}</span>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       ))}
 

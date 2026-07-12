@@ -14,6 +14,8 @@ export default function TestingZone() {
   const [subjectKey, setSubjectKey] = useState('');
   const [selectedLayers, setSelectedLayers] = useState<string[]>([]);
   const [context, setContext] = useState<Record<string, unknown>>({});
+  const [languages, setLanguages] = useState('');
+  const [renderAll, setRenderAll] = useState(false);
   const [result, setResult] = useState<EvaluateResponse | null>(null);
 
   const allSchemas: InputSchema[] = [];
@@ -32,11 +34,17 @@ export default function TestingZone() {
   };
 
   const handleEvaluate = () => {
+    const langs = languages
+      .split(',')
+      .map((l) => l.trim())
+      .filter(Boolean);
     evaluate.mutate(
       {
         subject_key: subjectKey,
         context,
         layers: selectedLayers.length ? selectedLayers : undefined,
+        languages: langs.length ? langs : undefined,
+        render_all: renderAll || undefined,
       },
       { onSuccess: (data) => setResult(data) }
     );
@@ -71,6 +79,25 @@ export default function TestingZone() {
                 </label>
               ))}
             </div>
+          </div>
+
+          <div className="form-group">
+            <label>Languages (comma-separated, blank for none)</label>
+            <input
+              value={languages}
+              onChange={(e) => setLanguages(e.target.value)}
+              placeholder="en, es"
+              disabled={renderAll}
+            />
+            <label className={styles.checkbox} style={{ marginTop: 6 }}>
+              <input
+                type="checkbox"
+                checked={renderAll}
+                onChange={(e) => setRenderAll(e.target.checked)}
+                style={{ width: 'auto' }}
+              />
+              Render all languages (testing)
+            </label>
           </div>
 
           <div className="form-group">

@@ -9,6 +9,7 @@ import PercentageConfig from './PercentageConfig';
 import ExpressionConfig from './ExpressionConfig';
 import RuleConfig from './RuleConfig';
 import RuleTreeBuilder from '../rules/RuleTreeBuilder';
+import MessagesEditor from '../rules/MessagesEditor';
 import PromotionEditor from '../promotion/PromotionEditor';
 import InputSchemaEditor from '../schema/InputSchemaEditor';
 import ErrorBanner from '../common/ErrorBanner';
@@ -127,30 +128,36 @@ export default function SegmentEditor() {
             onOverridesChange={(r) => update({ overrides: r })}
             defaultValue={seg.default ?? ''}
             onDefaultChange={(v) => update({ default: v })}
-            schema={seg.inputSchema}
+            defaultMessages={seg.defaultMessages}
+            onDefaultMessagesChange={(m) => update({ defaultMessages: m })}
+            ruleSchema={seg.inputSchema}
+            overrideSchema={seg.inputSchema}
             layerNames={layerNames}
           />
         )}
         {seg.strategy === 'expression' && (
-          <>
-            <div className="form-group" style={{ marginBottom: 16 }}>
-              <label>Expressions</label>
-              <ExpressionConfig
-                value={seg.expressions ?? []}
-                onChange={(e) => update({ expressions: e })}
-              />
-            </div>
-            <RuleConfig
-              rules={seg.rules ?? []}
-              overrides={seg.overrides ?? []}
-              onRulesChange={(r) => update({ rules: r })}
-              onOverridesChange={(r) => update({ overrides: r })}
-              defaultValue={seg.default ?? ''}
-              onDefaultChange={(v) => update({ default: v })}
-              schema={effectiveSchema(seg)}
-              layerNames={layerNames}
-            />
-          </>
+          <RuleConfig
+            rules={seg.rules ?? []}
+            overrides={seg.overrides ?? []}
+            onRulesChange={(r) => update({ rules: r })}
+            onOverridesChange={(r) => update({ overrides: r })}
+            defaultValue={seg.default ?? ''}
+            onDefaultChange={(v) => update({ default: v })}
+            defaultMessages={seg.defaultMessages}
+            onDefaultMessagesChange={(m) => update({ defaultMessages: m })}
+            ruleSchema={effectiveSchema(seg)}
+            overrideSchema={seg.inputSchema}
+            layerNames={layerNames}
+            expressionsSlot={
+              <div className="form-group">
+                <label>Expressions</label>
+                <ExpressionConfig
+                  value={seg.expressions ?? []}
+                  onChange={(e) => update({ expressions: e })}
+                />
+              </div>
+            }
+          />
         )}
       </section>
 
@@ -158,13 +165,6 @@ export default function SegmentEditor() {
       {seg.strategy !== 'rule' && seg.strategy !== 'expression' && (
         <section className={`card ${styles.section}`}>
           <h3>Overrides</h3>
-          <div style={{ marginBottom: 8 }}>
-            <label>Default Value</label>
-            <input
-              value={seg.default ?? ''}
-              onChange={(e) => update({ default: e.target.value || undefined })}
-            />
-          </div>
           <RuleTreeBuilder
             rules={seg.overrides ?? []}
             onChange={(r) => update({ overrides: r })}
@@ -172,6 +172,20 @@ export default function SegmentEditor() {
             layerNames={layerNames}
             label="Override Rules"
           />
+          <p style={{ fontSize: 11, color: 'var(--text-muted)', fontStyle: 'italic', margin: '4px 0 0' }}>
+            Evaluated before the strategy result. Only raw input fields are available.
+          </p>
+          <div style={{ marginTop: 16 }}>
+            <label>Default Value</label>
+            <input
+              value={seg.default ?? ''}
+              onChange={(e) => update({ default: e.target.value || undefined })}
+            />
+            <MessagesEditor
+              value={seg.defaultMessages}
+              onChange={(m) => update({ defaultMessages: m })}
+            />
+          </div>
         </section>
       )}
 

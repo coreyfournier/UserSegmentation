@@ -1,6 +1,7 @@
 package engine
 
 import (
+	"fmt"
 	"sort"
 	"time"
 
@@ -32,7 +33,9 @@ type EvalResult struct {
 }
 
 // Evaluate evaluates a subject across the specified layers (or all if filterLayers is nil).
-func (e *Evaluator) Evaluate(snap *model.Snapshot, subjectKey string, ctx map[string]interface{}, filterLayers []string, now time.Time) *EvalResult {
+// languages and renderAll control localized message rendering on the winning
+// rule/override/default of each layer.
+func (e *Evaluator) Evaluate(snap *model.Snapshot, subjectKey string, ctx map[string]interface{}, filterLayers []string, languages []string, renderAll bool, now time.Time) *EvalResult {
 	result := &EvalResult{
 		Layers: make(map[string]*model.Assignment, len(snap.Layers)),
 	}
@@ -60,7 +63,7 @@ func (e *Evaluator) Evaluate(snap *model.Snapshot, subjectKey string, ctx map[st
 	}
 
 	for _, layer := range layers {
-		lr := e.evaluateLayer(&layer, subjectKey, evalCtx, now)
+		lr := e.evaluateLayer(&layer, subjectKey, evalCtx, languages, renderAll, now)
 
 		// Inject cross-layer result regardless of filter
 		if lr.Assignment != nil {
@@ -83,8 +86,14 @@ func (e *Evaluator) Evaluate(snap *model.Snapshot, subjectKey string, ctx map[st
 	return result
 }
 
-func (e *Evaluator) evaluateLayer(layer *model.Layer, subjectKey string, ctx map[string]interface{}, now time.Time) *LayerResult {
+func (e *Evaluator) evaluateLayer(layer *model.Layer, subjectKey string, ctx map[string]interface{}, languages []string, renderAll bool, now time.Time) *LayerResult {
 	lr := &LayerResult{}
+
+	// Layer default language for message fallback; empty means English.
+	defaultLang := layer.DefaultLanguage
+	if defaultLang == "" {
+		defaultLang = "en"
+	}
 
 	for i := range layer.Segments {
 		seg := &layer.Segments[i]
@@ -98,8 +107,11 @@ func (e *Evaluator) evaluateLayer(layer *model.Layer, subjectKey string, ctx map
 		lr.Warnings = append(lr.Warnings, validation.CheckRequiredFields(seg, ctx)...)
 
 		evalCtx := &strategy.EvalContext{
-			SubjectKey: subjectKey,
-			Context:    ctx,
+			SubjectKey:      subjectKey,
+			Context:         ctx,
+			Languages:       languages,
+			RenderAll:       renderAll,
+			DefaultLanguage: defaultLang,
 		}
 
 		// Check overrides first
@@ -109,7 +121,9 @@ func (e *Evaluator) evaluateLayer(layer *model.Layer, subjectKey string, ctx map
 					Segment:  res.Segment,
 					Strategy: "override",
 					Reason:   res.Reason,
+					Messages: res.Messages,
 				}
+				lr.Warnings = append(lr.Warnings, renderWarnings(seg.ID, res.RenderErrors)...)
 				return lr
 			}
 		}
@@ -125,10 +139,28 @@ func (e *Evaluator) evaluateLayer(layer *model.Layer, subjectKey string, ctx map
 				Strategy:    seg.Strategy,
 				Reason:      res.Reason,
 				Expressions: res.Expressions,
+				Messages:    res.Messages,
 			}
+			lr.Warnings = append(lr.Warnings, renderWarnings(seg.ID, res.RenderErrors)...)
 			return lr
 		}
 	}
 
 	return lr
+}
+
+// renderWarnings converts message render errors into layer warnings.
+func renderWarnings(segmentID string, errs []strategy.RenderError) []model.Warning {
+	if len(errs) == 0 {
+		return nil
+	}
+	warnings := make([]model.Warning, 0, len(errs))
+	for _, re := range errs {
+		warnings = append(warnings, model.Warning{
+			Segment: segmentID,
+			Field:   re.Language,
+			Message: fmt.Sprintf("message render error in %q: %s", re.Token, re.Err),
+		})
+	}
+	return warnings
 }

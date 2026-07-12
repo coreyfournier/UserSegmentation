@@ -33,7 +33,7 @@ func (uc *EvaluateUseCase) Execute(req EvaluateRequest) (*EvaluateResponse, erro
 		ctx = make(map[string]interface{})
 	}
 
-	result := uc.evaluator.Evaluate(snap, req.SubjectKey, ctx, req.Layers, now)
+	result := uc.evaluator.Evaluate(snap, req.SubjectKey, ctx, req.Layers, req.Languages, req.RenderAll, now)
 
 	resp := &EvaluateResponse{
 		SubjectKey:  req.SubjectKey,
@@ -48,6 +48,7 @@ func (uc *EvaluateUseCase) Execute(req EvaluateRequest) (*EvaluateResponse, erro
 			Strategy:    a.Strategy,
 			Reason:      a.Reason,
 			Expressions: a.Expressions,
+			Messages:    a.Messages,
 		}
 	}
 
