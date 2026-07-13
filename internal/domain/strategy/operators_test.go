@@ -9,11 +9,11 @@ import (
 func TestEvalExpression_Eq(t *testing.T) {
 	ctx := map[string]interface{}{"country": "US"}
 	expr := &model.Expression{Field: "country", Operator: model.OpEq, Value: "US"}
-	if !EvalExpression(expr, ctx) {
+	if !EvalExpression(expr, ctx, nil) {
 		t.Error("expected eq to match")
 	}
 	expr.Value = "CA"
-	if EvalExpression(expr, ctx) {
+	if EvalExpression(expr, ctx, nil) {
 		t.Error("expected eq not to match")
 	}
 }
@@ -21,7 +21,7 @@ func TestEvalExpression_Eq(t *testing.T) {
 func TestEvalExpression_Neq(t *testing.T) {
 	ctx := map[string]interface{}{"country": "US"}
 	expr := &model.Expression{Field: "country", Operator: model.OpNeq, Value: "CA"}
-	if !EvalExpression(expr, ctx) {
+	if !EvalExpression(expr, ctx, nil) {
 		t.Error("expected neq to match")
 	}
 }
@@ -44,7 +44,7 @@ func TestEvalExpression_Numeric(t *testing.T) {
 
 	for _, tt := range tests {
 		expr := &model.Expression{Field: "age", Operator: tt.op, Value: tt.val}
-		got := EvalExpression(expr, ctx)
+		got := EvalExpression(expr, ctx, nil)
 		if got != tt.want {
 			t.Errorf("op=%s val=%v: got %v, want %v", tt.op, tt.val, got, tt.want)
 		}
@@ -54,11 +54,11 @@ func TestEvalExpression_Numeric(t *testing.T) {
 func TestEvalExpression_In(t *testing.T) {
 	ctx := map[string]interface{}{"country": "US"}
 	expr := &model.Expression{Field: "country", Operator: model.OpIn, Value: []interface{}{"US", "CA"}}
-	if !EvalExpression(expr, ctx) {
+	if !EvalExpression(expr, ctx, nil) {
 		t.Error("expected in to match")
 	}
 	expr.Value = []interface{}{"UK", "DE"}
-	if EvalExpression(expr, ctx) {
+	if EvalExpression(expr, ctx, nil) {
 		t.Error("expected in not to match")
 	}
 }
@@ -66,7 +66,7 @@ func TestEvalExpression_In(t *testing.T) {
 func TestEvalExpression_Contains_String(t *testing.T) {
 	ctx := map[string]interface{}{"email": "user@example.com"}
 	expr := &model.Expression{Field: "email", Operator: model.OpContains, Value: "example"}
-	if !EvalExpression(expr, ctx) {
+	if !EvalExpression(expr, ctx, nil) {
 		t.Error("expected contains to match substring")
 	}
 }
@@ -74,11 +74,11 @@ func TestEvalExpression_Contains_String(t *testing.T) {
 func TestEvalExpression_Contains_Array(t *testing.T) {
 	ctx := map[string]interface{}{"tags": []interface{}{"beta", "vip"}}
 	expr := &model.Expression{Field: "tags", Operator: model.OpContains, Value: "beta"}
-	if !EvalExpression(expr, ctx) {
+	if !EvalExpression(expr, ctx, nil) {
 		t.Error("expected contains to match array element")
 	}
 	expr.Value = "alpha"
-	if EvalExpression(expr, ctx) {
+	if EvalExpression(expr, ctx, nil) {
 		t.Error("expected contains not to match missing element")
 	}
 }
@@ -86,7 +86,7 @@ func TestEvalExpression_Contains_Array(t *testing.T) {
 func TestEvalExpression_MissingField(t *testing.T) {
 	ctx := map[string]interface{}{}
 	expr := &model.Expression{Field: "missing", Operator: model.OpEq, Value: "x"}
-	if EvalExpression(expr, ctx) {
+	if EvalExpression(expr, ctx, nil) {
 		t.Error("expected missing field to not match")
 	}
 }

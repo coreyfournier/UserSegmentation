@@ -14,7 +14,8 @@ type Layer struct {
 
 // Snapshot is an immutable, pre-validated configuration loaded atomically.
 type Snapshot struct {
-	Version      int        `json:"version"`
-	LastModified *time.Time `json:"last_modified,omitempty"`
-	Layers       []Layer    `json:"layers"`
+	Version      int           `json:"version"`
+	LastModified *time.Time    `json:"last_modified,omitempty"`
+	Layers       []Layer       `json:"layers"`
+	Lookups      []LookupTable `json:"lookups,omitempty"`
 }

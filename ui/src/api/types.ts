@@ -1,5 +1,5 @@
 export type FieldType = 'string' | 'number' | 'boolean' | 'array';
-export type Operator = 'eq' | 'neq' | 'gt' | 'gte' | 'lt' | 'lte' | 'in' | 'contains';
+export type Operator = 'eq' | 'neq' | 'gt' | 'gte' | 'lt' | 'lte' | 'in' | 'contains' | 'in_lookup' | 'not_in_lookup';
 export type CompositeOperator = 'And' | 'Or';
 export type StrategyType = 'static' | 'rule' | 'percentage' | 'expression';
 
@@ -80,6 +80,7 @@ export interface Layer {
 export interface Snapshot {
   version: number;
   layers: Layer[];
+  lookups?: LookupTable[];
 }
 
 export interface LayerResult {
@@ -121,4 +122,21 @@ export const OPERATOR_TYPES: Record<Operator, FieldType[]> = {
   lte: ['number'],
   in: ['string', 'number'],
   contains: ['array', 'string'],
+  in_lookup: ['string', 'number'],
+  not_in_lookup: ['string', 'number'],
 };
+
+/** Operators whose value references a lookup table id. */
+export const LOOKUP_OPERATORS: Operator[] = ['in_lookup', 'not_in_lookup'];
+
+export interface LookupEntry {
+  key: unknown;
+  value?: string;
+}
+
+export interface LookupTable {
+  id: string;
+  name: string;
+  keyType: FieldType;
+  entries: LookupEntry[];
+}

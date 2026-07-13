@@ -3,6 +3,7 @@ import styles from './Sidebar.module.css';
 
 const links = [
   { to: '/layers', label: 'Layers' },
+  { to: '/lookups', label: 'Lookups' },
   { to: '/testing', label: 'Testing' },
   { to: '/config', label: 'Config' },
 ];

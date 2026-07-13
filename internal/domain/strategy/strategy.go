@@ -10,6 +10,8 @@ type EvalContext struct {
 	Languages       []string
 	RenderAll       bool
 	DefaultLanguage string
+	// Lookups maps lookup table id to table, for in_lookup / not_in_lookup operators.
+	Lookups map[string]model.LookupTable
 }
 
 // Result is the outcome of a strategy evaluation.

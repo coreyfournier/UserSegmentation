@@ -11,7 +11,7 @@ func (s *RuleStrategy) Evaluate(seg *model.Segment, ctx *EvalContext) (Result, b
 		if !r.IsEnabled() {
 			continue
 		}
-		if evaluateRule(r, ctx.Context) {
+		if evaluateRule(r, ctx.Context, ctx.Lookups) {
 			event := r.SuccessEvent
 			if event == "" {
 				event = r.RuleName
@@ -43,12 +43,12 @@ func applyMessages(res *Result, raw map[string]string, ctx *EvalContext) {
 }
 
 // evaluateRule recursively evaluates a rule node.
-func evaluateRule(r *model.Rule, ctx map[string]interface{}) bool {
+func evaluateRule(r *model.Rule, ctx map[string]interface{}, lookups map[string]model.LookupTable) bool {
 	if !r.IsEnabled() {
 		return false
 	}
 	if r.IsLeaf() {
-		return EvalExpression(r.Expression, ctx)
+		return EvalExpression(r.Expression, ctx, lookups)
 	}
 	// Composite rule
 	switch r.Operator {
@@ -58,7 +58,7 @@ func evaluateRule(r *model.Rule, ctx map[string]interface{}) bool {
 			if !child.IsEnabled() {
 				continue
 			}
-			if !evaluateRule(child, ctx) {
+			if !evaluateRule(child, ctx, lookups) {
 				return false // short-circuit
 			}
 		}
@@ -69,7 +69,7 @@ func evaluateRule(r *model.Rule, ctx map[string]interface{}) bool {
 			if !child.IsEnabled() {
 				continue
 			}
-			if evaluateRule(child, ctx) {
+			if evaluateRule(child, ctx, lookups) {
 				return true // short-circuit
 			}
 		}

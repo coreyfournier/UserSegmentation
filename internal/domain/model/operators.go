@@ -9,8 +9,10 @@ const (
 	OpGte      Operator = "gte"
 	OpLt       Operator = "lt"
 	OpLte      Operator = "lte"
-	OpIn       Operator = "in"
-	OpContains Operator = "contains"
+	OpIn         Operator = "in"
+	OpContains   Operator = "contains"
+	OpInLookup   Operator = "in_lookup"
+	OpNotInLookup Operator = "not_in_lookup"
 )
 
 type FieldType string
@@ -30,8 +32,10 @@ var OperatorTypes = map[Operator][]FieldType{
 	OpGte:      {FieldTypeNumber},
 	OpLt:       {FieldTypeNumber},
 	OpLte:      {FieldTypeNumber},
-	OpIn:       {FieldTypeString, FieldTypeNumber},
-	OpContains: {FieldTypeArray, FieldTypeString},
+	OpIn:          {FieldTypeString, FieldTypeNumber},
+	OpContains:    {FieldTypeArray, FieldTypeString},
+	OpInLookup:    {FieldTypeString, FieldTypeNumber},
+	OpNotInLookup: {FieldTypeString, FieldTypeNumber},
 }
 
 func ValidOperator(op Operator) bool {

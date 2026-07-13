@@ -34,6 +34,10 @@ func NewServer(
 	mux.HandleFunc("POST /v1/admin/layers/{name}/segments", admin.CreateSegment)
 	mux.HandleFunc("PUT /v1/admin/layers/{name}/segments/{id}", admin.UpdateSegment)
 	mux.HandleFunc("DELETE /v1/admin/layers/{name}/segments/{id}", admin.DeleteSegment)
+	mux.HandleFunc("GET /v1/admin/lookups", admin.ListLookups)
+	mux.HandleFunc("POST /v1/admin/lookups", admin.CreateLookup)
+	mux.HandleFunc("PUT /v1/admin/lookups/{id}", admin.UpdateLookup)
+	mux.HandleFunc("DELETE /v1/admin/lookups/{id}", admin.DeleteLookup)
 	mux.HandleFunc("POST /v1/admin/import", admin.ImportSnapshot)
 	mux.HandleFunc("GET /v1/admin/export", admin.ExportSnapshot)
 
