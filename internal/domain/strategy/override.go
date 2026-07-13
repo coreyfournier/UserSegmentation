@@ -10,7 +10,7 @@ func EvalOverrides(overrides []model.Rule, ctx *EvalContext) (Result, bool) {
 		if !r.IsEnabled() {
 			continue
 		}
-		if evaluateRule(r, ctx.Context) {
+		if evaluateRule(r, ctx.Context, ctx.Lookups) {
 			event := r.SuccessEvent
 			if event == "" {
 				event = r.RuleName

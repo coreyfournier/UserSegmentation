@@ -62,8 +62,17 @@ func (e *Evaluator) Evaluate(snap *model.Snapshot, subjectKey string, ctx map[st
 		evalCtx[k] = v
 	}
 
+	// Index lookup tables by id once for the whole evaluation.
+	var lookups map[string]model.LookupTable
+	if len(snap.Lookups) > 0 {
+		lookups = make(map[string]model.LookupTable, len(snap.Lookups))
+		for _, t := range snap.Lookups {
+			lookups[t.ID] = t
+		}
+	}
+
 	for _, layer := range layers {
-		lr := e.evaluateLayer(&layer, subjectKey, evalCtx, languages, renderAll, now)
+		lr := e.evaluateLayer(&layer, subjectKey, evalCtx, languages, renderAll, lookups, now)
 
 		// Inject cross-layer result regardless of filter
 		if lr.Assignment != nil {
@@ -86,7 +95,7 @@ func (e *Evaluator) Evaluate(snap *model.Snapshot, subjectKey string, ctx map[st
 	return result
 }
 
-func (e *Evaluator) evaluateLayer(layer *model.Layer, subjectKey string, ctx map[string]interface{}, languages []string, renderAll bool, now time.Time) *LayerResult {
+func (e *Evaluator) evaluateLayer(layer *model.Layer, subjectKey string, ctx map[string]interface{}, languages []string, renderAll bool, lookups map[string]model.LookupTable, now time.Time) *LayerResult {
 	lr := &LayerResult{}
 
 	// Layer default language for message fallback; empty means English.
@@ -112,6 +121,7 @@ func (e *Evaluator) evaluateLayer(layer *model.Layer, subjectKey string, ctx map
 			Languages:       languages,
 			RenderAll:       renderAll,
 			DefaultLanguage: defaultLang,
+			Lookups:         lookups,
 		}
 
 		// Check overrides first

@@ -7,16 +7,17 @@ import (
 	"github.com/segmentation-service/segmentation/internal/domain/model"
 )
 
-// EvalExpression evaluates a leaf expression against the context.
-func EvalExpression(expr *model.Expression, ctx map[string]interface{}) bool {
+// EvalExpression evaluates a leaf expression against the context. lookups
+// provides the tables referenced by in_lookup / not_in_lookup operators.
+func EvalExpression(expr *model.Expression, ctx map[string]interface{}, lookups map[string]model.LookupTable) bool {
 	val, ok := ctx[expr.Field]
 	if !ok {
 		return false
 	}
-	return evalOp(expr.Operator, val, expr.Value)
+	return evalOp(expr.Operator, val, expr.Value, lookups)
 }
 
-func evalOp(op model.Operator, actual, expected interface{}) bool {
+func evalOp(op model.Operator, actual, expected interface{}, lookups map[string]model.LookupTable) bool {
 	switch op {
 	case model.OpEq:
 		return compareEq(actual, expected)
@@ -38,9 +39,27 @@ func evalOp(op model.Operator, actual, expected interface{}) bool {
 		return evalIn(actual, expected)
 	case model.OpContains:
 		return evalContains(actual, expected)
+	case model.OpInLookup:
+		return evalInLookup(actual, expected, lookups)
+	case model.OpNotInLookup:
+		return !evalInLookup(actual, expected, lookups)
 	default:
 		return false
 	}
+}
+
+// evalInLookup treats the referenced lookup table's keys as an array and checks
+// membership. expected is the table id. A missing/dangling table yields false.
+func evalInLookup(actual, expected interface{}, lookups map[string]model.LookupTable) bool {
+	id, ok := expected.(string)
+	if !ok {
+		return false
+	}
+	table, ok := lookups[id]
+	if !ok {
+		return false
+	}
+	return evalIn(actual, table.Keys())
 }
 
 func compareEq(a, b interface{}) bool {

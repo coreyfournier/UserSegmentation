@@ -1,0 +1,33 @@
+.hint {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin: 4px 0 0;
+}
+
+/* Two input columns + a remove button. min-width:0 lets the inputs shrink
+   inside the grid instead of the key column hogging the row. */
+.entryHead,
+.entryRow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.6fr) 28px;
+  gap: 8px;
+  align-items: center;
+}
+
+.entryHead {
+  margin-bottom: 4px;
+}
+
+.entryRow {
+  margin-bottom: 6px;
+}
+
+.colLabel {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.entryRow input {
+  width: 100%;
+  min-width: 0;
+}

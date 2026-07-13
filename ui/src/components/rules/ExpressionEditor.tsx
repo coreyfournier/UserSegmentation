@@ -1,4 +1,6 @@
 import type { Expression, InputSchema } from '../../api/types';
+import { LOOKUP_OPERATORS } from '../../api/types';
+import { useLookups } from '../../api/lookups';
 import { parseNumericInput } from '../../utils/parse';
 import OperatorSelect from './OperatorSelect';
 import styles from './ExpressionEditor.module.css';
@@ -11,12 +13,16 @@ interface Props {
 }
 
 export default function ExpressionEditor({ value, onChange, schema, layerNames }: Props) {
+  const { data: lookups } = useLookups();
   const suggestions: string[] = [
     ...Object.keys(schema ?? {}),
     ...(layerNames ?? []).map((n) => `layer:${n}`),
   ];
 
   const fieldType = schema?.[value.field]?.type;
+  const isLookupOp = LOOKUP_OPERATORS.includes(value.operator);
+  // Offer only tables whose key type matches the field's type (all if type unknown).
+  const lookupOptions = (lookups ?? []).filter((t) => !fieldType || t.keyType === fieldType);
 
   const formatValue = (v: unknown): string => {
     if (Array.isArray(v)) return v.join(', ');
@@ -51,13 +57,25 @@ export default function ExpressionEditor({ value, onChange, schema, layerNames }
         fieldType={fieldType}
       />
       <div className={styles.value}>
-        <input
-          value={formatValue(value.value)}
-          onChange={(e) =>
-            onChange({ ...value, value: parseValue(e.target.value, value.operator as string) })
-          }
-          placeholder={value.operator === 'in' ? 'val1, val2, ...' : 'value'}
-        />
+        {isLookupOp ? (
+          <select
+            value={typeof value.value === 'string' ? value.value : ''}
+            onChange={(e) => onChange({ ...value, value: e.target.value })}
+          >
+            <option value="">— select lookup —</option>
+            {lookupOptions.map((t) => (
+              <option key={t.id} value={t.id}>{t.name} ({t.keyType})</option>
+            ))}
+          </select>
+        ) : (
+          <input
+            value={formatValue(value.value)}
+            onChange={(e) =>
+              onChange({ ...value, value: parseValue(e.target.value, value.operator as string) })
+            }
+            placeholder={value.operator === 'in' ? 'val1, val2, ...' : 'value'}
+          />
+        )}
       </div>
     </div>
   );
