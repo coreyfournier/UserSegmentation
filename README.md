@@ -42,6 +42,8 @@ Export and import full configuration snapshots as JSON for backup or environment
 - **Four strategies** — Static (map lookup), Rule (composite tree), Percentage (FNV-1a hash bucketing), Expression (computed fields via expr-lang)
 - **Expression computed fields** — Derive new values from context before rule evaluation (e.g. `abs(Rating) * -1 + Bonus`); results included in API response
 - **Overrides** — Rule-based overrides evaluated before the primary strategy
+- **Lookup tables** — Centralized, named key/value tables referenced by rules via `in_lookup` / `not_in_lookup`; replaces inline value lists so shared sets are maintained in one place
+- **Localized messages** — Optional message templates on rules, overrides, and defaults with `${…}` variable/expression interpolation, resolved per requested language with a layer-level fallback
 - **Promotions** — Time-bound segments with `effective_from`/`effective_until`
 - **Input schema validation** — Config-time validation of rule fields against declared schemas
 - **Hot-reload** — File-polling watcher (500ms) with validation before swap
@@ -139,6 +141,8 @@ Evaluate a single user across all (or selected) layers.
 }
 ```
 
+Optional request fields `languages` (array of locale codes) and `render_all` (bool) control [localized message](#localized-messages) rendering; when set, each layer result also includes a `messages` map.
+
 ### POST /v1/evaluate/batch
 
 Evaluate multiple users in parallel.
@@ -191,6 +195,111 @@ Rules follow a composite tree pattern:
   ]
 }
 ```
+
+### Rule Ordering
+
+Evaluation is **order-sensitive — first match wins** at every level:
+
+- **Segments** in a layer are tried top to bottom; the first one that produces an assignment wins.
+- **Rules** and **overrides** within a segment are evaluated top to bottom; the first matching rule's `successEvent` becomes the result (overrides are checked before the primary strategy).
+- Inside a composite rule, `And`/`Or` children short-circuit in array order.
+
+Because order determines precedence, the segment editor UI lets you **reorder rules and overrides** with up/down controls at every nesting level, and shows a position badge plus an evaluation-order caption so the precedence is explicit.
+
+### Localized Messages
+
+Attach optional, localized messages to any top-level **rule**, **override**, or the segment **default** — for returning a user-facing explanation of *why* a segment was assigned (fees, eligibility, decline reasons) in the caller's language.
+
+**Why:** keep the human-readable, translatable messaging next to the rule that produces it, and render it with live values from the evaluation context — no second lookup or downstream string-building.
+
+**How:** a `messages` map keys each locale to a template. Templates support `${ … }` interpolation, where the contents are any [expr-lang](https://expr-lang.org/) expression evaluated against the (enriched) context — so both plain variables (`${TransferFee}`) and expressions (`${CTTotal > 30 ? 'free' : 'partial'}`) work.
+
+```json
+{
+  "ruleName": "fee-partial",
+  "successEvent": "fee-partial",
+  "expression": { "field": "CTTotal", "operator": "gt", "value": 26 },
+  "messages": {
+    "en": "You'll pay a ${TransferFee} fee on your ${CTTotal} transfer.",
+    "es": "Pagarás una tarifa de ${TransferFee} en tu transferencia de ${CTTotal}."
+  }
+}
+```
+
+- The evaluate request selects locales with `"languages": ["en", "es"]`, or `"render_all": true` to return every defined locale (a testing aid).
+- If a requested locale is missing on the winning rule, it falls back to the layer's `defaultLanguage` (which defaults to `"en"`).
+- Only the winning rule/override/default renders; the rendered text is returned per layer under `messages`.
+- If a `${…}` expression fails, the raw token is left in place and a warning is added to the response.
+
+**Request:**
+```json
+{ "subject_key": "u-1", "context": { "CTTotal": 28, "TransferFee": 2 }, "languages": ["es"] }
+```
+
+**Response (excerpt):**
+```json
+{
+  "layers": {
+    "fees": {
+      "segment": "fee-partial",
+      "strategy": "expression",
+      "reason": "rule:fee-partial",
+      "messages": { "es": "Pagarás una tarifa de 2 en tu transferencia de 28." }
+    }
+  }
+}
+```
+
+Messages only matter on the rule that can win, so the editor is exposed on top-level rules and the default; messages on nested child rules are stripped on save.
+
+### Lookup Tables
+
+Centralized, named tables of typed keys that rules match against — instead of repeating the same inline value list (`in`) across many rules.
+
+**Why:** maintain a shared set of values (zip codes, plan ids, SKUs) in one place. Rules reference a table by a **stable internal id**, so you can rename its display name or edit its entries without touching any rule.
+
+**How:** tables live at the top level of the config under `lookups`. Each table has an immutable `id` (auto-slugged from the display `name` at creation), a `keyType` (`string` or `number`, immutable), and `entries` of `key` (the matched value) plus an optional `value` (a human-readable description of the key). Rules reference a table with the `in_lookup` / `not_in_lookup` operators, whose expression `value` is the table id. The field's type must match the table's `keyType`.
+
+```json
+{
+  "lookups": [
+    {
+      "id": "premium-zips",
+      "name": "Premium Zips",
+      "keyType": "string",
+      "entries": [
+        { "key": "90210", "value": "Beverly Hills" },
+        { "key": "10001", "value": "NYC" }
+      ]
+    }
+  ],
+  "layers": [
+    {
+      "name": "geo",
+      "order": 1,
+      "segments": [
+        {
+          "id": "region",
+          "strategy": "rule",
+          "inputSchema": { "zip": { "type": "string", "required": true } },
+          "rules": [
+            {
+              "ruleName": "premium",
+              "successEvent": "premium-region",
+              "expression": { "field": "zip", "operator": "in_lookup", "value": "premium-zips" }
+            }
+          ],
+          "default": "standard-region"
+        }
+      ]
+    }
+  ]
+}
+```
+
+At evaluation the table's keys are treated exactly like an inline array — `in_lookup` means "field value is one of the keys", `not_in_lookup` is its negation.
+
+Manage tables via the **Lookups** admin screen (or the `/v1/admin/lookups` CRUD endpoints). A table cannot be deleted while any rule references it — the API returns `409` listing the referencing rules.
 
 ### Expression Strategy
 
@@ -406,6 +515,6 @@ The `segment` carries the routing decision; `expressions` give the full numeric 
 
 ![EWA Risk Scoring Result](docs/screenshots/ewa-risk-result.png)
 
-### Expression Operators
+### Rule Operators
 
-`eq`, `neq`, `gt`, `gte`, `lt`, `lte`, `in`, `contains`
+`eq`, `neq`, `gt`, `gte`, `lt`, `lte`, `in`, `contains`, and the lookup-table operators `in_lookup` / `not_in_lookup` (their expression `value` is a lookup table id — see [Lookup Tables](#lookup-tables)).
