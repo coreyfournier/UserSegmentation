@@ -98,7 +98,15 @@ async function main() {
   });
   await page.screenshot({ path: join(SHOTS, 'transfer-fee-promo.png') });
 
-  // ── 4. Expression Help Panel ──────────────────────────────────────────────
+  // ── 4. Transfer-fee segment configuration (july4-promo editor) ───────────
+  console.log('Screenshot: transfer-fee config (segment editor)…');
+  await page.goto(`${BASE}/layers/transfer-fee/segments/july4-promo`);
+  await page.waitForLoadState('networkidle');
+  await page.waitForSelector('[class*="editor"]', { timeout: 10_000 });
+  await page.waitForTimeout(400);
+  await page.screenshot({ path: join(SHOTS, 'transfer-fee-config.png') });
+
+  // ── 5. Expression Help Panel ──────────────────────────────────────────────
   console.log('Screenshot: expression help panel…');
   await page.goto(`${BASE}/layers/ewa-risk/segments/ewa-risk`);
   await page.waitForLoadState('networkidle');

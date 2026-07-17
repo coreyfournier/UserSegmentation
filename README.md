@@ -386,6 +386,9 @@ Computes the total EWA transfer spend for CT-state employees in the current batc
 - CT total + $4 > $30 → partial fee (cap at $30 total; charge only the remainder)
 - Otherwise → standard $4 fee
 
+<details>
+<summary>Segment config JSON</summary>
+
 ```json
 {
   "id": "ct-fee",
@@ -421,6 +424,8 @@ Computes the total EWA transfer spend for CT-state employees in the current batc
 }
 ```
 
+</details>
+
 > **Note on nested array schemas:** `inputSchema` validates the presence and type of top-level fields. For `Employees: { type: "array" }`, the service confirms the field exists and is an array. Element-level field validation (`State`, `TransferSpendThisMonth`) is not declared in the schema — instead it is enforced by the expressions themselves. Missing or mistyped element fields cause the expression to silently return its zero value and fall through to the default segment.
 
 Three scenarios, same config:
@@ -430,6 +435,11 @@ Three scenarios, same config:
 | A — CT spend exceeds $30 | Id 1234 ($10) + Id 1888 ($30) | 40 | 0 | `fee-waived` |
 | B — CT spend under threshold | Id 1234 ($10) + Id 1888 ($15) | 25 | 4 | `fee-standard` |
 | C — CT spend will hit $30 with fee | Id 1234 ($20) + Id 1888 ($8) | 28 | 2 | `fee-partial` |
+
+![CT Fee Override Result](docs/screenshots/ct-fee-result.png)
+
+<details>
+<summary>Request and response JSON (Scenarios A and C)</summary>
 
 **Scenario A request:**
 ```json
@@ -463,11 +473,14 @@ Three scenarios, same config:
 }
 ```
 
-![CT Fee Override Result](docs/screenshots/ct-fee-result.png)
+</details>
 
 ### Example: EWA Risk Scoring (Balance Equation)
 
 A logistic risk model for pricing and approving an earned wage advance. Age-decayed signals feed a log-odds accumulator; the resulting default probability determines the risk-adjusted maximum offer. The binding constraint (risk ceiling vs. net-pay cap) is surfaced as a segment for downstream routing.
+
+<details>
+<summary>Segment config JSON</summary>
 
 ```json
 {
@@ -513,6 +526,15 @@ A logistic risk model for pricing and approving an earned wage advance. Age-deca
 }
 ```
 
+</details>
+
+The `segment` carries the routing decision; `expressions` give the full numeric audit trail — `P`, `Offered`, and which limit was binding.
+
+![EWA Risk Scoring Result](docs/screenshots/ewa-risk-result.png)
+
+<details>
+<summary>Request and response JSON</summary>
+
 Request context (each signal carries its model weight, normalised score, age, and half-life — all precomputed by the calling service):
 
 ```json
@@ -538,17 +560,20 @@ Response:
 }
 ```
 
-The `segment` carries the routing decision; `expressions` give the full numeric audit trail — `P`, `Offered`, and which limit was binding.
-
-![EWA Risk Scoring Result](docs/screenshots/ewa-risk-result.png)
+</details>
 
 ### Example: Priority-Ordered Segments with Time-Bounded Promotion
 
-Shows how to express "base rate with a time-bounded override" in a **single layer**. The `transfer-fee` layer has two segments: the promotional rate listed first (highest priority), the standard rate as the fallback. The evaluator returns on the first active segment — the promotional one is skipped automatically when its window is closed.
+The `transfer-fee` layer has two segments in priority order: the promotional rate (`july4-promo`) listed first, the standard rate as the fallback. The evaluator returns on the first active segment — `july4-promo` is skipped automatically outside its window, and `standard` takes over with no config change.
 
-The caller always reads one layer and one canonical `Fee` value. No merge logic.
+The caller always reads one layer and one canonical `Fee` value.
 
-#### Config
+![Transfer Fee Segment Config](docs/screenshots/transfer-fee-config.png)
+
+The segment editor shows: strategy = Expression, promotion window = Jul 4–31 2026, and two computed fields (`BaseFee = 5.0`, `Fee = 4.0`). The `standard` segment below it has no promotion window and `Fee = 5.0`.
+
+<details>
+<summary>Full layer config JSON</summary>
 
 ```json
 {
@@ -589,9 +614,16 @@ The caller always reads one layer and one canonical `Fee` value. No merge logic.
 }
 ```
 
-`$${Fee}` in the message templates renders as `$4` or `$5` — the leading `$` is a literal character; `${Fee}` is an expr-lang interpolation. `BaseFee` is included in the promotional segment so messages can reference both the original and discounted rates.
+`$${Fee}` renders as `$4` or `$5` — the leading `$` is a literal character; `${Fee}` is an expr-lang interpolation. `BaseFee` is kept in the promotional segment so messages can name both the original and discounted rate.
 
-#### Request
+</details>
+
+![Transfer Fee Promotion Active](docs/screenshots/transfer-fee-promo.png)
+
+<details>
+<summary>Request and response JSON (both states)</summary>
+
+No external context is needed — both segments use expression constants. Pass `languages` to receive rendered messages.
 
 ```json
 POST /v1/evaluate
@@ -601,11 +633,7 @@ POST /v1/evaluate
 }
 ```
 
-No external context is needed — both segments use expression constants.
-
-#### Response — during promotion window (Jul 4–31)
-
-The `july4-promo` segment is active. The standard segment is never evaluated.
+**During promotion window (Jul 4–31):** `july4-promo` segment wins; `standard` is never evaluated.
 
 ```json
 {
@@ -624,11 +652,7 @@ The `july4-promo` segment is active. The standard segment is never evaluated.
 }
 ```
 
-![Transfer Fee Promotion Active](docs/screenshots/transfer-fee-promo.png)
-
-#### Response — outside promotion window
-
-The `july4-promo` segment is skipped; the `standard` segment wins. No config change required — the time gate is automatic.
+**Outside promotion window:** `july4-promo` is skipped; `standard` wins automatically.
 
 ```json
 {
@@ -646,6 +670,8 @@ The `july4-promo` segment is skipped; the `standard` segment wins. No config cha
   }
 }
 ```
+
+</details>
 
 ### Rule Operators
 
