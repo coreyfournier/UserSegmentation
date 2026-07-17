@@ -515,6 +515,150 @@ The `segment` carries the routing decision; `expressions` give the full numeric 
 
 ![EWA Risk Scoring Result](docs/screenshots/ewa-risk-result.png)
 
+### Example: Holiday Promotion with Cross-Layer Dependencies and Localized Messages
+
+This example demonstrates two layers working together: a **default fee layer** (Layer 1) that always resolves to a $5 transfer fee, and a **July 4th promotion layer** (Layer 2) that lowers it to $4 during the promotion window. Layer 2 reads Layer 1's result via a cross-layer expression (`"field": "layer:transfer-fee-default"`) and attaches bilingual messages to describe the change.
+
+#### Layer 1 — `transfer-fee-default`
+
+Computes `BaseFee = 5.0` and always resolves to `standard-fee`. Default messages render in English and Spanish via `${…}` interpolation.
+
+```json
+{
+  "name": "transfer-fee-default",
+  "order": 7,
+  "defaultLanguage": "en",
+  "segments": [{
+    "id": "transfer-fee",
+    "strategy": "expression",
+    "expressions": [
+      { "name": "BaseFee", "type": "number", "expression": "5.0" }
+    ],
+    "default": "standard-fee",
+    "defaultMessages": {
+      "en": "Your standard transfer fee is $${BaseFee}.",
+      "es": "Su tarifa de transferencia estándar es $${BaseFee}."
+    }
+  }]
+}
+```
+
+`$${BaseFee}` renders as `$5` — the leading `$` is a literal character; `${BaseFee}` is an expr-lang interpolation that substitutes the computed value.
+
+#### Layer 2 — `july4-promotion`
+
+Active July 4–31, 2026. The composite rule checks that the user is on `standard-fee` in Layer 1 before applying the discount. Bilingual messages describe the fee reduction from the base to the promotional value.
+
+```json
+{
+  "name": "july4-promotion",
+  "order": 8,
+  "defaultLanguage": "en",
+  "segments": [{
+    "id": "july4-fee",
+    "strategy": "expression",
+    "expressions": [
+      { "name": "BaseFee",      "type": "number", "expression": "5.0" },
+      { "name": "PromotionFee", "type": "number", "expression": "4.0" }
+    ],
+    "rules": [{
+      "ruleName": "july4-eligible",
+      "operator": "And",
+      "successEvent": "july4-promo",
+      "rules": [{
+        "ruleName": "has-standard-fee",
+        "expression": {
+          "field": "layer:transfer-fee-default",
+          "operator": "eq",
+          "value": "standard-fee"
+        }
+      }],
+      "messages": {
+        "en": "Happy 4th of July! Your transfer fee has been reduced from $${BaseFee} to $${PromotionFee}.",
+        "es": "¡Feliz 4 de Julio! Su tarifa de transferencia se ha reducido de $${BaseFee} a $${PromotionFee}."
+      }
+    }],
+    "default": "no-promo",
+    "promotion": {
+      "effective_from": "2026-07-04T00:00:00Z",
+      "effective_until": "2026-07-31T23:59:59Z"
+    }
+  }]
+}
+```
+
+#### Request
+
+No external context is required — Layer 2's rule only depends on Layer 1's result, which the evaluator injects automatically before processing later layers. Pass `languages` to receive rendered messages.
+
+```json
+POST /v1/evaluate
+{
+  "subject_key": "user-001",
+  "languages": ["en", "es"]
+}
+```
+
+#### Response — base fee only (Layer 1 selected)
+
+When evaluating only the `transfer-fee-default` layer, the response contains the base fee with localized default messages.
+
+```json
+{
+  "layers": {
+    "transfer-fee-default": {
+      "segment": "standard-fee",
+      "strategy": "expression",
+      "reason": "default",
+      "expressions": { "BaseFee": 5 },
+      "messages": {
+        "en": "Your standard transfer fee is $5.",
+        "es": "Su tarifa de transferencia estándar es $5."
+      }
+    }
+  }
+}
+```
+
+![Transfer Fee Default](docs/screenshots/transfer-fee-default.png)
+
+#### Response — during promotion window (both layers)
+
+When both layers are evaluated during the promotion window, Layer 2 references Layer 1's `standard-fee` result and applies the $4 promotional rate with holiday messages in both languages.
+
+```json
+{
+  "layers": {
+    "transfer-fee-default": {
+      "segment": "standard-fee",
+      "strategy": "expression",
+      "reason": "default",
+      "expressions": { "BaseFee": 5 },
+      "messages": {
+        "en": "Your standard transfer fee is $5.",
+        "es": "Su tarifa de transferencia estándar es $5."
+      }
+    },
+    "july4-promotion": {
+      "segment": "july4-promo",
+      "strategy": "expression",
+      "reason": "rule:july4-eligible",
+      "expressions": { "BaseFee": 5, "PromotionFee": 4 },
+      "messages": {
+        "en": "Happy 4th of July! Your transfer fee has been reduced from $5 to $4.",
+        "es": "¡Feliz 4 de Julio! Su tarifa de transferencia se ha reducido de $5 a $4."
+      }
+    }
+  }
+}
+```
+
+![July 4 Promotion Active](docs/screenshots/july4-promotion.png)
+
+#### Outside the promotion window
+
+When the promotion window is inactive the `july4-promotion` segment is skipped entirely — only `transfer-fee-default` appears in the response. No config change is needed; the time gate is automatic.
+
 ### Rule Operators
 
 `eq`, `neq`, `gt`, `gte`, `lt`, `lte`, `in`, `contains`, and the lookup-table operators `in_lookup` / `not_in_lookup` (their expression `value` is a lookup table id — see [Lookup Tables](#lookup-tables)).

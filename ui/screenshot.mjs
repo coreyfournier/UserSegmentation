@@ -25,7 +25,7 @@ async function main() {
   const page    = await browser.newPage();
   await page.setViewportSize({ width: 1400, height: 900 });
 
-  async function doEvaluate({ subject, layers, ctx }) {
+  async function doEvaluate({ subject, layers, ctx, languages }) {
     await page.goto(`${BASE}/testing`);
     await page.waitForLoadState('networkidle');
     await page.locator('input[placeholder="user-123"]').fill(subject);
@@ -33,6 +33,10 @@ async function main() {
     for (const name of (layers ?? [])) {
       await page.locator('label').filter({ hasText: name })
         .locator('input[type="checkbox"]').click();
+    }
+
+    if (languages) {
+      await page.locator('input[placeholder="en, es"]').fill(languages);
     }
 
     await page.getByRole('button', { name: 'JSON' }).click();
@@ -84,7 +88,27 @@ async function main() {
   });
   await page.screenshot({ path: join(SHOTS, 'ewa-risk-result.png') });
 
-  // ── 3. Expression Help Panel ──────────────────────────────────────────────
+  // ── 3. Transfer fee default (base fee only) ───────────────────────────────
+  console.log('Screenshot: transfer-fee-default (base fee)…');
+  await doEvaluate({
+    subject: 'user-001',
+    layers:  ['transfer-fee-default'],
+    ctx:     {},
+    languages: 'en, es',
+  });
+  await page.screenshot({ path: join(SHOTS, 'transfer-fee-default.png') });
+
+  // ── 4. July 4 promotion active (both layers) ──────────────────────────────
+  console.log('Screenshot: July 4 promotion active…');
+  await doEvaluate({
+    subject: 'user-001',
+    layers:  ['transfer-fee-default', 'july4-promotion'],
+    ctx:     {},
+    languages: 'en, es',
+  });
+  await page.screenshot({ path: join(SHOTS, 'july4-promotion.png') });
+
+  // ── 5. Expression Help Panel ──────────────────────────────────────────────
   console.log('Screenshot: expression help panel…');
   await page.goto(`${BASE}/layers/ewa-risk/segments/ewa-risk`);
   await page.waitForLoadState('networkidle');
