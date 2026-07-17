@@ -350,6 +350,33 @@ This service additionally registers the following math functions:
 | `sin(x)` | Sine (x in radians) |
 | `cos(x)` | Cosine (x in radians) |
 
+### Layers vs Segments
+
+A **layer** is one evaluation dimension — one question the service answers. A **segment** is one possible answer to that question.
+
+**Use separate layers for orthogonal, independent questions.** The result of one layer should not negate whether another layer runs. Good candidates:
+
+| Layer | Question |
+|---|---|
+| `base-tier` | What tier is this user? |
+| `experiments` | Which A/B variant? |
+| `features` | Is this feature enabled? |
+| `transfer-fee` | What fee applies? |
+
+The caller uses all of them independently. A later layer can reference an earlier result via `"field": "layer:<name>"` (e.g. `experiments` skipping platinum users), but each layer still answers its own distinct question.
+
+**Use multiple segments within one layer for alternatives to the same question.** When one question has several possible answers and only one applies at a time, list them as segments in priority order. The evaluator iterates segments in declaration order and returns on the **first active segment** that produces a result. Promotion-gated segments are automatically skipped when their window is inactive, making the next segment the fallback.
+
+```
+transfer-fee layer
+ ├── july4-promo  (promotion-gated Jul 4–31 — skipped when inactive)
+ └── standard     (always active — the fallback)
+```
+
+The caller reads one layer and gets one canonical result — no merging required.
+
+**The tell:** if your caller must look at two layer results and decide which one to use, those answers belong in one layer as priority-ordered segments.
+
 ### Example: CT State Fee Override (Aggregated Array)
 
 Computes the total EWA transfer spend for CT-state employees in the current batch, then determines which fee tier applies. The context contains an **array of employees** — each with their own state and spend — and the expressions aggregate across it using `filter` + `map` + `sum`.
@@ -515,81 +542,56 @@ The `segment` carries the routing decision; `expressions` give the full numeric 
 
 ![EWA Risk Scoring Result](docs/screenshots/ewa-risk-result.png)
 
-### Example: Holiday Promotion with Cross-Layer Dependencies and Localized Messages
+### Example: Priority-Ordered Segments with Time-Bounded Promotion
 
-This example demonstrates two layers working together: a **default fee layer** (Layer 1) that always resolves to a $5 transfer fee, and a **July 4th promotion layer** (Layer 2) that lowers it to $4 during the promotion window. Layer 2 reads Layer 1's result via a cross-layer expression (`"field": "layer:transfer-fee-default"`) and attaches bilingual messages to describe the change.
+Shows how to express "base rate with a time-bounded override" in a **single layer**. The `transfer-fee` layer has two segments: the promotional rate listed first (highest priority), the standard rate as the fallback. The evaluator returns on the first active segment — the promotional one is skipped automatically when its window is closed.
 
-#### Layer 1 — `transfer-fee-default`
+The caller always reads one layer and one canonical `Fee` value. No merge logic.
 
-Computes `BaseFee = 5.0` and always resolves to `standard-fee`. Default messages render in English and Spanish via `${…}` interpolation.
+#### Config
 
 ```json
 {
-  "name": "transfer-fee-default",
+  "name": "transfer-fee",
   "order": 7,
   "defaultLanguage": "en",
-  "segments": [{
-    "id": "transfer-fee",
-    "strategy": "expression",
-    "expressions": [
-      { "name": "BaseFee", "type": "number", "expression": "5.0" }
-    ],
-    "default": "standard-fee",
-    "defaultMessages": {
-      "en": "Your standard transfer fee is $${BaseFee}.",
-      "es": "Su tarifa de transferencia estándar es $${BaseFee}."
-    }
-  }]
-}
-```
-
-`$${BaseFee}` renders as `$5` — the leading `$` is a literal character; `${BaseFee}` is an expr-lang interpolation that substitutes the computed value.
-
-#### Layer 2 — `july4-promotion`
-
-Active July 4–31, 2026. The composite rule checks that the user is on `standard-fee` in Layer 1 before applying the discount. Bilingual messages describe the fee reduction from the base to the promotional value.
-
-```json
-{
-  "name": "july4-promotion",
-  "order": 8,
-  "defaultLanguage": "en",
-  "segments": [{
-    "id": "july4-fee",
-    "strategy": "expression",
-    "expressions": [
-      { "name": "BaseFee",      "type": "number", "expression": "5.0" },
-      { "name": "PromotionFee", "type": "number", "expression": "4.0" }
-    ],
-    "rules": [{
-      "ruleName": "july4-eligible",
-      "operator": "And",
-      "successEvent": "july4-promo",
-      "rules": [{
-        "ruleName": "has-standard-fee",
-        "expression": {
-          "field": "layer:transfer-fee-default",
-          "operator": "eq",
-          "value": "standard-fee"
-        }
-      }],
-      "messages": {
-        "en": "Happy 4th of July! Your transfer fee has been reduced from $${BaseFee} to $${PromotionFee}.",
-        "es": "¡Feliz 4 de Julio! Su tarifa de transferencia se ha reducido de $${BaseFee} a $${PromotionFee}."
+  "segments": [
+    {
+      "id": "july4-promo",
+      "strategy": "expression",
+      "expressions": [
+        { "name": "BaseFee", "type": "number", "expression": "5.0" },
+        { "name": "Fee",     "type": "number", "expression": "4.0" }
+      ],
+      "default": "july4-promo",
+      "promotion": {
+        "effective_from": "2026-07-04T00:00:00Z",
+        "effective_until": "2026-07-31T23:59:59Z"
+      },
+      "defaultMessages": {
+        "en": "Happy 4th of July! Your transfer fee has been reduced from $${BaseFee} to $${Fee}.",
+        "es": "¡Feliz 4 de Julio! Su tarifa de transferencia se ha reducido de $${BaseFee} a $${Fee}."
       }
-    }],
-    "default": "no-promo",
-    "promotion": {
-      "effective_from": "2026-07-04T00:00:00Z",
-      "effective_until": "2026-07-31T23:59:59Z"
+    },
+    {
+      "id": "standard",
+      "strategy": "expression",
+      "expressions": [
+        { "name": "Fee", "type": "number", "expression": "5.0" }
+      ],
+      "default": "standard",
+      "defaultMessages": {
+        "en": "Your standard transfer fee is $${Fee}.",
+        "es": "Su tarifa de transferencia estándar es $${Fee}."
+      }
     }
-  }]
+  ]
 }
 ```
+
+`$${Fee}` in the message templates renders as `$4` or `$5` — the leading `$` is a literal character; `${Fee}` is an expr-lang interpolation. `BaseFee` is included in the promotional segment so messages can reference both the original and discounted rates.
 
 #### Request
-
-No external context is required — Layer 2's rule only depends on Layer 1's result, which the evaluator injects automatically before processing later layers. Pass `languages` to receive rendered messages.
 
 ```json
 POST /v1/evaluate
@@ -599,51 +601,20 @@ POST /v1/evaluate
 }
 ```
 
-#### Response — base fee only (Layer 1 selected)
+No external context is needed — both segments use expression constants.
 
-When evaluating only the `transfer-fee-default` layer, the response contains the base fee with localized default messages.
+#### Response — during promotion window (Jul 4–31)
 
-```json
-{
-  "layers": {
-    "transfer-fee-default": {
-      "segment": "standard-fee",
-      "strategy": "expression",
-      "reason": "default",
-      "expressions": { "BaseFee": 5 },
-      "messages": {
-        "en": "Your standard transfer fee is $5.",
-        "es": "Su tarifa de transferencia estándar es $5."
-      }
-    }
-  }
-}
-```
-
-![Transfer Fee Default](docs/screenshots/transfer-fee-default.png)
-
-#### Response — during promotion window (both layers)
-
-When both layers are evaluated during the promotion window, Layer 2 references Layer 1's `standard-fee` result and applies the $4 promotional rate with holiday messages in both languages.
+The `july4-promo` segment is active. The standard segment is never evaluated.
 
 ```json
 {
   "layers": {
-    "transfer-fee-default": {
-      "segment": "standard-fee",
-      "strategy": "expression",
-      "reason": "default",
-      "expressions": { "BaseFee": 5 },
-      "messages": {
-        "en": "Your standard transfer fee is $5.",
-        "es": "Su tarifa de transferencia estándar es $5."
-      }
-    },
-    "july4-promotion": {
+    "transfer-fee": {
       "segment": "july4-promo",
       "strategy": "expression",
-      "reason": "rule:july4-eligible",
-      "expressions": { "BaseFee": 5, "PromotionFee": 4 },
+      "reason": "default",
+      "expressions": { "BaseFee": 5, "Fee": 4 },
       "messages": {
         "en": "Happy 4th of July! Your transfer fee has been reduced from $5 to $4.",
         "es": "¡Feliz 4 de Julio! Su tarifa de transferencia se ha reducido de $5 a $4."
@@ -653,11 +624,28 @@ When both layers are evaluated during the promotion window, Layer 2 references L
 }
 ```
 
-![July 4 Promotion Active](docs/screenshots/july4-promotion.png)
+![Transfer Fee Promotion Active](docs/screenshots/transfer-fee-promo.png)
 
-#### Outside the promotion window
+#### Response — outside promotion window
 
-When the promotion window is inactive the `july4-promotion` segment is skipped entirely — only `transfer-fee-default` appears in the response. No config change is needed; the time gate is automatic.
+The `july4-promo` segment is skipped; the `standard` segment wins. No config change required — the time gate is automatic.
+
+```json
+{
+  "layers": {
+    "transfer-fee": {
+      "segment": "standard",
+      "strategy": "expression",
+      "reason": "default",
+      "expressions": { "Fee": 5 },
+      "messages": {
+        "en": "Your standard transfer fee is $5.",
+        "es": "Su tarifa de transferencia estándar es $5."
+      }
+    }
+  }
+}
+```
 
 ### Rule Operators
 

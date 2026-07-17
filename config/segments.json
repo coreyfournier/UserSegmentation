@@ -1,5 +1,5 @@
 {
-  "version": 15,
+  "version": 16,
   "last_modified": "2026-07-16T00:00:00Z",
   "layers": [
     {
@@ -359,62 +359,37 @@
       ]
     },
     {
-      "name": "transfer-fee-default",
+      "name": "transfer-fee",
       "order": 7,
       "defaultLanguage": "en",
       "segments": [
         {
-          "id": "transfer-fee",
+          "id": "july4-promo",
           "strategy": "expression",
           "expressions": [
-            { "name": "BaseFee", "type": "number", "expression": "5.0" }
+            { "name": "BaseFee", "type": "number", "expression": "5.0" },
+            { "name": "Fee",     "type": "number", "expression": "4.0" }
           ],
-          "default": "standard-fee",
-          "defaultMessages": {
-            "en": "Your standard transfer fee is $${BaseFee}.",
-            "es": "Su tarifa de transferencia estándar es $${BaseFee}."
-          }
-        }
-      ]
-    },
-    {
-      "name": "july4-promotion",
-      "order": 8,
-      "defaultLanguage": "en",
-      "segments": [
-        {
-          "id": "july4-fee",
-          "strategy": "expression",
-          "expressions": [
-            { "name": "BaseFee",      "type": "number", "expression": "5.0" },
-            { "name": "PromotionFee", "type": "number", "expression": "4.0" }
-          ],
-          "rules": [
-            {
-              "ruleName": "july4-eligible",
-              "operator": "And",
-              "enabled": true,
-              "successEvent": "july4-promo",
-              "rules": [
-                {
-                  "ruleName": "has-standard-fee",
-                  "expression": {
-                    "field": "layer:transfer-fee-default",
-                    "operator": "eq",
-                    "value": "standard-fee"
-                  }
-                }
-              ],
-              "messages": {
-                "en": "Happy 4th of July! Your transfer fee has been reduced from $${BaseFee} to $${PromotionFee}.",
-                "es": "¡Feliz 4 de Julio! Su tarifa de transferencia se ha reducido de $${BaseFee} a $${PromotionFee}."
-              }
-            }
-          ],
-          "default": "no-promo",
+          "default": "july4-promo",
           "promotion": {
             "effective_from": "2026-07-04T00:00:00Z",
             "effective_until": "2026-07-31T23:59:59Z"
+          },
+          "defaultMessages": {
+            "en": "Happy 4th of July! Your transfer fee has been reduced from $${BaseFee} to $${Fee}.",
+            "es": "¡Feliz 4 de Julio! Su tarifa de transferencia se ha reducido de $${BaseFee} a $${Fee}."
+          }
+        },
+        {
+          "id": "standard",
+          "strategy": "expression",
+          "expressions": [
+            { "name": "Fee", "type": "number", "expression": "5.0" }
+          ],
+          "default": "standard",
+          "defaultMessages": {
+            "en": "Your standard transfer fee is $${Fee}.",
+            "es": "Su tarifa de transferencia estándar es $${Fee}."
           }
         }
       ]
