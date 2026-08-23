@@ -3,6 +3,7 @@ package strategy
 import (
 	"fmt"
 	"math"
+	"strings"
 	"sync"
 
 	"github.com/expr-lang/expr"
@@ -83,27 +84,41 @@ func (s *ExpressionStrategy) Evaluate(seg *model.Segment, ctx *EvalContext) (Res
 	}
 
 	computed := make(map[string]interface{}, len(seg.Expressions))
+	var failed []string
 	for _, def := range seg.Expressions {
 		run, err := s.compiled(def.Expression)
 		if err != nil {
+			failed = append(failed, def.Name)
 			continue
 		}
 		val, err := run(enriched)
 		if err != nil {
+			failed = append(failed, def.Name)
 			continue
 		}
 		enriched[def.Name] = val
 		computed[def.Name] = val
 	}
 
-	enrichedCtx := &EvalContext{
-		SubjectKey:      ctx.SubjectKey,
-		Context:         enriched,
-		Languages:       ctx.Languages,
-		RenderAll:       ctx.RenderAll,
-		DefaultLanguage: ctx.DefaultLanguage,
+	// Under collection a failed computation must not fall through to rule
+	// evaluation. The rules consuming that field would evaluate false and be
+	// reported as violations, telling the resolver a value is wrong when it
+	// could not in fact be computed. Segmentation keeps the old behavior — the
+	// computed field is simply absent.
+	if ctx.CollectFailures && len(failed) > 0 {
+		return Result{
+			Reason:      "expression error: " + strings.Join(failed, ", "),
+			Status:      model.StatusUnevaluable,
+			Expressions: computed,
+		}, true
 	}
-	res, ok := (&RuleStrategy{}).Evaluate(seg, enrichedCtx)
+
+	// Copy the struct rather than rebuilding it field by field, so fields added
+	// later (Lookups, CollectFailures) cannot be silently dropped here.
+	derived := *ctx
+	derived.Context = enriched
+
+	res, ok := (&RuleStrategy{}).Evaluate(seg, &derived)
 	if ok && len(computed) > 0 {
 		res.Expressions = computed
 	}

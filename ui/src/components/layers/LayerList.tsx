@@ -10,6 +10,31 @@ import ConfirmDialog from '../common/ConfirmDialog';
 import ErrorBanner from '../common/ErrorBanner';
 import styles from './LayerList.module.css';
 
+/**
+ * Orders layers so each one follows the layers it depends on. Layers whose
+ * dependencies are missing or cyclic are appended rather than dropped, so a
+ * broken config is still editable in the UI.
+ */
+function sortByDependency(layers: Layer[]): Layer[] {
+  const remaining = [...layers];
+  const placed = new Set<string>();
+  const out: Layer[] = [];
+
+  while (remaining.length > 0) {
+    const index = remaining.findIndex((l) =>
+      (l.dependsOn ?? []).every((d) => placed.has(d) || !layers.some((x) => x.name === d))
+    );
+    if (index === -1) {
+      out.push(...remaining); // cycle: show them anyway
+      break;
+    }
+    const [next] = remaining.splice(index, 1);
+    placed.add(next.name);
+    out.push(next);
+  }
+  return out;
+}
+
 export default function LayerList() {
   const { data: layers, isLoading, error } = useLayers();
   const createLayer = useCreateLayer();
@@ -27,7 +52,9 @@ export default function LayerList() {
   if (isLoading) return <p>Loading...</p>;
   if (error) return <ErrorBanner message={(error as Error).message} />;
 
-  const sorted = [...(layers ?? [])].sort((a, b) => a.order - b.order);
+  // Display layers in dependency order so gates read top-to-bottom the way they
+  // execute. Purely presentational — the engine does its own topological sort.
+  const sorted = sortByDependency(layers ?? []);
 
   return (
     <div>
@@ -59,6 +86,7 @@ export default function LayerList() {
       {/* Create Layer Modal */}
       <Modal open={showCreate} onClose={() => setShowCreate(false)} title="Add Layer">
         <LayerForm
+          allLayers={layers ?? []}
           onSubmit={(l) => {
             createLayer.mutate(l, { onSuccess: () => setShowCreate(false) });
           }}
@@ -71,6 +99,7 @@ export default function LayerList() {
         {editing && (
           <LayerForm
             initial={editing}
+            allLayers={layers ?? []}
             submitLabel="Save"
             onSubmit={(l) => {
               updateLayer.mutate(
@@ -118,6 +147,12 @@ export default function LayerList() {
                 expressions: [],
                 rules: [],
                 default: '',
+              }),
+              // Assert has no default: every rule is an assertion that must
+              // hold, so there is no "nothing matched" outcome to fall back to.
+              ...(newSegStrategy === 'assert' && {
+                expressions: [],
+                rules: [],
               }),
             };
             createSegment.mutate(

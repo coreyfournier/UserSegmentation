@@ -7,7 +7,10 @@ interface Props {
   fieldType?: FieldType;
 }
 
-const ALL_OPS: Operator[] = ['eq', 'neq', 'gt', 'gte', 'lt', 'lte', 'in', 'contains', 'in_lookup', 'not_in_lookup'];
+const ALL_OPS: Operator[] = [
+  'eq', 'neq', 'gt', 'gte', 'lt', 'lte', 'in', 'contains', 'in_lookup', 'not_in_lookup',
+  'is_null', 'is_null_or_empty',
+];
 
 export default function OperatorSelect({ value, onChange, fieldType }: Props) {
   const ops = fieldType

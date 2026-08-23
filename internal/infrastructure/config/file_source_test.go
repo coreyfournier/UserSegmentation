@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -15,7 +16,7 @@ func TestFileSource_Load(t *testing.T) {
 	data := []byte(`{
 		"version": 5,
 		"layers": [
-			{"name": "test", "order": 1, "segments": []}
+			{"name": "test", "segments": []}
 		]
 	}`)
 	if err := os.WriteFile(path, data, 0644); err != nil {
@@ -35,14 +36,14 @@ func TestFileSource_Load(t *testing.T) {
 	}
 }
 
-func TestFileSource_LoadSortsLayers(t *testing.T) {
+func TestFileSource_LoadReadsDependsOn(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "test.json")
 	data := []byte(`{
 		"version": 1,
 		"layers": [
-			{"name": "b", "order": 2, "segments": []},
-			{"name": "a", "order": 1, "segments": []}
+			{"name": "b", "dependsOn": ["a"], "segments": []},
+			{"name": "a", "segments": []}
 		]
 	}`)
 	if err := os.WriteFile(path, data, 0644); err != nil {
@@ -54,8 +55,62 @@ func TestFileSource_LoadSortsLayers(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if snap.Layers[0].Name != "a" || snap.Layers[1].Name != "b" {
-		t.Errorf("layers not sorted by order: %v", snap.Layers)
+	// Declaration order on disk is preserved; the evaluator topologically sorts.
+	if snap.Layers[0].Name != "b" || len(snap.Layers[0].DependsOn) != 1 || snap.Layers[0].DependsOn[0] != "a" {
+		t.Errorf("dependsOn not loaded: %+v", snap.Layers)
+	}
+}
+
+// A config carrying the removed "order" field must fail loudly rather than be
+// silently reinterpreted, which would leave it subtly misordered.
+func TestFileSource_RejectsLegacyOrder(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "test.json")
+	data := []byte(`{
+		"version": 1,
+		"layers": [
+			{"name": "stale", "order": 1, "segments": []}
+		]
+	}`)
+	if err := os.WriteFile(path, data, 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := NewFileSource(path).Load(); err == nil {
+		t.Fatal("expected load to fail on a config still declaring order")
+	} else if !strings.Contains(err.Error(), "dependsOn") {
+		t.Errorf("error should point at dependsOn, got: %v", err)
+	}
+}
+
+// Rule names are the stable public identifier for a reported failure, so the
+// store rejects collisions across the whole config.
+func TestFileSource_RejectsDuplicateAssertRuleName(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "test.json")
+	data := []byte(`{
+		"version": 1,
+		"layers": [
+			{"name": "gate-one", "segments": [
+				{"id": "s", "strategy": "assert", "rules": [
+					{"ruleName": "sameName", "expression": {"field": "a", "operator": "eq", "value": 1}}
+				]}
+			]},
+			{"name": "gate-two", "segments": [
+				{"id": "s", "strategy": "assert", "rules": [
+					{"ruleName": "sameName", "expression": {"field": "b", "operator": "eq", "value": 2}}
+				]}
+			]}
+		]
+	}`)
+	if err := os.WriteFile(path, data, 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := NewFileSource(path).Load(); err == nil {
+		t.Fatal("expected load to fail on duplicate assert ruleName")
+	} else if !strings.Contains(err.Error(), "sameName") {
+		t.Errorf("error should name the colliding rule, got: %v", err)
 	}
 }
 
@@ -86,7 +141,7 @@ func TestFileSource_Save(t *testing.T) {
 	snap := &model.Snapshot{
 		Version: 10,
 		Layers: []model.Layer{
-			{Name: "saved", Order: 1, Segments: []model.Segment{}},
+			{Name: "saved", Segments: []model.Segment{}},
 		},
 	}
 	if err := fs.Save(snap); err != nil {
@@ -123,7 +178,7 @@ func TestFileSource_SaveAtomic(t *testing.T) {
 
 	// Overwrite with new version
 	updated := &model.Snapshot{Version: 2, Layers: []model.Layer{
-		{Name: "new", Order: 1, Segments: []model.Segment{}},
+		{Name: "new", Segments: []model.Segment{}},
 	}}
 	if err := fs.Save(updated); err != nil {
 		t.Fatalf("Save failed: %v", err)

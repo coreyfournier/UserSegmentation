@@ -28,7 +28,7 @@ func newTestAdmin() (*AdminHandler, *mockStore) {
 	store := &mockStore{snap: &model.Snapshot{
 		Version: 1,
 		Layers: []model.Layer{
-			{Name: "test-layer", Order: 1, Segments: []model.Segment{
+			{Name: "test-layer", Segments: []model.Segment{
 				{ID: "seg-1", Strategy: "static", Static: &model.StaticConfig{
 					Mappings: map[string]string{}, Default: "default",
 				}},
@@ -57,7 +57,7 @@ func TestAdminHandler_ListLayers(t *testing.T) {
 
 func TestAdminHandler_CreateLayer(t *testing.T) {
 	h, _ := newTestAdmin()
-	body, _ := json.Marshal(model.Layer{Name: "new-layer", Order: 2})
+	body, _ := json.Marshal(model.Layer{Name: "new-layer"})
 	req := httptest.NewRequest("POST", "/v1/admin/layers", bytes.NewReader(body))
 	w := httptest.NewRecorder()
 	h.CreateLayer(w, req)
@@ -69,7 +69,7 @@ func TestAdminHandler_CreateLayer(t *testing.T) {
 
 func TestAdminHandler_CreateLayerDuplicate(t *testing.T) {
 	h, _ := newTestAdmin()
-	body, _ := json.Marshal(model.Layer{Name: "test-layer", Order: 2})
+	body, _ := json.Marshal(model.Layer{Name: "test-layer"})
 	req := httptest.NewRequest("POST", "/v1/admin/layers", bytes.NewReader(body))
 	w := httptest.NewRecorder()
 	h.CreateLayer(w, req)

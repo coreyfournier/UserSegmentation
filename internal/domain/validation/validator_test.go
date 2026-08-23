@@ -1,6 +1,7 @@
 package validation
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/segmentation-service/segmentation/internal/domain/model"
@@ -82,17 +83,60 @@ func TestValidateSnapshot_IncompatibleOperator(t *testing.T) {
 	}
 }
 
-func TestValidateSnapshot_CrossLayerRef(t *testing.T) {
+// crossLayerSnapshot builds a two-layer config where "test" reads "base-tier",
+// declaring the dependency only when declared is true.
+func crossLayerSnapshot(declared bool) *model.Snapshot {
+	layer := model.Layer{
+		Name: "test",
+		Segments: []model.Segment{
+			{
+				ID:          "seg1",
+				InputSchema: model.InputSchema{"country": {Type: model.FieldTypeString}},
+				Rules: []model.Rule{
+					{RuleName: "cross", Expression: &model.Expression{Field: "layer:base-tier", Operator: model.OpEq, Value: "pro"}},
+				},
+			},
+		},
+	}
+	if declared {
+		layer.DependsOn = []string{"base-tier"}
+	}
+	return &model.Snapshot{
+		Layers: []model.Layer{{Name: "base-tier"}, layer},
+	}
+}
+
+func TestValidateSnapshot_CrossLayerRef_Declared(t *testing.T) {
+	if err := ValidateSnapshot(crossLayerSnapshot(true)); err != nil {
+		t.Errorf("declared cross-layer ref should be valid, got: %v", err)
+	}
+}
+
+func TestValidateSnapshot_CrossLayerRef_Undeclared(t *testing.T) {
+	err := ValidateSnapshot(crossLayerSnapshot(false))
+	if err == nil {
+		t.Fatal("expected an error for a cross-layer ref not declared in dependsOn")
+	}
+	if !strings.Contains(err.Error(), "not declared in dependsOn") {
+		t.Errorf("expected a dependsOn error, got: %v", err)
+	}
+}
+
+// A dependency declared purely for ordering or gating, with no layer: reference
+// anywhere, is legitimate and must not be flagged.
+func TestValidateSnapshot_DependencyWithoutReference(t *testing.T) {
 	snap := &model.Snapshot{
 		Layers: []model.Layer{
+			{Name: "gate"},
 			{
-				Name: "test",
+				Name:      "downstream",
+				DependsOn: []string{"gate"},
 				Segments: []model.Segment{
 					{
 						ID:          "seg1",
 						InputSchema: model.InputSchema{"country": {Type: model.FieldTypeString}},
 						Rules: []model.Rule{
-							{RuleName: "cross", Expression: &model.Expression{Field: "layer:base-tier", Operator: model.OpEq, Value: "pro"}},
+							{RuleName: "plain", Expression: &model.Expression{Field: "country", Operator: model.OpEq, Value: "US"}},
 						},
 					},
 				},
@@ -100,7 +144,7 @@ func TestValidateSnapshot_CrossLayerRef(t *testing.T) {
 		},
 	}
 	if err := ValidateSnapshot(snap); err != nil {
-		t.Errorf("cross-layer ref should be valid, got: %v", err)
+		t.Errorf("unreferenced dependency should be legal, got: %v", err)
 	}
 }
 

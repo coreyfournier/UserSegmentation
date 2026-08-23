@@ -20,7 +20,12 @@ type StaticConfig struct {
 
 // Segment is a single segment definition within a layer.
 type Segment struct {
-	ID          string            `json:"id"`
+	ID string `json:"id"`
+	// When is an optional dispatch predicate. When present and false, the
+	// segment is passed over entirely and produces no output of any kind —
+	// it is not a reported state. This is how one layer holds per-entity-type
+	// variants: each segment declares the type it applies to.
+	When        *Rule             `json:"when,omitempty"`
 	Strategy    string            `json:"strategy"`
 	Static      *StaticConfig     `json:"static,omitempty"`
 	Percentage  *PercentageConfig `json:"percentage,omitempty"`

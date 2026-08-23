@@ -1,4 +1,4 @@
-import type { EvaluateResponse } from '../../api/types';
+import type { EvaluateResponse, LayerStatus } from '../../api/types';
 import styles from './ResultDisplay.module.css';
 
 interface Props {
@@ -11,6 +11,29 @@ const STRATEGY_COLORS: Record<string, string> = {
   percentage: '#8b5cf6',
   expression: '#06b6d4',
   override: '#f97316',
+  assert: '#eab308',
+};
+
+const STATUS_COLORS: Record<LayerStatus, string> = {
+  satisfied: '#22c55e',
+  violated: '#ef4444',
+  unevaluable: '#f97316',
+  resolved: '#64748b',
+  unresolved: '#64748b',
+  skipped: '#f97316',
+};
+
+/**
+ * Status is authoritative — never infer the outcome from failures.length. An
+ * unevaluable gate has no failures precisely because it could not be judged.
+ */
+const STATUS_HINTS: Record<LayerStatus, string> = {
+  satisfied: 'Every assertion held.',
+  violated: 'One or more assertions did not hold.',
+  unevaluable: 'Could not be judged — a dependency did not resolve, or a computed field failed.',
+  resolved: 'Resolved to a segment.',
+  unresolved: 'No segment matched.',
+  skipped: 'A dependency did not resolve.',
 };
 
 export default function ResultDisplay({ result }: Props) {
@@ -25,14 +48,54 @@ export default function ResultDisplay({ result }: Props) {
         <div
           key={name}
           className={styles.card}
-          style={{ borderLeftColor: STRATEGY_COLORS[lr.strategy] ?? '#64748b' }}
+          style={{
+            borderLeftColor:
+              STATUS_COLORS[lr.status] ?? STRATEGY_COLORS[lr.strategy ?? ''] ?? '#64748b',
+          }}
         >
-          <div className={styles.layerName}>{name}</div>
-          <div className={styles.detail}>
-            <span>segment: <strong>{lr.segment}</strong></span>
-            <span>strategy: <strong>{lr.strategy}</strong></span>
+          <div className={styles.layerName}>
+            {name}
+            <span
+              title={STATUS_HINTS[lr.status]}
+              style={{
+                marginLeft: 8,
+                fontSize: 11,
+                fontWeight: 600,
+                textTransform: 'uppercase',
+                letterSpacing: '0.04em',
+                color: STATUS_COLORS[lr.status] ?? '#64748b',
+              }}
+            >
+              {lr.status}
+            </span>
           </div>
-          <div className={styles.reason}>reason: {lr.reason}</div>
+          {(lr.segment || lr.strategy) && (
+            <div className={styles.detail}>
+              {lr.segment && <span>segment: <strong>{lr.segment}</strong></span>}
+              {lr.strategy && <span>strategy: <strong>{lr.strategy}</strong></span>}
+            </div>
+          )}
+          {lr.reason && <div className={styles.reason}>reason: {lr.reason}</div>}
+          {lr.failures && lr.failures.length > 0 && (
+            <ul style={{ margin: '8px 0 0', paddingLeft: 18 }}>
+              {lr.failures.map((f) => (
+                <li key={f.rule} style={{ fontSize: 12, marginBottom: 4 }}>
+                  <code style={{ color: STATUS_COLORS.violated }}>{f.rule}</code>
+                  {f.message && <span> — {f.message}</span>}
+                  {f.messages && Object.keys(f.messages).length > 0 && (
+                    <div className={styles.messages}>
+                      {Object.entries(f.messages).map(([lang, text]) => (
+                        <div key={lang} className={styles.message}>
+                          <span className={styles.lang}>{lang}</span>
+                          <span>{text}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </li>
+              ))}
+            </ul>
+          )}
           {lr.expressions && Object.keys(lr.expressions).length > 0 && (
             <div className={styles.expressions}>
               {Object.entries(lr.expressions).map(([k, v]) => (

@@ -1,0 +1,24 @@
+/* Always occupies space so starting a drag does not shift the targets out from
+   under the cursor. It is invisible until a drag makes it a legal destination. */
+.zone {
+  height: 10px;
+  margin: 0;
+  border-radius: 3px;
+  transition: background 90ms ease, box-shadow 90ms ease;
+}
+
+.active {
+  background: repeating-linear-gradient(
+    90deg,
+    var(--border, #d1d5db) 0 6px,
+    transparent 6px 12px
+  );
+  background-position: center;
+  background-size: 100% 2px;
+  background-repeat: no-repeat;
+}
+
+.over {
+  background: var(--primary, #3b82f6);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--primary, #3b82f6) 30%, transparent);
+}

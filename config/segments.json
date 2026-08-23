@@ -1,10 +1,9 @@
 {
-  "version": 16,
-  "last_modified": "2026-07-16T00:00:00Z",
+  "version": 121,
+  "last_modified": "2026-08-23T21:39:41.674945383Z",
   "layers": [
     {
       "name": "base-tier",
-      "order": 1,
       "segments": [
         {
           "id": "user-tier",
@@ -21,7 +20,6 @@
     },
     {
       "name": "CT Rule",
-      "order": 1,
       "segments": [
         {
           "id": "IsCT",
@@ -60,7 +58,6 @@
     },
     {
       "name": "Risk Rating",
-      "order": 1,
       "segments": [
         {
           "id": "IsRisky",
@@ -105,7 +102,6 @@
     },
     {
       "name": "dSDsd",
-      "order": 1,
       "segments": [
         {
           "id": "expression test",
@@ -115,7 +111,9 @@
     },
     {
       "name": "experiments",
-      "order": 2,
+      "dependsOn": [
+        "base-tier"
+      ],
       "segments": [
         {
           "id": "checkout-flow",
@@ -150,7 +148,9 @@
     },
     {
       "name": "promotions",
-      "order": 3,
+      "dependsOn": [
+        "base-tier"
+      ],
       "segments": [
         {
           "id": "summer-sale",
@@ -208,7 +208,9 @@
     },
     {
       "name": "features",
-      "order": 4,
+      "dependsOn": [
+        "base-tier"
+      ],
       "segments": [
         {
           "id": "dark-mode",
@@ -248,7 +250,6 @@
     },
     {
       "name": "ct-fee-override",
-      "order": 5,
       "segments": [
         {
           "id": "ct-fee",
@@ -262,129 +263,233 @@
             {
               "name": "TransferFee",
               "type": "number",
-              "expression": "CTTotal > 30.0 ? 0.0 : (CTTotal + 4.0 > 30.0 ? 30.0 - CTTotal : 4.0)"
+              "expression": "CTTotal \u003e 30.0 ? 0.0 : (CTTotal + 4.0 \u003e 30.0 ? 30.0 - CTTotal : 4.0)"
             }
           ],
           "rules": [
             {
               "ruleName": "fee-waived",
               "successEvent": "fee-waived",
-              "expression": { "field": "CTTotal", "operator": "gt", "value": 30 }
+              "expression": {
+                "field": "CTTotal",
+                "operator": "gt",
+                "value": 30
+              }
             },
             {
               "ruleName": "fee-partial",
               "successEvent": "fee-partial",
-              "expression": { "field": "CTTotal", "operator": "gt", "value": 26 }
+              "expression": {
+                "field": "CTTotal",
+                "operator": "gt",
+                "value": 26
+              }
             }
           ],
           "default": "fee-standard",
           "inputSchema": {
-            "Employees": { "type": "array", "required": true }
+            "Employees": {
+              "type": "array",
+              "required": true
+            }
           }
         }
       ]
     },
     {
       "name": "ewa-eligibility",
-      "order": 5,
       "segments": [
         {
           "id": "ewa-eligibility",
           "strategy": "expression",
           "expressions": [
-            { "name": "MaxAllowed", "type": "number",  "expression": "min(EarnedWages * 0.5, StateCap)" },
-            { "name": "Eligible",   "type": "boolean", "expression": "DaysWorked >= 14 && RequestedAmount <= MaxAllowed" }
+            {
+              "name": "MaxAllowed",
+              "type": "number",
+              "expression": "min(EarnedWages * 0.5, StateCap)"
+            },
+            {
+              "name": "Eligible",
+              "type": "boolean",
+              "expression": "DaysWorked \u003e= 14 \u0026\u0026 RequestedAmount \u003c= MaxAllowed"
+            }
           ],
           "rules": [
             {
               "ruleName": "ineligible-tenure",
               "successEvent": "ineligible-tenure",
-              "expression": { "field": "DaysWorked", "operator": "lt", "value": 14 }
+              "expression": {
+                "field": "DaysWorked",
+                "operator": "lt",
+                "value": 14
+              }
             },
             {
               "ruleName": "ineligible-amount",
               "successEvent": "ineligible-amount",
-              "expression": { "field": "Eligible", "operator": "eq", "value": false }
+              "expression": {
+                "field": "Eligible",
+                "operator": "eq",
+                "value": false
+              }
             }
           ],
           "default": "eligible",
           "inputSchema": {
-            "EarnedWages":     { "type": "number", "required": true },
-            "StateCap":        { "type": "number", "required": true },
-            "DaysWorked":      { "type": "number", "required": true },
-            "RequestedAmount": { "type": "number", "required": true }
+            "DaysWorked": {
+              "type": "number",
+              "required": true
+            },
+            "EarnedWages": {
+              "type": "number",
+              "required": true
+            },
+            "RequestedAmount": {
+              "type": "number",
+              "required": true
+            },
+            "StateCap": {
+              "type": "number",
+              "required": true
+            }
           }
         }
       ]
     },
     {
       "name": "ewa-risk",
-      "order": 6,
       "segments": [
         {
           "id": "ewa-risk",
           "strategy": "expression",
           "expressions": [
-            { "name": "Z",            "type": "number", "expression": "w0 + sum(map(Signals, {.weight * .score * exp(-.age_sec / .tau_sec)}))" },
-            { "name": "P",            "type": "number", "expression": "1.0 / (1.0 + exp(-Z))" },
-            { "name": "M",            "type": "number", "expression": "Fee - AchCost" },
-            { "name": "RiskCeiling",  "type": "number", "expression": "(M * (1.0 - P) - AchCost * P) / (P + Lambda * P * (1.0 - P))" },
-            { "name": "NetPayCap",    "type": "number", "expression": "Alpha * NetPay" },
-            { "name": "Offered",      "type": "number", "expression": "max(0.0, min(RiskCeiling, NetPayCap))" },
-            { "name": "BindingLimit", "type": "string", "expression": "RiskCeiling < NetPayCap ? \"risk-ceiling\" : \"net-pay-cap\"" }
+            {
+              "name": "Z",
+              "type": "number",
+              "expression": "w0 + sum(map(Signals, {.weight * .score * exp(-.age_sec / .tau_sec)}))"
+            },
+            {
+              "name": "P",
+              "type": "number",
+              "expression": "1.0 / (1.0 + exp(-Z))"
+            },
+            {
+              "name": "M",
+              "type": "number",
+              "expression": "Fee - AchCost"
+            },
+            {
+              "name": "RiskCeiling",
+              "type": "number",
+              "expression": "(M * (1.0 - P) - AchCost * P) / (P + Lambda * P * (1.0 - P))"
+            },
+            {
+              "name": "NetPayCap",
+              "type": "number",
+              "expression": "Alpha * NetPay"
+            },
+            {
+              "name": "Offered",
+              "type": "number",
+              "expression": "max(0.0, min(RiskCeiling, NetPayCap))"
+            },
+            {
+              "name": "BindingLimit",
+              "type": "string",
+              "expression": "RiskCeiling \u003c NetPayCap ? \"risk-ceiling\" : \"net-pay-cap\""
+            }
           ],
           "rules": [
             {
               "ruleName": "below-minimum",
               "successEvent": "decline",
-              "expression": { "field": "Offered", "operator": "lt", "value": 1 }
+              "expression": {
+                "field": "Offered",
+                "operator": "lt",
+                "value": 1
+              }
             },
             {
               "ruleName": "risk-limited",
               "successEvent": "approve-risk-ceiling",
-              "expression": { "field": "BindingLimit", "operator": "eq", "value": "risk-ceiling" }
+              "expression": {
+                "field": "BindingLimit",
+                "operator": "eq",
+                "value": "risk-ceiling"
+              }
             }
           ],
           "default": "approve-net-pay-cap",
           "inputSchema": {
-            "Signals": { "type": "array",  "required": true },
-            "w0":      { "type": "number", "required": true },
-            "Fee":     { "type": "number", "required": true },
-            "AchCost": { "type": "number", "required": true },
-            "Lambda":  { "type": "number", "required": true },
-            "Alpha":   { "type": "number", "required": true },
-            "NetPay":  { "type": "number", "required": true }
+            "AchCost": {
+              "type": "number",
+              "required": true
+            },
+            "Alpha": {
+              "type": "number",
+              "required": true
+            },
+            "Fee": {
+              "type": "number",
+              "required": true
+            },
+            "Lambda": {
+              "type": "number",
+              "required": true
+            },
+            "NetPay": {
+              "type": "number",
+              "required": true
+            },
+            "Signals": {
+              "type": "array",
+              "required": true
+            },
+            "w0": {
+              "type": "number",
+              "required": true
+            }
           }
         }
       ]
     },
     {
       "name": "transfer-fee",
-      "order": 7,
-      "defaultLanguage": "en",
       "segments": [
         {
           "id": "july4-promo",
           "strategy": "expression",
           "expressions": [
-            { "name": "BaseFee", "type": "number", "expression": "5.0" },
-            { "name": "Fee",     "type": "number", "expression": "4.0" }
+            {
+              "name": "BaseFee",
+              "type": "number",
+              "expression": "5.0"
+            },
+            {
+              "name": "Fee",
+              "type": "number",
+              "expression": "4.0"
+            }
           ],
           "default": "july4-promo",
-          "promotion": {
-            "effective_from": "2026-07-04T00:00:00Z",
-            "effective_until": "2026-07-31T23:59:59Z"
-          },
           "defaultMessages": {
             "en": "Happy 4th of July! Your transfer fee has been reduced from $${BaseFee} to $${Fee}.",
             "es": "¡Feliz 4 de Julio! Su tarifa de transferencia se ha reducido de $${BaseFee} a $${Fee}."
+          },
+          "promotion": {
+            "effective_from": "2026-07-04T00:00:00Z",
+            "effective_until": "2026-07-31T23:59:59Z"
           }
         },
         {
           "id": "standard",
           "strategy": "expression",
           "expressions": [
-            { "name": "Fee", "type": "number", "expression": "5.0" }
+            {
+              "name": "Fee",
+              "type": "number",
+              "expression": "5.0"
+            }
           ],
           "default": "standard",
           "defaultMessages": {
@@ -392,7 +497,297 @@
             "es": "Su tarifa de transferencia estándar es $${Fee}."
           }
         }
+      ],
+      "defaultLanguage": "en"
+    },
+    {
+      "name": "company-identity",
+      "segments": [
+        {
+          "id": "all-types",
+          "strategy": "assert",
+          "rules": [
+            {
+              "ruleName": "companyHasFederalEIN",
+              "errorMessage": "Federal EIN is required before payroll can be configured.",
+              "expression": {
+                "field": "company.ein",
+                "operator": "neq",
+                "value": ""
+              }
+            },
+            {
+              "ruleName": "companyHasRegisteredLegalName",
+              "errorMessage": "Registered legal name is required.",
+              "expression": {
+                "field": "company.legalName",
+                "operator": "neq",
+                "value": ""
+              }
+            },
+            {
+              "ruleName": "precisionPayrollDefaults",
+              "operator": "And",
+              "when": {
+                "ruleName": "isPrecisionCompany",
+                "expression": {
+                  "field": "company.productType",
+                  "operator": "eq",
+                  "value": "Precision"
+                }
+              },
+              "rules": [
+                {
+                  "ruleName": "companyHasDefaultPayRate",
+                  "errorMessage": "A default pay rate is required for Precision companies.",
+                  "expression": {
+                    "field": "company.defaultPayRate",
+                    "operator": "gt",
+                    "value": 0
+                  }
+                }
+              ]
+            }
+          ],
+          "inputSchema": {
+            "company.defaultPayRate": {
+              "type": "number",
+              "required": false
+            },
+            "company.ein": {
+              "type": "string",
+              "required": true
+            },
+            "company.legalName": {
+              "type": "string",
+              "required": true
+            },
+            "company.productType": {
+              "type": "string",
+              "required": false
+            }
+          }
+        }
       ]
+    },
+    {
+      "name": "company-payroll-setup",
+      "dependsOn": [
+        "company-identity"
+      ],
+      "segments": [
+        {
+          "id": "precision",
+          "when": {
+            "ruleName": "isPrecision",
+            "expression": {
+              "field": "company.productType",
+              "operator": "eq",
+              "value": "Precision"
+            }
+          },
+          "strategy": "assert",
+          "expressions": [
+            {
+              "name": "PayPeriodDatesValid",
+              "type": "boolean",
+              "expression": "company.periodEnd != '' \u0026\u0026 company.checkDate \u003e company.periodEnd"
+            }
+          ],
+          "rules": [
+            {
+              "ruleName": "payFrequencySupportedForPrecision",
+              "errorMessage": "Pay frequency ${company.payFrequency} is not supported for Precision. Use biweekly or semimonthly.",
+              "expression": {
+                "field": "company.payFrequency",
+                "operator": "in",
+                "value": [
+                  "biweekly",
+                  "semimonthly"
+                ]
+              }
+            },
+            {
+              "ruleName": "payPeriodDatesFormValidSequence",
+              "errorMessage": "Pay period end must be set, and the check date must fall after it.",
+              "expression": {
+                "field": "PayPeriodDatesValid",
+                "operator": "eq",
+                "value": true
+              }
+            }
+          ],
+          "inputSchema": {
+            "company.anchorDate": {
+              "type": "string",
+              "required": true
+            },
+            "company.checkDate": {
+              "type": "string",
+              "required": true
+            },
+            "company.payFrequency": {
+              "type": "string",
+              "required": true
+            },
+            "company.periodEnd": {
+              "type": "string",
+              "required": true
+            },
+            "company.productType": {
+              "type": "string",
+              "required": true
+            }
+          }
+        },
+        {
+          "id": "express",
+          "when": {
+            "ruleName": "isExpress",
+            "expression": {
+              "field": "company.productType",
+              "operator": "eq",
+              "value": "Express"
+            }
+          },
+          "strategy": "assert",
+          "rules": [
+            {
+              "ruleName": "expressHasFundingAccount",
+              "errorMessage": "A funding account is required for Express.",
+              "expression": {
+                "field": "company.fundingAccount",
+                "operator": "neq",
+                "value": ""
+              }
+            }
+          ],
+          "inputSchema": {
+            "company.fundingAccount": {
+              "type": "string",
+              "required": true
+            },
+            "company.productType": {
+              "type": "string",
+              "required": true
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "employee-readiness",
+      "dependsOn": [
+        "company-payroll-setup"
+      ],
+      "segments": [
+        {
+          "id": "all-employees",
+          "strategy": "assert",
+          "rules": [
+            {
+              "ruleName": "employeeHasHireDate",
+              "errorMessage": "Hire date is required.",
+              "expression": {
+                "field": "employee.hireDate",
+                "operator": "neq",
+                "value": ""
+              }
+            },
+            {
+              "ruleName": "employeeAssignedToPayGroup",
+              "errorMessage": "Employee must be assigned to a pay group.",
+              "expression": {
+                "field": "employee.payGroupId",
+                "operator": "neq",
+                "value": ""
+              }
+            },
+            {
+              "ruleName": "employeeHasAnyContactMethod",
+              "operator": "Or",
+              "errorMessage": "Provide at least one contact method: email or phone.",
+              "rules": [
+                {
+                  "ruleName": "hasContactEmail",
+                  "expression": {
+                    "field": "employee.contactEmail",
+                    "operator": "neq",
+                    "value": ""
+                  }
+                },
+                {
+                  "ruleName": "hasContactPhone",
+                  "expression": {
+                    "field": "employee.contactPhone",
+                    "operator": "neq",
+                    "value": ""
+                  }
+                }
+              ]
+            }
+          ],
+          "inputSchema": {
+            "employee.contactEmail": {
+              "type": "string",
+              "required": true
+            },
+            "employee.contactPhone": {
+              "type": "string",
+              "required": true
+            },
+            "employee.hireDate": {
+              "type": "string",
+              "required": true
+            },
+            "employee.payGroupId": {
+              "type": "string",
+              "required": true
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "CompanyValidation",
+      "segments": [
+        {
+          "id": "BalanceCalculation",
+          "when": {
+            "ruleName": "CompanyTypeFilter",
+            "expression": {
+              "field": "ProductType",
+              "operator": "eq",
+              "value": "Precision"
+            }
+          },
+          "strategy": "assert",
+          "rules": [
+            {
+              "ruleName": "DefaultPayRate",
+              "expression": {
+                "field": "DefaultPayRate",
+                "operator": "gte",
+                "value": 0
+              },
+              "messages": {
+                "en": "Default pay rate is required"
+              }
+            }
+          ],
+          "inputSchema": {
+            "DefaultPayRate": {
+              "type": "number",
+              "required": false
+            },
+            "ProductType": {
+              "type": "string",
+              "required": false
+            }
+          }
+        }
+      ],
+      "defaultLanguage": "en"
     }
   ]
 }

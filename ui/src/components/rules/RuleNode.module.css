@@ -13,6 +13,31 @@
   flex-wrap: wrap;
 }
 
+/* The node itself is not draggable — only this handle is — so the inputs in the
+   header stay selectable. */
+.grip {
+  cursor: grab;
+  user-select: none;
+  color: var(--text-muted);
+  font-size: 14px;
+  line-height: 1;
+  padding: 2px 3px;
+  border-radius: 3px;
+}
+
+.grip:hover {
+  color: var(--text, #111827);
+  background: var(--bg-hover, rgba(0, 0, 0, 0.05));
+}
+
+.grip:active {
+  cursor: grabbing;
+}
+
+.dragging {
+  opacity: 0.4;
+}
+
 .badge {
   font-size: 10px;
   font-weight: 700;
@@ -79,6 +104,15 @@
   padding: 4px 8px;
   width: 130px;
   color: var(--text-muted);
+}
+
+/* Under assert this is the text a person reads when the check fails, so it gets
+   room to write a sentence rather than a label. */
+.message {
+  font-size: 12px;
+  padding: 4px 8px;
+  flex: 1;
+  min-width: 220px;
 }
 
 .toggle {

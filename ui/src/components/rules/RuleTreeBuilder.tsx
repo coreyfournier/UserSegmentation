@@ -1,5 +1,8 @@
+import { useMemo, useRef, useState } from 'react';
 import type { Rule, InputSchema } from '../../api/types';
-import RuleNode from './RuleNode';
+import RuleList from './RuleList';
+import { RuleDragContext, type RuleDragValue } from './RuleDragContext';
+import { moveRule, type RulePath } from './ruleTree';
 import styles from './RuleTreeBuilder.module.css';
 
 interface Props {
@@ -8,65 +11,92 @@ interface Props {
   schema?: InputSchema;
   layerNames?: string[];
   label?: string;
+  /** Replaces the default evaluation-order caption. */
+  hint?: string;
+  /** Hides the add buttons once this many root rules exist. */
+  maxRules?: number;
+  /** Set false inside a condition, so conditions do not nest without end. */
+  showPredicates?: boolean;
+  /** True when every rule reports its own message (assert), not just the winner. */
+  perRuleMessages?: boolean;
 }
 
-export default function RuleTreeBuilder({ rules, onChange, schema, layerNames, label = 'Rules' }: Props) {
-  const updateRule = (idx: number, rule: Rule) => {
-    const next = [...rules];
-    next[idx] = rule;
-    onChange(next);
-  };
+export default function RuleTreeBuilder({
+  rules,
+  onChange,
+  schema,
+  layerNames,
+  label = 'Rules',
+  hint,
+  maxRules,
+  showPredicates = true,
+  perRuleMessages = false,
+}: Props) {
+  const [dragPath, setDragPath] = useState<RulePath | null>(null);
+  // The source is also held in a ref because a drop can arrive before React
+  // re-renders with the new state. State drives the highlight; the ref is what
+  // the drop handler reads.
+  const dragSource = useRef<RulePath | null>(null);
 
-  const deleteRule = (idx: number) => {
-    const next = [...rules];
-    next.splice(idx, 1);
-    onChange(next);
-  };
-
-  // Rules are evaluated top to bottom, so array position determines priority.
-  const moveRule = (idx: number, dir: -1 | 1) => {
-    const target = idx + dir;
-    if (target < 0 || target >= rules.length) return;
-    const next = [...rules];
-    [next[idx], next[target]] = [next[target], next[idx]];
-    onChange(next);
-  };
+  // Each tree owns its own drag state, so a rule cannot be dragged from the
+  // rules list into the overrides list — they are separate concerns.
+  const drag = useMemo<RuleDragValue>(
+    () => ({
+      dragPath,
+      rootRules: rules,
+      beginDrag: (path) => {
+        dragSource.current = path;
+        setDragPath(path);
+      },
+      endDrag: () => {
+        dragSource.current = null;
+        setDragPath(null);
+      },
+      dropAt: (to) => {
+        const from = dragSource.current;
+        dragSource.current = null;
+        setDragPath(null);
+        if (from) onChange(moveRule(rules, from, to));
+      },
+    }),
+    [dragPath, rules, onChange]
+  );
 
   const addTopLevel = () => {
-    onChange([
-      ...rules,
-      { ruleName: '', operator: 'And', successEvent: '', rules: [] },
-    ]);
+    onChange([...rules, { ruleName: '', operator: 'And', successEvent: '', rules: [] }]);
   };
 
   const addLeaf = () => {
-    onChange([
-      ...rules,
-      { ruleName: '', expression: { field: '', operator: 'eq', value: '' } },
-    ]);
+    onChange([...rules, { ruleName: '', expression: { field: '', operator: 'eq', value: '' } }]);
   };
+
+  const atCapacity = maxRules !== undefined && rules.length >= maxRules;
 
   return (
     <div className={styles.builder}>
-      <label>{label}</label>
-      <p className={styles.orderHint}>Evaluated top to bottom — the first matching rule wins.</p>
-      {rules.map((rule, i) => (
-        <RuleNode
-          key={i}
-          rule={rule}
-          onChange={(r) => updateRule(i, r)}
-          onDelete={() => deleteRule(i)}
-          index={i}
-          total={rules.length}
-          onMove={(dir) => moveRule(i, dir)}
+      {label && <label>{label}</label>}
+      <p className={styles.orderHint}>
+        {hint ??
+          'Evaluated top to bottom — the first matching rule wins. Drag the ⠿ handle to move a rule into a group, out of one, or across to another.'}
+      </p>
+      <RuleDragContext.Provider value={drag}>
+        <RuleList
+          rules={rules}
+          onChange={onChange}
+          parentPath={[]}
+          depth={0}
           schema={schema}
           layerNames={layerNames}
+          showPredicates={showPredicates}
+          perRuleMessages={perRuleMessages}
         />
-      ))}
-      <div className={styles.addButtons}>
-        <button className="btn-ghost btn-sm" onClick={addTopLevel}>+ Add Group</button>
-        <button className="btn-ghost btn-sm" onClick={addLeaf}>+ Add Expression</button>
-      </div>
+      </RuleDragContext.Provider>
+      {!atCapacity && (
+        <div className={styles.addButtons}>
+          <button className="btn-ghost btn-sm" onClick={addTopLevel}>+ Add Group</button>
+          <button className="btn-ghost btn-sm" onClick={addLeaf}>+ Add Expression</button>
+        </div>
+      )}
     </div>
   );
 }

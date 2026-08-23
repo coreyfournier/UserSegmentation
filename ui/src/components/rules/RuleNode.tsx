@@ -1,12 +1,19 @@
+import { useRef } from 'react';
 import type { Rule, InputSchema, CompositeOperator } from '../../api/types';
 import ExpressionEditor from './ExpressionEditor';
 import MessagesEditor from './MessagesEditor';
+import PredicateEditor from './PredicateEditor';
+import RuleList from './RuleList';
+import { useRuleDrag } from './RuleDragContext';
+import { describeRule, samePath, type RulePath } from './ruleTree';
 import styles from './RuleNode.module.css';
 
 const DEPTH_COLORS = ['#3b82f6', '#22c55e', '#f97316', '#8b5cf6', '#ec4899'];
 
 interface Props {
   rule: Rule;
+  /** This node's address in the tree, used to move it anywhere. */
+  path: RulePath;
   onChange: (r: Rule) => void;
   onDelete: () => void;
   index?: number;
@@ -15,32 +22,19 @@ interface Props {
   depth?: number;
   schema?: InputSchema;
   layerNames?: string[];
+  /** Whether this rule may carry its own applicability condition. */
+  showPredicates?: boolean;
+  /** True when every rule reports its own message (assert), not just the winner. */
+  perRuleMessages?: boolean;
 }
 
-export default function RuleNode({ rule, onChange, onDelete, index, total, onMove, depth = 0, schema, layerNames }: Props) {
+export default function RuleNode({ rule, path, onChange, onDelete, index, total, onMove, depth = 0, schema, layerNames, showPredicates = true, perRuleMessages = false }: Props) {
   const color = DEPTH_COLORS[depth % DEPTH_COLORS.length];
   const isLeaf = !!rule.expression;
 
-  const updateChild = (idx: number, child: Rule) => {
-    const rules = [...(rule.rules ?? [])];
-    rules[idx] = child;
-    onChange({ ...rule, rules });
-  };
-
-  const deleteChild = (idx: number) => {
-    const rules = [...(rule.rules ?? [])];
-    rules.splice(idx, 1);
-    onChange({ ...rule, rules });
-  };
-
-  // Children evaluate in array order (short-circuit), so position matters.
-  const moveChild = (idx: number, dir: -1 | 1) => {
-    const rules = [...(rule.rules ?? [])];
-    const target = idx + dir;
-    if (target < 0 || target >= rules.length) return;
-    [rules[idx], rules[target]] = [rules[target], rules[idx]];
-    onChange({ ...rule, rules });
-  };
+  const { dragPath, beginDrag, endDrag } = useRuleDrag();
+  const nodeRef = useRef<HTMLDivElement>(null);
+  const isDragging = dragPath !== null && samePath(dragPath, path);
 
   const addLeaf = () => {
     onChange({
@@ -73,8 +67,32 @@ export default function RuleNode({ rule, onChange, onDelete, index, total, onMov
       : 'All must pass — evaluated in order, stops at the first failure.';
 
   return (
-    <div className={styles.node} style={{ borderLeftColor: color }}>
+    <div
+      ref={nodeRef}
+      className={`${styles.node} ${isDragging ? styles.dragging : ''}`}
+      style={{ borderLeftColor: color }}
+    >
       <div className={styles.header}>
+        {/* Only the grip is draggable, so the inputs stay selectable. The drag
+            image is the whole node, so what you see moving is what will move. */}
+        <span
+          className={styles.grip}
+          draggable
+          role="button"
+          tabIndex={-1}
+          aria-label={`Drag ${describeRule(rule)} to move it into or out of a group`}
+          title="Drag to move — into a group, out of one, or across to another"
+          onDragStart={(e) => {
+            e.dataTransfer.effectAllowed = 'move';
+            // Firefox will not start a drag unless some data is set.
+            e.dataTransfer.setData('text/plain', describeRule(rule));
+            if (nodeRef.current) e.dataTransfer.setDragImage(nodeRef.current, 12, 12);
+            beginDrag(path);
+          }}
+          onDragEnd={endDrag}
+        >
+          ⠿
+        </span>
         {index !== undefined && (
           <span className={styles.position} title="Evaluation order">{index + 1}</span>
         )}
@@ -119,21 +137,31 @@ export default function RuleNode({ rule, onChange, onDelete, index, total, onMov
           onChange={(e) => onChange({ ...rule, ruleName: e.target.value })}
           placeholder="rule name"
         />
-        {!isLeaf && (
-          <>
-            <input
-              className={styles.small}
-              value={rule.successEvent ?? ''}
-              onChange={(e) => onChange({ ...rule, successEvent: e.target.value || undefined })}
-              placeholder="successEvent"
-            />
-            <input
-              className={styles.small}
-              value={rule.errorMessage ?? ''}
-              onChange={(e) => onChange({ ...rule, errorMessage: e.target.value || undefined })}
-              placeholder="errorMessage"
-            />
-          </>
+        {/* An assert segment resolves no segment value, so successEvent is dead
+            config there. */}
+        {!isLeaf && !perRuleMessages && (
+          <input
+            className={styles.small}
+            value={rule.successEvent ?? ''}
+            onChange={(e) => onChange({ ...rule, successEvent: e.target.value || undefined })}
+            placeholder="successEvent"
+          />
+        )}
+        {/* errorMessage is the text reported with an assert failure, so under
+            assert every rule needs it — including leaves, which are the common
+            case. Elsewhere it stays where it has always been. */}
+        {(perRuleMessages || !isLeaf) && (
+          <input
+            className={perRuleMessages ? styles.message : styles.small}
+            value={rule.errorMessage ?? ''}
+            onChange={(e) => onChange({ ...rule, errorMessage: e.target.value || undefined })}
+            placeholder={perRuleMessages ? 'failure message' : 'errorMessage'}
+            title={
+              perRuleMessages
+                ? 'errorMessage — reported when this assertion does not hold. Supports ${field} interpolation.'
+                : 'errorMessage'
+            }
+          />
         )}
         <label className={styles.toggle}>
           <input
@@ -158,10 +186,26 @@ export default function RuleNode({ rule, onChange, onDelete, index, total, onMov
         </div>
       )}
 
-      {/* Messages are only rendered for top-level rules (the one whose successEvent
-          wins). Nested child rules are boolean conditions — their messages are never
-          read — so the editor is hidden there. */}
-      {depth === 0 && (
+      {/* One condition can govern this rule and everything under it, so a block
+          of checks does not need the same test repeated on every member. */}
+      {showPredicates && (
+        <PredicateEditor
+          value={rule.when}
+          onChange={(when) => onChange({ ...rule, when })}
+          schema={schema}
+          layerNames={layerNames}
+          hint={
+            isLeaf
+              ? 'This check runs only when the condition holds. Otherwise it is skipped entirely — it neither passes nor fails.'
+              : 'This group and every check inside it run only when the condition holds. Otherwise the whole block is skipped — no failures are reported for it.'
+          }
+        />
+      )}
+
+      {/* Under first-match strategies only the winning top-level rule's message
+          is ever rendered, so nested editors would be dead config. Assert is the
+          opposite: every failing rule is itemised with its own message. */}
+      {(depth === 0 || perRuleMessages) && (
         <MessagesEditor
           value={rule.messages}
           onChange={(m) => onChange({ ...rule, messages: m })}
@@ -172,20 +216,16 @@ export default function RuleNode({ rule, onChange, onDelete, index, total, onMov
       {!isLeaf && (
         <div className={styles.children}>
           {childCount > 1 && <p className={styles.orderHint}>{groupHint}</p>}
-          {(rule.rules ?? []).map((child, i) => (
-            <RuleNode
-              key={i}
-              rule={child}
-              onChange={(r) => updateChild(i, r)}
-              onDelete={() => deleteChild(i)}
-              index={i}
-              total={childCount}
-              onMove={(dir) => moveChild(i, dir)}
-              depth={depth + 1}
-              schema={schema}
-              layerNames={layerNames}
-            />
-          ))}
+          <RuleList
+            rules={rule.rules ?? []}
+            onChange={(rules) => onChange({ ...rule, rules })}
+            parentPath={path}
+            depth={depth + 1}
+            schema={schema}
+            layerNames={layerNames}
+            showPredicates={showPredicates}
+            perRuleMessages={perRuleMessages}
+          />
           <div className={styles.addButtons}>
             <button className="btn-ghost btn-sm" onClick={addLeaf}>+ Add Expression</button>
             <button className="btn-ghost btn-sm" onClick={addGroup}>+ Add Group</button>

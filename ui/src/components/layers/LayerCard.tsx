@@ -21,8 +21,12 @@ export default function LayerCard({ layer, onEdit, onDelete, onAddSegment }: Pro
   return (
     <div className={`card ${styles.card}`}>
       <div className={styles.header} onClick={() => setExpanded(!expanded)}>
-        <span className={styles.order}>[{layer.order}]</span>
         <span className={styles.name}>{layer.name}</span>
+        {layer.dependsOn && layer.dependsOn.length > 0 && (
+          <span className={styles.order} title="Runs after these layers resolve">
+            after {layer.dependsOn.join(', ')}
+          </span>
+        )}
         <span className={styles.count}>{layer.segments.length} segment(s)</span>
         <div className={styles.actions} onClick={(e) => e.stopPropagation()}>
           <button className="btn-ghost btn-sm" onClick={onEdit}>edit</button>

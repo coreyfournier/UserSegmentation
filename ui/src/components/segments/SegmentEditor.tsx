@@ -10,6 +10,7 @@ import ExpressionConfig from './ExpressionConfig';
 import RuleConfig from './RuleConfig';
 import RuleTreeBuilder from '../rules/RuleTreeBuilder';
 import MessagesEditor from '../rules/MessagesEditor';
+import PredicateEditor from '../rules/PredicateEditor';
 import PromotionEditor from '../promotion/PromotionEditor';
 import InputSchemaEditor from '../schema/InputSchemaEditor';
 import ErrorBanner from '../common/ErrorBanner';
@@ -23,7 +24,9 @@ export default function SegmentEditor() {
 
   const layer = layers?.find((l) => l.name === layerName);
   const original = layer?.segments.find((s) => s.id === segId);
-  const layerNames = layers?.map((l) => l.name) ?? [];
+  // A rule may only reference layers this one declares a dependency on, so the
+  // picker offers exactly those — the UI cannot build a config validation rejects.
+  const layerNames = layer?.dependsOn ?? [];
 
   const [seg, setSeg] = useState<Segment | null>(null);
   const segRef = useRef(seg);
@@ -53,14 +56,21 @@ export default function SegmentEditor() {
         next.rules = prev.rules ?? [];
         next.default = prev.default ?? '';
       }
+      if (strategy === 'assert') {
+        // No default: every rule is an assertion that must hold, so there is no
+        // "nothing matched" outcome to fall back to.
+        next.expressions = prev.expressions ?? [];
+        next.rules = prev.rules ?? [];
+      }
       return { ...prev, ...next };
     });
   };
 
-  // For expression strategy, merge inputSchema with expression-defined fields so rules
-  // can reference computed fields in the field autocomplete.
+  // Expression and assert both compute fields before rules run, so merge them
+  // into the schema used for the rule field autocomplete.
   const effectiveSchema = (s: Segment): InputSchema | undefined => {
-    if (s.strategy !== 'expression' || !s.expressions?.length) return s.inputSchema;
+    const computes = s.strategy === 'expression' || s.strategy === 'assert';
+    if (!computes || !s.expressions?.length) return s.inputSchema;
     const merged: InputSchema = { ...s.inputSchema };
     for (const def of s.expressions) {
       if (def.name) merged[def.name] = { type: def.type, required: false };
@@ -108,6 +118,23 @@ export default function SegmentEditor() {
         <InputSchemaEditor
           value={seg.inputSchema}
           onChange={(s) => update({ inputSchema: s })}
+        />
+      </section>
+
+      {/* Applicability — after the schema, because the condition picks its
+          fields from it and would otherwise offer nothing to choose. */}
+      <section className={`card ${styles.section}`}>
+        <h3>Applies When</h3>
+        <PredicateEditor
+          value={seg.when}
+          onChange={(when) => update({ when })}
+          schema={seg.inputSchema}
+          layerNames={layerNames}
+          hint={
+            'Dispatch condition for the whole segment, tested against the fields declared ' +
+            'above. When it does not hold the segment is passed over entirely and the next ' +
+            'one in the layer is tried — this is how one layer holds a variant per entity type.'
+          }
         />
       </section>
 
@@ -159,10 +186,54 @@ export default function SegmentEditor() {
             }
           />
         )}
+        {seg.strategy === 'assert' && (
+          <div>
+            <p style={{ fontSize: 12, color: 'var(--text-muted)', margin: '0 0 16px' }}>
+              Every assertion below must hold. The whole tree is evaluated — each one
+              that fails is itemised, so the person fixing them sees all the problems at
+              once. A failing <code>Or</code> reports itself rather than each branch.
+              There is no default and no overrides: an assert segment has no
+              &ldquo;nothing matched&rdquo; outcome.
+            </p>
+
+            <div className="form-group">
+              <label>Expressions</label>
+              <ExpressionConfig
+                value={seg.expressions ?? []}
+                onChange={(e) => update({ expressions: e })}
+              />
+              <p style={{ fontSize: 11, color: 'var(--text-muted)', margin: '4px 0 0' }}>
+                Computed fields are available to the assertions and to their messages.
+                If one fails at runtime the whole gate reports <code>unevaluable</code>
+                {' '}rather than reporting its dependent assertions as violations.
+              </p>
+            </div>
+
+            <div style={{ marginTop: 24 }}>
+              <RuleTreeBuilder
+                rules={seg.rules ?? []}
+                onChange={(r) => update({ rules: r })}
+                schema={effectiveSchema(seg)}
+                layerNames={layerNames}
+                label="Assertions"
+                perRuleMessages
+                hint={
+                  'Every assertion must hold. Drag the handle to move one into a group, out ' +
+                  'of one, or across to another. Give a group an "Only when" condition to ' +
+                  'gate a whole block of checks on one test.'
+                }
+              />
+              <p style={{ fontSize: 11, color: 'var(--text-muted)', fontStyle: 'italic', margin: '4px 0 0' }}>
+                Each rule name is the stable identifier reported with its failure, so make
+                it descriptive and avoid renaming it once anything depends on it.
+              </p>
+            </div>
+          </div>
+        )}
       </section>
 
-      {/* Overrides for non-rule/non-expression strategies */}
-      {seg.strategy !== 'rule' && seg.strategy !== 'expression' && (
+      {/* Overrides for strategies whose config section does not already include them */}
+      {seg.strategy !== 'rule' && seg.strategy !== 'expression' && seg.strategy !== 'assert' && (
         <section className={`card ${styles.section}`}>
           <h3>Overrides</h3>
           <RuleTreeBuilder

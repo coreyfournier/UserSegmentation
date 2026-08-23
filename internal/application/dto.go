@@ -20,13 +20,28 @@ type EvaluateResponse struct {
 	DurationUS  int64                     `json:"duration_us"`
 }
 
-// LayerResultDTO is a single layer's assignment in the response.
+// LayerResultDTO is a single layer's outcome in the response.
+//
+// Status is authoritative: a consumer never needs to inspect the length of
+// Failures to learn whether anything is wrong. Assert layers report
+// satisfied/violated/unevaluable; every other strategy reports
+// resolved/unresolved/skipped.
 type LayerResultDTO struct {
-	Segment     string                 `json:"segment"`
-	Strategy    string                 `json:"strategy"`
-	Reason      string                 `json:"reason"`
+	Status      string                 `json:"status"`
+	Segment     string                 `json:"segment,omitempty"`
+	Strategy    string                 `json:"strategy,omitempty"`
+	Reason      string                 `json:"reason,omitempty"`
 	Expressions map[string]interface{} `json:"expressions,omitempty"`
 	Messages    map[string]string      `json:"messages,omitempty"`
+	Failures    []FailureDTO           `json:"failures,omitempty"`
+}
+
+// FailureDTO is one itemised problem from an assert layer. The rule name is the
+// stable identifier; the message states the problem.
+type FailureDTO struct {
+	Rule     string            `json:"rule"`
+	Message  string            `json:"message,omitempty"`
+	Messages map[string]string `json:"messages,omitempty"`
 }
 
 // WarningDTO represents a validation warning.
