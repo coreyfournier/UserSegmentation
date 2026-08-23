@@ -97,7 +97,7 @@ async function main() {
   await page.screenshot({ path: join(SHOTS, 'expression-help-panel.png') });
 
   // ── 4. Assert gates: satisfied → violated → unevaluable ─────────────────────
-  console.log('Screenshotting assert gate results…');
+  console.log('Screenshotting checklist gate results…');
   await evaluate({
     subject: 'company-precision-01',
     layers: ['company-identity', 'company-payroll-setup', 'employee-readiness'],
@@ -114,15 +114,15 @@ async function main() {
       employee: { hireDate: '2026-03-01', payGroupId: '', contactEmail: '', contactPhone: '' },
     },
   });
-  await page.screenshot({ path: join(SHOTS, 'assert-gate-results.png') });
+  await page.screenshot({ path: join(SHOTS, 'checklist-gate-results.png') });
 
   // ── 5. Assert segment editor ────────────────────────────────────────────────
-  console.log('Screenshotting the assert segment editor…');
+  console.log('Screenshotting the checklist segment editor…');
   await page.goto(`${BASE}/layers/company-payroll-setup/segments/precision`);
   await page.waitForLoadState('networkidle');
   await page.waitForSelector('[class*="editor"]', { timeout: 10_000 });
   await page.waitForTimeout(500);
-  await page.screenshot({ path: join(SHOTS, 'assert-segment-editor.png'), fullPage: true });
+  await page.screenshot({ path: join(SHOTS, 'checklist-segment-editor.png'), fullPage: true });
 
   // ── 6. Layers page, ordered by dependency ───────────────────────────────────
   console.log('Screenshotting the layers page…');

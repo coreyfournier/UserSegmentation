@@ -12,10 +12,9 @@ type EvalContext struct {
 	DefaultLanguage string
 	// Lookups maps lookup table id to table, for in_lookup / not_in_lookup operators.
 	Lookups map[string]model.LookupTable
-	// CollectFailures inverts rule evaluation: every rule becomes an assertion
-	// that must hold, the whole tree is walked without short-circuiting, and
-	// each assertion that does not hold is itemised. Set internally by
-	// AssertStrategy — it is not a config field.
+	// CollectFailures reports every rule that matches instead of stopping at
+	// the first. A rule still fires on a match; only what happens then differs.
+	// Set internally by ChecklistStrategy — it is not a config field.
 	CollectFailures bool
 }
 
@@ -28,7 +27,7 @@ type Result struct {
 	RenderErrors []RenderError
 	// Failures is populated only in collect mode.
 	Failures []model.Failure
-	// Status is set by AssertStrategy; other strategies leave it empty and the
+	// Status is set by ChecklistStrategy; other strategies leave it empty and the
 	// evaluator supplies the neutral resolution vocabulary.
 	Status model.LayerStatus
 }

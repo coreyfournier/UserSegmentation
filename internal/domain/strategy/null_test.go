@@ -122,32 +122,26 @@ func TestNullOperators_TypeSupport(t *testing.T) {
 	}
 }
 
-// The operators are valid in a gating predicate, which is the main reason to
-// want them: only check a block when a value has not been supplied.
-func TestNullOperators_InWhenPredicate(t *testing.T) {
+// The presence operators are the natural way to state a checklist condition:
+// the problem is that the value is not there.
+func TestNullOperators_AsChecklistConditions(t *testing.T) {
 	seg := &model.Segment{
 		ID:       "company",
-		Strategy: model.StrategyAssert,
+		Strategy: model.StrategyChecklist,
 		Rules: []model.Rule{{
-			RuleName:     "needsPayRateWhenNoneOnFile",
-			ErrorMessage: "A default pay rate is required when none is on file.",
-			When: &model.Rule{
-				RuleName:   "noPayRateOnFile",
-				Expression: &model.Expression{Field: "payRateOnFile", Operator: model.OpIsNullOrEmpty},
-			},
-			Expression: &model.Expression{Field: "defaultPayRate", Operator: model.OpGt, Value: 0},
+			RuleName:     "contactEmailMissing",
+			ErrorMessage: "Contact email is required for deduction emails.",
+			Expression:   &model.Expression{Field: "EmailContact", Operator: model.OpIsNullOrEmpty},
 		}},
 	}
 
-	// Nothing on file, and no default supplied: reported.
-	missing, _ := (&AssertStrategy{}).Evaluate(seg, assertCtx(map[string]interface{}{"payRateOnFile": ""}))
-	if got := failureNames(missing); len(got) != 1 || got[0] != "needsPayRateWhenNoneOnFile" {
-		t.Errorf("expected the gated check to run, got %v", got)
+	fire, _ := (&ChecklistStrategy{}).Evaluate(seg, checkCtx(map[string]interface{}{"EmailContact": ""}))
+	if fire.Status != model.StatusViolated {
+		t.Errorf("an empty contact email should fire, got %q", fire.Status)
 	}
 
-	// A rate is on file, so the check does not apply at all.
-	onFile, _ := (&AssertStrategy{}).Evaluate(seg, assertCtx(map[string]interface{}{"payRateOnFile": "22.50"}))
-	if onFile.Status != model.StatusSatisfied {
-		t.Errorf("expected satisfied, got %q %v", onFile.Status, failureNames(onFile))
+	quiet, _ := (&ChecklistStrategy{}).Evaluate(seg, checkCtx(map[string]interface{}{"EmailContact": "a@b.com"}))
+	if quiet.Status != model.StatusSatisfied {
+		t.Errorf("a supplied contact email should not fire, got %q", quiet.Status)
 	}
 }

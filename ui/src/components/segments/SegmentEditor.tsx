@@ -56,8 +56,8 @@ export default function SegmentEditor() {
         next.rules = prev.rules ?? [];
         next.default = prev.default ?? '';
       }
-      if (strategy === 'assert') {
-        // No default: every rule is an assertion that must hold, so there is no
+      if (strategy === 'checklist') {
+        // No default: every rule is a check that fires or does not, so there is no
         // "nothing matched" outcome to fall back to.
         next.expressions = prev.expressions ?? [];
         next.rules = prev.rules ?? [];
@@ -66,10 +66,10 @@ export default function SegmentEditor() {
     });
   };
 
-  // Expression and assert both compute fields before rules run, so merge them
+  // Expression and checklist both compute fields before rules run, so merge them
   // into the schema used for the rule field autocomplete.
   const effectiveSchema = (s: Segment): InputSchema | undefined => {
-    const computes = s.strategy === 'expression' || s.strategy === 'assert';
+    const computes = s.strategy === 'expression' || s.strategy === 'checklist';
     if (!computes || !s.expressions?.length) return s.inputSchema;
     const merged: InputSchema = { ...s.inputSchema };
     for (const def of s.expressions) {
@@ -186,13 +186,13 @@ export default function SegmentEditor() {
             }
           />
         )}
-        {seg.strategy === 'assert' && (
+        {seg.strategy === 'checklist' && (
           <div>
             <p style={{ fontSize: 12, color: 'var(--text-muted)', margin: '0 0 16px' }}>
-              Every assertion below must hold. The whole tree is evaluated — each one
-              that fails is itemised, so the person fixing them sees all the problems at
-              once. A failing <code>Or</code> reports itself rather than each branch.
-              There is no default and no overrides: an assert segment has no
+              Every check runs and each one that fires is reported, so the person fixing
+              them sees all the problems at once. A check states the condition for a
+              problem — it fires when that condition holds.
+              There is no default and no overrides: a checklist has no
               &ldquo;nothing matched&rdquo; outcome.
             </p>
 
@@ -203,9 +203,9 @@ export default function SegmentEditor() {
                 onChange={(e) => update({ expressions: e })}
               />
               <p style={{ fontSize: 11, color: 'var(--text-muted)', margin: '4px 0 0' }}>
-                Computed fields are available to the assertions and to their messages.
-                If one fails at runtime the whole gate reports <code>unevaluable</code>
-                {' '}rather than reporting its dependent assertions as violations.
+                Computed fields are available to the checks and to their messages.
+                If one fails at runtime the whole list reports <code>unevaluable</code>
+                {' '}rather than reporting the checks that consumed it as real problems.
               </p>
             </div>
 
@@ -215,12 +215,12 @@ export default function SegmentEditor() {
                 onChange={(r) => update({ rules: r })}
                 schema={effectiveSchema(seg)}
                 layerNames={layerNames}
-                label="Assertions"
+                label="Checks"
                 perRuleMessages
                 hint={
-                  'Every assertion must hold. Drag the handle to move one into a group, out ' +
-                  'of one, or across to another. Give a group an "Only when" condition to ' +
-                  'gate a whole block of checks on one test.'
+                  'Each check states a condition that describes a problem; when it holds, its ' +
+                  'message is reported. Drag the handle to reorder or regroup. And/Or build ' +
+                  'one check’s condition — a group reports once, with its own message.'
                 }
               />
               <p style={{ fontSize: 11, color: 'var(--text-muted)', fontStyle: 'italic', margin: '4px 0 0' }}>
@@ -233,7 +233,7 @@ export default function SegmentEditor() {
       </section>
 
       {/* Overrides for strategies whose config section does not already include them */}
-      {seg.strategy !== 'rule' && seg.strategy !== 'expression' && seg.strategy !== 'assert' && (
+      {seg.strategy !== 'rule' && seg.strategy !== 'expression' && seg.strategy !== 'checklist' && (
         <section className={`card ${styles.section}`}>
           <h3>Overrides</h3>
           <RuleTreeBuilder

@@ -42,7 +42,7 @@ func main() {
 		"rule":       &strategy.RuleStrategy{},
 		"percentage": &strategy.PercentageStrategy{Hasher: hasher},
 		"expression": &strategy.ExpressionStrategy{},
-		"assert":     &strategy.AssertStrategy{},
+		"checklist":  &strategy.ChecklistStrategy{},
 	}
 	evaluator := engine.NewEvaluator(strategies)
 

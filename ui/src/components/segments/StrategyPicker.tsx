@@ -11,7 +11,7 @@ export const STRATEGY_OPTIONS: { value: StrategyType; label: string }[] = [
   { value: 'rule', label: 'Rule' },
   { value: 'percentage', label: 'Percentage' },
   { value: 'expression', label: 'Expression' },
-  { value: 'assert', label: 'Assert' },
+  { value: 'checklist', label: 'Checklist' },
 ];
 
 export default function StrategyPicker({ value, onChange }: Props) {

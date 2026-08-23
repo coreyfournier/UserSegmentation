@@ -294,7 +294,7 @@ func dependencyClosure(layers []model.Layer, requested []string) map[string]stru
 }
 
 // blockedBy reports the first dependency that did not resolve successfully.
-// A dependency succeeds when an assert layer is satisfied, or any other layer
+// A dependency succeeds when a checklist layer is satisfied, or any other layer
 // produced an assignment. Anything else — violated, unevaluable, unresolved,
 // skipped — blocks, so a gate never runs against state an earlier gate failed
 // to establish.
@@ -310,28 +310,38 @@ func blockedBy(layer *model.Layer, statuses map[string]model.LayerStatus) (strin
 	return "", false
 }
 
-// isAssertLayer reports whether a layer speaks the assertion vocabulary. It is
-// determined from config alone so a skipped layer still reports the right
+// isChecklistLayer reports whether a layer speaks the checklist vocabulary. It
+// is determined from config alone so a skipped layer still reports the right
 // status without being evaluated.
-func isAssertLayer(layer *model.Layer) bool {
+func isChecklistLayer(layer *model.Layer) bool {
 	for i := range layer.Segments {
-		if layer.Segments[i].Strategy == model.StrategyAssert {
+		if layer.Segments[i].Strategy == model.StrategyChecklist {
 			return true
 		}
 	}
 	return false
 }
 
+// skippedStatus is for a layer that never ran because a dependency did not
+// resolve. Its outcome is genuinely unknown, so it blocks readiness.
 func skippedStatus(layer *model.Layer) model.LayerStatus {
-	if isAssertLayer(layer) {
+	if isChecklistLayer(layer) {
 		return model.StatusUnevaluable
 	}
 	return model.StatusSkipped
 }
 
+// unresolvedStatus is for a layer that ran but matched no segment — every
+// segment's Applies When excluded this subject, or their promotion windows are
+// closed.
+//
+// For a checklist that is satisfied, not unevaluable: no check applied, so no
+// problem was found. Reporting unevaluable would block readiness for every
+// subject a conditional layer simply does not cover, which is indistinguishable
+// from a gate that could not be judged.
 func unresolvedStatus(layer *model.Layer) model.LayerStatus {
-	if isAssertLayer(layer) {
-		return model.StatusUnevaluable
+	if isChecklistLayer(layer) {
+		return model.StatusSatisfied
 	}
 	return model.StatusUnresolved
 }

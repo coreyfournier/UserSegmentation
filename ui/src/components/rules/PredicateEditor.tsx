@@ -18,6 +18,9 @@ interface Props {
  * The condition is a rule tree in its own right, so it reuses the same builder
  * and can itself be an And/Or of several tests. It is capped at one root rule
  * because a condition is a single question, not a first-match list.
+ *
+ * This lives on a segment only. Gating a block of checks is done structurally —
+ * put them in their own segment or layer — rather than per rule.
  */
 export default function PredicateEditor({ value, onChange, schema, layerNames, hint }: Props) {
   const [open, setOpen] = useState(!!value);
@@ -40,7 +43,6 @@ export default function PredicateEditor({ value, onChange, schema, layerNames, h
               label=""
               hint="Delete the condition to make this apply unconditionally."
               maxRules={1}
-              showPredicates={false}
             />
           ) : (
             <button

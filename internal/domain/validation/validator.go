@@ -26,10 +26,18 @@ func ValidateSnapshot(snap *model.Snapshot) error {
 		}
 
 		for _, seg := range layer.Segments {
-			// Validate expression syntax. Assert carries expressions too, so it
-			// must be included — otherwise an assert segment loses compile-time
-			// checking and a config typo becomes a runtime unevaluable.
-			if seg.Strategy == model.StrategyExpression || seg.Strategy == model.StrategyAssert {
+			// An unknown strategy is silently skipped by the evaluator, so the
+			// segment would just never produce anything. Reject it at load.
+			if !model.IsKnownStrategy(seg.Strategy) {
+				errs = append(errs, fmt.Sprintf("segment %q: unknown strategy %q (expected one of %s)",
+					seg.ID, seg.Strategy, strings.Join(model.KnownStrategies, ", ")))
+			}
+
+			// Validate expression syntax. Checklist carries expressions too, so
+			// it must be included — otherwise a checklist segment loses
+			// compile-time checking and a config typo becomes a runtime
+			// unevaluable.
+			if seg.Strategy == model.StrategyExpression || seg.Strategy == model.StrategyChecklist {
 				for _, def := range seg.Expressions {
 					if _, err := expr.Compile(def.Expression); err != nil {
 						errs = append(errs, fmt.Sprintf("segment %q expression %q: %v", seg.ID, def.Name, err))
@@ -93,14 +101,6 @@ type ruleContext struct {
 
 func validateRuleTree(r *model.Rule, vc ruleContext) []string {
 	var errs []string
-
-	// A When predicate is a rule tree in its own right and is held to the same
-	// schema, so a typo in a gating condition fails at load rather than silently
-	// switching a whole block of checks off.
-	if r.When != nil {
-		errs = append(errs, validateRuleTree(r.When, vc)...)
-	}
-
 	if r.IsLeaf() {
 		field := r.Expression.Field
 

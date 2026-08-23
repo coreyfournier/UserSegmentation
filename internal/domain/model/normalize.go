@@ -4,12 +4,12 @@ package model
 // rendered, keeping persisted config free of dead configuration.
 //
 // For first-match strategies only the top-level rule wins, so messages on its
-// descendants are dead. Assert segments are the exception: every failing rule is
+// descendants are dead. Checklists are the exception: every rule that fires is
 // itemised with its own message, so nested messages there are live config and
 // must be preserved.
 //
-// When predicates are stripped everywhere — a predicate decides applicability
-// and is never itself reported.
+// A segment's Applies When predicate is stripped everywhere — it decides
+// applicability and is never itself reported.
 func (s *Snapshot) StripNestedMessages() {
 	if s == nil {
 		return
@@ -18,14 +18,11 @@ func (s *Snapshot) StripNestedMessages() {
 		for si := range s.Layers[li].Segments {
 			seg := &s.Layers[li].Segments[si]
 
-			if seg.Strategy != StrategyAssert {
+			if seg.Strategy != StrategyChecklist {
 				stripDescendantMessages(seg.Rules)
 			}
 			stripDescendantMessages(seg.Overrides)
-
 			stripPredicateMessages(seg.When)
-			clearPredicateMessages(seg.Rules)
-			clearPredicateMessages(seg.Overrides)
 		}
 	}
 }
@@ -45,21 +42,11 @@ func clearMessages(rules []Rule) {
 	}
 }
 
-// clearPredicateMessages walks a rule tree and strips messages from every When
-// predicate it finds, at any depth.
-func clearPredicateMessages(rules []Rule) {
-	for i := range rules {
-		stripPredicateMessages(rules[i].When)
-		clearPredicateMessages(rules[i].Rules)
-	}
-}
-
+// stripPredicateMessages clears messages throughout an Applies When predicate.
 func stripPredicateMessages(predicate *Rule) {
 	if predicate == nil {
 		return
 	}
 	predicate.Messages = nil
-	stripPredicateMessages(predicate.When)
 	clearMessages(predicate.Rules)
-	clearPredicateMessages(predicate.Rules)
 }
