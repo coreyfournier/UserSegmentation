@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"sort"
+	"strings"
 	"time"
 
 	"github.com/segmentation-service/segmentation/internal/domain/model"
@@ -33,12 +33,87 @@ func (fs *FileSource) Load() (*model.Snapshot, error) {
 		return nil, fmt.Errorf("parsing config file: %w", err)
 	}
 
-	// Sort layers by order for deterministic evaluation
-	sort.Slice(snap.Layers, func(i, j int) bool {
-		return snap.Layers[i].Order < snap.Layers[j].Order
-	})
+	// Execution order comes from dependsOn; the evaluator topologically sorts.
+	if err := rejectLegacyOrder(data); err != nil {
+		return nil, err
+	}
+	if err := checkRuleNameUniqueness(&snap); err != nil {
+		return nil, err
+	}
 
 	return &snap, nil
+}
+
+// rejectLegacyOrder fails a config that still carries the removed "order"
+// field. Ignoring it silently would leave a stale config subtly misordered
+// rather than loudly broken.
+func rejectLegacyOrder(data []byte) error {
+	var probe struct {
+		Layers []struct {
+			Name  string `json:"name"`
+			Order *int   `json:"order"`
+		} `json:"layers"`
+	}
+	if err := json.Unmarshal(data, &probe); err != nil {
+		return nil // the primary unmarshal already reported anything fatal
+	}
+
+	var stale []string
+	for _, l := range probe.Layers {
+		if l.Order != nil {
+			stale = append(stale, l.Name)
+		}
+	}
+	if len(stale) > 0 {
+		return fmt.Errorf(
+			"layers still declare the removed %q field: %s — declare execution order with %q instead",
+			"order", strings.Join(stale, ", "), "dependsOn")
+	}
+	return nil
+}
+
+// checkRuleNameUniqueness enforces that assert rule names are unique across the
+// whole config.
+//
+// A reported failure identifies itself by rule name alone, so the name is the
+// stable public contract and must not collide. This is a property of the
+// persisted collection rather than of any single rule's meaning, which is why
+// it lives in the config source and not in domain validation — a
+// database-backed source would get the same guarantee from a unique index.
+func checkRuleNameUniqueness(snap *model.Snapshot) error {
+	seen := make(map[string]string) // ruleName -> where it was first defined
+	var errs []string
+
+	var walk func(rules []model.Rule, where string)
+	walk = func(rules []model.Rule, where string) {
+		for i := range rules {
+			r := &rules[i]
+			switch prev, dup := seen[r.RuleName]; {
+			case r.RuleName == "":
+				errs = append(errs, fmt.Sprintf("%s: assert rule with empty ruleName", where))
+			case dup:
+				errs = append(errs, fmt.Sprintf(
+					"duplicate assert ruleName %q in %s (already defined in %s)", r.RuleName, where, prev))
+			default:
+				seen[r.RuleName] = where
+			}
+			walk(r.Rules, where)
+		}
+	}
+
+	for _, layer := range snap.Layers {
+		for _, seg := range layer.Segments {
+			if seg.Strategy != model.StrategyAssert {
+				continue
+			}
+			walk(seg.Rules, fmt.Sprintf("layer %q segment %q", layer.Name, seg.ID))
+		}
+	}
+
+	if len(errs) > 0 {
+		return fmt.Errorf("config rule name check failed:\n  %s", strings.Join(errs, "\n  "))
+	}
+	return nil
 }
 
 // Save atomically writes the snapshot to disk (write tmp then rename).

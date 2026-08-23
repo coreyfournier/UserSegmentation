@@ -5,12 +5,12 @@ A high-performance, deterministic segmentation engine built in Go. Evaluates use
 ## Screenshots
 
 ### Layer Management
-View and manage all segmentation layers with their segments, strategies, and ordering.
+View and manage all segmentation layers with their segments and strategies. Layers are listed in dependency order, with an "after &lt;layer&gt;" badge showing each declared `dependsOn` edge.
 
-![Layers Page](docs/screenshots/layers-page.png)
+![Layers Page](docs/screenshots/layer-dependencies.png)
 
 ### Testing Zone
-Evaluate users in real-time with JSON context input. Results are color-coded by strategy (blue = static, green = rule, purple = percentage).
+Evaluate users in real-time with JSON context input. Each layer reports its `status`, and results are color-coded by outcome.
 
 ![Testing Results](docs/screenshots/testing-results.png)
 
@@ -29,6 +29,16 @@ Inline function reference — collapsible panel showing built-in functions, regi
 
 ![Expression Help Panel](docs/screenshots/expression-help-panel.png)
 
+### Assert Strategy — Progressive Validation Gates
+Three gates evaluated in dependency order. `company-identity` is **satisfied**, so `company-payroll-setup` runs and itemises *both* of its problems at once. `employee-readiness` is **unevaluable** — it never ran, because the gate it depends on failed, so it reports no misleading violations of its own. See [Assert Strategy](#assert-strategy).
+
+![Assert Gate Results](docs/screenshots/assert-gate-results.png)
+
+### Assert Segment Editor
+An assert segment has no default and no overrides — every rule is an assertion that must hold. Computed fields let several fields form one assertion carrying one message.
+
+![Assert Segment Editor](docs/screenshots/assert-segment-editor.png)
+
 ### Config Import/Export
 Export and import full configuration snapshots as JSON for backup or environment migration.
 
@@ -36,10 +46,13 @@ Export and import full configuration snapshots as JSON for backup or environment
 
 ## Key Features
 
-- **Layered evaluation** — Independent segmentation dimensions evaluated in order (tiers, experiments, promotions, features)
-- **Cross-layer dependencies** — Later layers can reference earlier results via `"field": "layer:<name>"`
-- **Composite rule trees** — AND/OR rules with short-circuit evaluation, inspired by Microsoft Rules Engine
-- **Four strategies** — Static (map lookup), Rule (composite tree), Percentage (FNV-1a hash bucketing), Expression (computed fields via expr-lang)
+- **Layered evaluation** — Independent segmentation dimensions (tiers, experiments, promotions, features), executed as a dependency graph
+- **Declared layer dependencies** — `dependsOn` sets execution order and gates: a layer whose dependency did not resolve is skipped rather than evaluated against missing values
+- **Cross-layer dependencies** — Later layers can reference earlier results via `"field": "layer:<name>"`, validated against the declared graph
+- **Composite rule trees** — AND/OR rules with short-circuit evaluation, inspired by Microsoft Rules Engine; the editor supports dragging a rule into, out of, and between groups
+- **Conditional blocks** — a `when` predicate on a segment or on any rule gates it and everything beneath it, so one condition governs a whole block of checks instead of being repeated on each one
+- **Five strategies** — Static (map lookup), Rule (composite tree), Percentage (FNV-1a hash bucketing), Expression (computed fields via expr-lang), [Assert](#assert-strategy) (validation gates that itemise every problem at once)
+- **Nested entity context** — Rules address a document by path (`company.payFrequency`, `employee.hireDate`), so an entity and its parent travel in one request
 - **Expression computed fields** — Derive new values from context before rule evaluation (e.g. `abs(Rating) * -1 + Bonus`); results included in API response
 - **Overrides** — Rule-based overrides evaluated before the primary strategy
 - **Lookup tables** — Centralized, named key/value tables referenced by rules via `in_lookup` / `not_in_lookup`; replaces inline value lists so shared sets are maintained in one place
@@ -103,6 +116,13 @@ docker run -p 8080:8080 segmentation
 go test ./...
 ```
 
+The rule-tree move logic behind the editor's drag and drop is pure and has its
+own check (there is no JS test runner in this project):
+
+```bash
+cd ui && npm run verify:rules
+```
+
 ## API Reference
 
 ### POST /v1/evaluate
@@ -123,9 +143,10 @@ Evaluate a single user across all (or selected) layers.
 {
   "subject_key": "user-123",
   "layers": {
-    "base-tier": { "segment": "pro", "strategy": "rule", "reason": "rule:premium-plan" },
-    "promotions": { "segment": "summer-sale", "strategy": "rule", "reason": "rule:pro-summer-promo" },
+    "base-tier": { "status": "resolved", "segment": "pro", "strategy": "rule", "reason": "rule:premium-plan" },
+    "promotions": { "status": "resolved", "segment": "summer-sale", "strategy": "rule", "reason": "rule:pro-summer-promo" },
     "pricing-tier": {
+      "status": "resolved",
       "segment": "premium",
       "strategy": "expression",
       "reason": "rule:high-value",
@@ -142,6 +163,17 @@ Evaluate a single user across all (or selected) layers.
 ```
 
 Optional request fields `languages` (array of locale codes) and `render_all` (bool) control [localized message](#localized-messages) rendering; when set, each layer result also includes a `messages` map.
+
+Every layer result carries a `status`. It is authoritative — a consumer never needs to inspect `failures.length` to learn whether something is wrong.
+
+| Status | Strategy | Meaning |
+|---|---|---|
+| `satisfied` | `assert` | Every assertion held |
+| `violated` | `assert` | One or more assertions did not hold; see `failures` |
+| `unevaluable` | `assert` | Could not be judged — a dependency did not resolve, or a computed field failed at runtime |
+| `resolved` | all others | Resolved to a segment |
+| `unresolved` | all others | No segment produced a result |
+| `skipped` | all others | A dependency did not resolve |
 
 ### POST /v1/evaluate/batch
 
@@ -171,6 +203,7 @@ See `config/segments.json` for a complete example with all strategies, promotion
 | `rule` | Composite AND/OR rule tree; first match wins |
 | `percentage` | FNV-1a hash bucketing with weighted segments (deterministic — same subject always gets the same bucket given the same salt and weights) |
 | `expression` | Evaluates named [expr-lang](https://expr-lang.org/) expressions to derive computed fields, then applies rule evaluation against the enriched context |
+| `assert` | Validation gate. Every rule is an assertion that must hold; the whole tree is walked and each failure is itemised. See [Assert Strategy](#assert-strategy) |
 
 ### Rule Structure
 
@@ -205,6 +238,40 @@ Evaluation is **order-sensitive — first match wins** at every level:
 - Inside a composite rule, `And`/`Or` children short-circuit in array order.
 
 Because order determines precedence, the segment editor UI lets you **reorder rules and overrides** with up/down controls at every nesting level, and shows a position badge plus an evaluation-order caption so the precedence is explicit.
+
+**Restructuring the tree.** The up/down arrows only move a rule among its own siblings. To change *where a rule sits* — an expression added at the top level that belongs inside a group, or one that needs moving to a different group — drag its **⠿** handle. Drop targets appear between rules at every level while you drag, including inside empty groups, and only where the move is legal (a group cannot be dropped inside itself). The arrows remain the keyboard-reachable way to reorder siblings.
+
+![Rule drag and drop](docs/screenshots/rule-drag-drop.png)
+
+### Layer Dependencies
+
+Layers form a dependency graph. `dependsOn` names the layers that must resolve first:
+
+```json
+{
+  "name": "promotions",
+  "dependsOn": ["base-tier"],
+  "segments": [ … ]
+}
+```
+
+It does two things:
+
+- **Ordering** — the evaluator topologically sorts, so `layer:base-tier` is populated when `promotions` runs. Layers with no relationship have no ordering requirement.
+- **Gating** — if a dependency did not resolve, this layer is **skipped** instead of evaluated against absent context. Without that, a rule reading a missing `layer:` value just evaluates false, which is indistinguishable from a real negative.
+
+Two rules are enforced at config load:
+
+| Rule | Why |
+|---|---|
+| A rule referencing `layer:x` requires `x` in `dependsOn` | A typo or a backwards reference would otherwise pass validation and evaluate false forever |
+| No cycles, no self-references, no unknown names | The graph has to be executable |
+
+Declaring a dependency that no rule references is **legal** — gating alone is a valid reason to declare an edge.
+
+Filtering by `layers` in the request evaluates the requested layers **plus their transitive dependencies**, and nothing else.
+
+> **Note:** `dependsOn` replaces the removed `order` field. A config still carrying `order` fails to load rather than being silently reinterpreted. To migrate, delete `order` and declare the dependencies your rules actually reference.
 
 ### Localized Messages
 
@@ -349,6 +416,284 @@ This service additionally registers the following math functions:
 | `pow(x, y)` | x raised to the power y |
 | `sin(x)` | Sine (x in radians) |
 | `cos(x)` | Cosine (x in radians) |
+
+### Assert Strategy
+
+#### The problem it solves
+
+A company entity comes in several types — Express, Time and Attendance, Precision — and each type requires a different set of values to be configured correctly. Get one wrong and a downstream process fails, or the employee has a degraded experience that continues until every value is fixed. The same applies per-employee.
+
+The naive approach is to validate with the `rule` strategy and report the first thing that fails. That produces the **round-trip problem**:
+
+```
+Admin submits  →  "Federal EIN is required"           →  fixes it, resubmits
+               →  "Pay frequency is not supported"    →  fixes it, resubmits
+               →  "Anchor date is missing"            →  fixes it, resubmits
+```
+
+Three round trips for problems that were all visible on the first pass. `rule` short-circuits by design — that is exactly what you want on the segmentation hot path, and exactly wrong here.
+
+#### What assert does differently
+
+| | `rule` | `assert` |
+|---|---|---|
+| Semantics | First matching rule wins | Every rule is an assertion that must hold |
+| Traversal | Short-circuits | Walks the whole tree |
+| Output | One segment value | Every failure, itemised |
+| Has a default | Yes | No — there is no "nothing matched" outcome |
+
+```json
+{
+  "name": "company-identity",
+  "segments": [{
+    "id": "all-types",
+    "strategy": "assert",
+    "inputSchema": { "company.ein": { "type": "string", "required": true } },
+    "rules": [
+      {
+        "ruleName": "companyHasFederalEIN",
+        "expression": { "field": "company.ein", "operator": "neq", "value": "" },
+        "errorMessage": "Federal EIN is required before payroll can be configured."
+      }
+    ]
+  }]
+}
+```
+
+The response names every problem at once:
+
+```json
+{
+  "company-payroll-setup": {
+    "status": "violated",
+    "failures": [
+      { "rule": "payFrequencySupportedForPrecision",
+        "message": "Pay frequency monthly is not supported for Precision." },
+      { "rule": "payPeriodDatesFormValidSequence",
+        "message": "Pay period end must be after start, and check date must follow both." }
+    ]
+  }
+}
+```
+
+`rule` is the stable identifier — the name doubles as the public contract, so it is enforced unique across the config and should not be renamed once anything depends on it. `message` states the problem. No field path is emitted: a rule may evaluate several fields together, so a path would be present only sometimes, which a consumer could neither predict nor explain. Map `rule` to a remediation destination in your UI instead.
+
+#### Where a failure's message comes from
+
+A failure always carries a `message` — it is the payload, and a failure without
+text is unusable. It is resolved in this order:
+
+1. the rule's `errorMessage`, if set;
+2. otherwise the rule's `messages` entry for the layer's `defaultLanguage`, then
+   `en`, then whichever locale sorts first.
+
+The localized `messages` **map** on a failure is separate and stays opt-in: it is
+populated only when the request sets `languages` or `render_all`, exactly like
+messages elsewhere in the service.
+
+```jsonc
+// Rule carries only localized messages; request asks for no language.
+{ "rule": "companyHasFederalEIN", "message": "Federal EIN is required." }
+
+// Same rule; request sets "languages": ["es"].
+{ "rule": "companyHasFederalEIN",
+  "message": "Federal EIN is required.",              // still the default language
+  "messages": { "es": "Se requiere el EIN federal." } }
+```
+
+`message` therefore stays stable across requests regardless of the languages
+asked for, which makes it safe to log and compare; `messages` is what you render
+to a person. Both `${…}` interpolate against the same evaluation context.
+
+In the editor, an assert segment shows a **failure message** field on every rule
+— leaves included, since those are the checks that usually report — and hides
+`successEvent`, which an assert segment never resolves. Under the other
+strategies the field keeps its original placement on groups.
+
+#### Progressive gates
+
+A gate is a layer of `assert` segments plus a `dependsOn` edge to the gate before it:
+
+```
+company-identity  →  company-payroll-setup  →  company-tax-setup
+   EIN, legal name       pay frequency,            filing IDs
+                         anchor date
+```
+
+Because `company-payroll-setup` runs only when `company-identity` is satisfied, its rules need **no defensive guards** for values identity already established, and it never re-checks them. If identity fails, the downstream gates report `unevaluable` rather than a pile of misleading violations about values nobody could evaluate yet.
+
+Independent branches still both run, so one submission surfaces the maximum set of fixable problems.
+
+#### Per-type rules
+
+A check that does not apply to a type simply is not in that type's rule set — there is no "not applicable" state to interpret. Use `when` on a segment to dispatch:
+
+```json
+{
+  "name": "company-payroll-setup",
+  "dependsOn": ["company-identity"],
+  "segments": [
+    {
+      "id": "precision",
+      "when": { "ruleName": "isPrecision",
+                "expression": { "field": "company.productType", "operator": "eq", "value": "Precision" } },
+      "strategy": "assert",
+      "rules": [ "…Precision's pay-group requirements…" ]
+    },
+    {
+      "id": "express",
+      "when": { "ruleName": "isExpress",
+                "expression": { "field": "company.productType", "operator": "eq", "value": "Express" } },
+      "strategy": "assert",
+      "rules": [ "…Express checks; pay-group rules simply absent…" ]
+    }
+  ]
+}
+```
+
+A segment whose `when` is false is passed over entirely and produces no output.
+
+#### Conditional blocks of checks
+
+Segments are first-match-wins, so they express **alternatives** — one variant per
+entity type. They cannot express *overlapping* conditions: checks that apply to
+everyone, plus a block that applies only to Precision, plus another that applies
+only in California.
+
+For that, put `when` on a **rule**. It gates that rule and its entire subtree:
+
+```json
+{
+  "id": "all-types",
+  "strategy": "assert",
+  "rules": [
+    { "ruleName": "companyHasFederalEIN",
+      "expression": { "field": "company.ein", "operator": "neq", "value": "" },
+      "errorMessage": "Federal EIN is required." },
+
+    { "ruleName": "precisionPayrollDefaults",
+      "operator": "And",
+      "when": {
+        "ruleName": "isPrecisionCompany",
+        "expression": { "field": "company.productType", "operator": "eq", "value": "Precision" }
+      },
+      "rules": [
+        { "ruleName": "companyHasDefaultPayRate",
+          "expression": { "field": "company.defaultPayRate", "operator": "gt", "value": 0 },
+          "errorMessage": "A default pay rate is required for Precision companies." }
+      ]
+    }
+  ]
+}
+```
+
+The same missing field is a violation for one company and silent for another:
+
+| Company | Result |
+|---|---|
+| Precision, no default pay rate | `violated` — `companyHasDefaultPayRate` |
+| Express, no default pay rate | `satisfied` — the block never ran |
+| Express, no EIN | `violated` — `companyHasFederalEIN` (ungated checks still apply) |
+
+**The condition is stated once, not repeated on every check.** Without it you
+would have to `And` the type test onto each rule individually, which duplicates
+the condition and — because an `And` reports its failing children — still leaves
+each message having to restate the type.
+
+Crucially, gating does **not** collapse the block into one failure. Each check
+inside still reports separately with its own message, which is the whole point
+of a gate.
+
+![Conditional rule block](docs/screenshots/conditional-rule-block.png)
+
+**Semantics.** A rule that does not apply contributes *nothing*: no failure, and
+no effect on its parent's `And`/`Or` outcome. It is neither a pass nor a fail —
+the same treatment `enabled: false` gets. `enabled` is the static form of this
+idea; `when` is the data-dependent one. Conditions nest, so a Precision-only
+block can contain a California-only block.
+
+Predicates are validated against the segment's `inputSchema` like any other rule
+tree, so a typo in a condition fails at load rather than silently switching a
+whole block of checks off.
+
+> **On schemas.** Do not mark a conditionally-required field as `required` in
+> `inputSchema` — requiredness there is unconditional, so every company of the
+> wrong type collects a spurious warning. Express the requirement as a check
+> inside a `when`-gated block instead, where it also gets a proper message.
+
+#### Composite rules: `And` reports children, `Or` reports itself
+
+| Node | When it fails | Put the message on |
+|---|---|---|
+| `Or` | The **node** is reported once | The `Or` node |
+| `And` | **Each failing child** is reported | Every child |
+
+An `Or` reports itself because listing each branch would tell the admin to set all three fields when any one would have done:
+
+```json
+{
+  "ruleName": "employeeHasAnyContactMethod",
+  "operator": "Or",
+  "errorMessage": "Provide at least one contact method: email or phone.",
+  "rules": [ "…email…", "…phone…" ]
+}
+```
+
+An `And` is a grouping of independent assertions, so each failing child is itemised separately. **A message on an `And` node is never rendered** — give each child its own.
+
+If several fields form **one** assertion with **one** message, don't group them with `And`. Compute a boolean and assert it as a leaf:
+
+```json
+{
+  "expressions": [
+    { "name": "PayPeriodDatesValid", "type": "boolean",
+      "expression": "company.periodEnd != '' && company.checkDate > company.periodEnd" }
+  ],
+  "rules": [{
+    "ruleName": "payPeriodDatesFormValidSequence",
+    "expression": { "field": "PayPeriodDatesValid", "operator": "eq", "value": true },
+    "errorMessage": "Pay period end must be set, and the check date must fall after it."
+  }]
+}
+```
+
+One assertion over three fields, one message — which is why no field path is emitted with the failure.
+
+#### Computed fields
+
+`assert` composes the [Expression strategy](#expression-strategy), so computed fields are available to the assertions and to their messages:
+
+```json
+{
+  "strategy": "assert",
+  "expressions": [
+    { "name": "MaxAllowed", "type": "number", "expression": "min(EarnedWages * 0.5, StateCap)" }
+  ],
+  "rules": [{
+    "ruleName": "advanceLimitMeetsFloor",
+    "expression": { "field": "MaxAllowed", "operator": "gte", "value": 25 },
+    "errorMessage": "Advance limit of ${MaxAllowed} is below the $25 minimum."
+  }]
+}
+```
+
+If a computed field fails at runtime the gate reports `unevaluable` and **no** failures. Falling through would report the rules that consumed the missing value as violations — telling someone a value is wrong when it could not in fact be computed.
+
+#### Nested entities
+
+An entity is just a schema over the evaluation context, so an employee and its parent company travel as one document and rules address them by path:
+
+```json
+{
+  "subject_key": "employee-5678",
+  "context": {
+    "employee": { "hireDate": "2026-03-01", "payGroupId": "PG-1" },
+    "company":  { "productType": "Precision", "payFrequency": "biweekly" }
+  }
+}
+```
+
+"Company checks" and "employee checks" are simply layers whose rules read different subtrees. There is no separate entity model and no notion of levels.
 
 ### Layers vs Segments
 
@@ -675,4 +1020,53 @@ POST /v1/evaluate
 
 ### Rule Operators
 
-`eq`, `neq`, `gt`, `gte`, `lt`, `lte`, `in`, `contains`, and the lookup-table operators `in_lookup` / `not_in_lookup` (their expression `value` is a lookup table id — see [Lookup Tables](#lookup-tables)).
+| Operator | Field types | Notes |
+|---|---|---|
+| `eq`, `neq` | string, number, boolean | |
+| `gt`, `gte`, `lt`, `lte` | number | |
+| `in` | string, number | `value` is a list |
+| `contains` | array, string | substring, or array membership |
+| `in_lookup`, `not_in_lookup` | string, number | `value` is a lookup table id — see [Lookup Tables](#lookup-tables) |
+| `is_null` | string, number, boolean, array | takes **no** `value` |
+| `is_null_or_empty` | string | takes **no** `value` |
+
+#### Presence operators
+
+`is_null` and `is_null_or_empty` are unary — they test the field itself, so the
+expression carries no `value`:
+
+```json
+{ "field": "company.defaultPayRate", "operator": "is_null" }
+```
+
+They are also the **only** operators that hold for a field missing from the
+context. Every other operator has nothing to compare an absent field against and
+evaluates false. That distinction is deliberate:
+
+| Field state | `is_null` | `is_null_or_empty` | `neq ""` |
+|---|---|---|---|
+| absent from context | ✅ | ✅ | ❌ |
+| `null` | ✅ | ✅ | ❌ |
+| `""` | ❌ | ✅ | ❌ |
+| `"biweekly"` | ❌ | ❌ | ✅ |
+| `0` / `false` | ❌ | ❌ | ✅ |
+
+So `neq ""` remains the way to assert *"this must be set"* — it already fails for
+an absent field. The presence operators are for the positive form, which is most
+useful in a [gating condition](#conditional-blocks-of-checks): *only run this
+block when a value has not been supplied.*
+
+```json
+{
+  "ruleName": "needsDefaultPayRate",
+  "when": { "ruleName": "noRateOnFile",
+            "expression": { "field": "employee.payRateOnFile", "operator": "is_null_or_empty" } },
+  "expression": { "field": "company.defaultPayRate", "operator": "gt", "value": 0 },
+  "errorMessage": "A default pay rate is required when the employee has none on file."
+}
+```
+
+Two things to note. `is_null_or_empty` means the empty string exactly — whitespace
+is not trimmed, and `0` or `false` are values, not emptiness. And `is_null` is
+type-agnostic because any optional field of any type can be null, whereas
+`is_null_or_empty` is a string test.

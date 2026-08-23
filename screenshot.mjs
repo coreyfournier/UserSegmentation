@@ -55,7 +55,7 @@ async function main() {
     await ta.press('Tab'); // trigger onBlur to parse
 
     // Evaluate
-    await page.locator('button.btn-primary').click();
+    await page.getByRole('button', { name: 'Evaluate' }).click();
     await page.waitForSelector('[class*="layerName"]', { timeout: 12_000 });
     await page.waitForTimeout(200); // let render settle
   }
@@ -95,6 +95,41 @@ async function main() {
   await page.locator('summary').filter({ hasText: 'Expression Reference' }).click();
   await page.waitForTimeout(400);
   await page.screenshot({ path: join(SHOTS, 'expression-help-panel.png') });
+
+  // ── 4. Assert gates: satisfied → violated → unevaluable ─────────────────────
+  console.log('Screenshotting assert gate results…');
+  await evaluate({
+    subject: 'company-precision-01',
+    layers: ['company-identity', 'company-payroll-setup', 'employee-readiness'],
+    ctx: {
+      company: {
+        ein: '12-3456789',
+        legalName: 'Acme Manufacturing LLC',
+        productType: 'Precision',
+        payFrequency: 'monthly',
+        anchorDate: '2026-01-01',
+        periodEnd: '2026-01-15',
+        checkDate: '',
+      },
+      employee: { hireDate: '2026-03-01', payGroupId: '', contactEmail: '', contactPhone: '' },
+    },
+  });
+  await page.screenshot({ path: join(SHOTS, 'assert-gate-results.png') });
+
+  // ── 5. Assert segment editor ────────────────────────────────────────────────
+  console.log('Screenshotting the assert segment editor…');
+  await page.goto(`${BASE}/layers/company-payroll-setup/segments/precision`);
+  await page.waitForLoadState('networkidle');
+  await page.waitForSelector('[class*="editor"]', { timeout: 10_000 });
+  await page.waitForTimeout(500);
+  await page.screenshot({ path: join(SHOTS, 'assert-segment-editor.png'), fullPage: true });
+
+  // ── 6. Layers page, ordered by dependency ───────────────────────────────────
+  console.log('Screenshotting the layers page…');
+  await page.goto(`${BASE}/layers`);
+  await page.waitForLoadState('networkidle');
+  await page.waitForTimeout(500);
+  await page.screenshot({ path: join(SHOTS, 'layer-dependencies.png') });
 
   await browser.close();
   console.log('All screenshots saved to docs/screenshots/');

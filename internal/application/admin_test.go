@@ -24,7 +24,7 @@ func (m *mockSink) Save(snap *model.Snapshot) error {
 func newTestAdminUC() (*AdminUseCase, *store.Memory, *mockSink) {
 	s := store.NewMemory()
 	s.Swap(&model.Snapshot{Version: 1, Layers: []model.Layer{
-		{Name: "base", Order: 1, Segments: []model.Segment{
+		{Name: "base", Segments: []model.Segment{
 			{ID: "seg1", Strategy: "static", Static: &model.StaticConfig{Mappings: map[string]string{}, Default: "x"}},
 		}},
 	}})
@@ -47,7 +47,7 @@ func TestAdminUseCase_GetSnapshot(t *testing.T) {
 
 func TestAdminUseCase_CreateLayer(t *testing.T) {
 	uc, s, sink := newTestAdminUC()
-	snap, err := uc.CreateLayer(model.Layer{Name: "new", Order: 2})
+	snap, err := uc.CreateLayer(model.Layer{Name: "new"})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -68,7 +68,7 @@ func TestAdminUseCase_CreateLayer(t *testing.T) {
 
 func TestAdminUseCase_CreateLayer_Duplicate(t *testing.T) {
 	uc, _, _ := newTestAdminUC()
-	_, err := uc.CreateLayer(model.Layer{Name: "base", Order: 2})
+	_, err := uc.CreateLayer(model.Layer{Name: "base"})
 	if err == nil || !strings.Contains(err.Error(), "already exists") {
 		t.Errorf("expected duplicate error, got %v", err)
 	}
@@ -76,7 +76,7 @@ func TestAdminUseCase_CreateLayer_Duplicate(t *testing.T) {
 
 func TestAdminUseCase_CreateLayer_NilSegments(t *testing.T) {
 	uc, _, _ := newTestAdminUC()
-	snap, err := uc.CreateLayer(model.Layer{Name: "empty", Order: 3})
+	snap, err := uc.CreateLayer(model.Layer{Name: "empty"})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -95,12 +95,12 @@ func TestAdminUseCase_CreateLayer_NilSegments(t *testing.T) {
 
 func TestAdminUseCase_UpdateLayer(t *testing.T) {
 	uc, _, _ := newTestAdminUC()
-	snap, err := uc.UpdateLayer("base", model.Layer{Name: "renamed", Order: 10})
+	snap, err := uc.UpdateLayer("base", model.Layer{Name: "renamed"})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if snap.Layers[0].Name != "renamed" || snap.Layers[0].Order != 10 {
-		t.Errorf("expected renamed/10, got %s/%d", snap.Layers[0].Name, snap.Layers[0].Order)
+	if snap.Layers[0].Name != "renamed" {
+		t.Errorf("expected renamed, got %s", snap.Layers[0].Name)
 	}
 	// Segments should be preserved
 	if len(snap.Layers[0].Segments) != 1 {
@@ -110,7 +110,7 @@ func TestAdminUseCase_UpdateLayer(t *testing.T) {
 
 func TestAdminUseCase_UpdateLayer_NotFound(t *testing.T) {
 	uc, _, _ := newTestAdminUC()
-	_, err := uc.UpdateLayer("nonexistent", model.Layer{Name: "x", Order: 1})
+	_, err := uc.UpdateLayer("nonexistent", model.Layer{Name: "x"})
 	if err == nil || !strings.Contains(err.Error(), "not found") {
 		t.Errorf("expected not found error, got %v", err)
 	}
@@ -233,7 +233,7 @@ func TestAdminUseCase_DeleteSegment_NotFound(t *testing.T) {
 func TestAdminUseCase_ReplaceSnapshot(t *testing.T) {
 	uc, s, sink := newTestAdminUC()
 	newSnap := &model.Snapshot{Version: 5, Layers: []model.Layer{
-		{Name: "replaced", Order: 1, Segments: []model.Segment{}},
+		{Name: "replaced", Segments: []model.Segment{}},
 	}}
 	err := uc.ReplaceSnapshot(newSnap)
 	if err != nil {
@@ -253,7 +253,7 @@ func TestAdminUseCase_ReplaceSnapshot_ValidationError(t *testing.T) {
 	bad := &model.Snapshot{
 		Version: 1,
 		Layers: []model.Layer{{
-			Name: "bad", Order: 1,
+			Name: "bad",
 			Segments: []model.Segment{{
 				ID: "s", Strategy: "rule",
 				Rules: []model.Rule{{
@@ -277,8 +277,8 @@ func TestAdminUseCase_ReplaceSnapshot_ValidationError(t *testing.T) {
 
 func TestAdminUseCase_VersionIncrement(t *testing.T) {
 	uc, _, _ := newTestAdminUC()
-	snap1, _ := uc.CreateLayer(model.Layer{Name: "l1", Order: 2})
-	snap2, _ := uc.CreateLayer(model.Layer{Name: "l2", Order: 3})
+	snap1, _ := uc.CreateLayer(model.Layer{Name: "l1"})
+	snap2, _ := uc.CreateLayer(model.Layer{Name: "l2"})
 	if snap2.Version != snap1.Version+1 {
 		t.Errorf("expected version to increment: %d → %d", snap1.Version, snap2.Version)
 	}
@@ -289,7 +289,7 @@ func TestAdminUseCase_VersionIncrement(t *testing.T) {
 func TestAdminUseCase_CloneImmutability(t *testing.T) {
 	uc, s, _ := newTestAdminUC()
 	before := s.Get()
-	_, _ = uc.CreateLayer(model.Layer{Name: "new", Order: 2})
+	_, _ = uc.CreateLayer(model.Layer{Name: "new"})
 	after := s.Get()
 	// Original pointer should not have been mutated
 	if len(before.Layers) == len(after.Layers) {

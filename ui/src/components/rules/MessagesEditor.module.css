@@ -45,3 +45,26 @@
   padding: 4px 8px;
   font-family: var(--font-mono, monospace);
 }
+
+/* A row with text but no language code cannot be stored, so it is called out
+   rather than dropped on save. */
+.invalid {
+  border-color: var(--danger, #ef4444);
+  background: color-mix(in srgb, var(--danger, #ef4444) 8%, transparent);
+}
+
+.badge {
+  margin-left: 6px;
+  padding: 1px 6px;
+  border-radius: 8px;
+  font-size: 10px;
+  font-weight: 700;
+  color: #fff;
+  background: var(--danger, #ef4444);
+}
+
+.warning {
+  font-size: 11px;
+  color: var(--danger, #ef4444);
+  margin: 0 0 6px;
+}

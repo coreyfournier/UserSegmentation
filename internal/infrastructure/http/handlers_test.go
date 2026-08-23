@@ -25,7 +25,6 @@ func setupTestServer() (*http.ServeMux, *store.Memory) {
 		Layers: []model.Layer{
 			{
 				Name:  "base-tier",
-				Order: 1,
 				Segments: []model.Segment{
 					{
 						ID:       "tier",

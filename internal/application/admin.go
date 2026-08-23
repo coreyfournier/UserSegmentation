@@ -3,6 +3,7 @@ package application
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
 	"sync"
 
 	"github.com/segmentation-service/segmentation/internal/domain/model"
@@ -61,7 +62,9 @@ func (uc *AdminUseCase) CreateLayer(layer model.Layer) (*model.Snapshot, error) 
 	return uc.commitSnapshot(snap)
 }
 
-// UpdateLayer updates an existing layer's order (preserving segments).
+// UpdateLayer updates an existing layer's name, dependencies and default
+// language (preserving segments). Renaming cascades into any dependsOn edge
+// that pointed at the old name, so a depended-upon layer stays renameable.
 func (uc *AdminUseCase) UpdateLayer(name string, updated model.Layer) (*model.Snapshot, error) {
 	uc.mu.Lock()
 	defer uc.mu.Unlock()
@@ -71,13 +74,30 @@ func (uc *AdminUseCase) UpdateLayer(name string, updated model.Layer) (*model.Sn
 	if idx < 0 {
 		return nil, fmt.Errorf("layer %q not found", name)
 	}
+
 	snap.Layers[idx].Name = updated.Name
-	snap.Layers[idx].Order = updated.Order
+	snap.Layers[idx].DependsOn = updated.DependsOn
 	snap.Layers[idx].DefaultLanguage = updated.DefaultLanguage
+
+	if updated.Name != name {
+		for i := range snap.Layers {
+			if i == idx {
+				continue
+			}
+			for j, dep := range snap.Layers[i].DependsOn {
+				if dep == name {
+					snap.Layers[i].DependsOn[j] = updated.Name
+				}
+			}
+		}
+	}
+
 	return uc.commitSnapshot(snap)
 }
 
-// DeleteLayer removes a layer by name.
+// DeleteLayer removes a layer by name. A layer other layers depend on cannot be
+// deleted — silently dropping those edges would change gating semantics for
+// layers the caller did not mention.
 func (uc *AdminUseCase) DeleteLayer(name string) (*model.Snapshot, error) {
 	uc.mu.Lock()
 	defer uc.mu.Unlock()
@@ -87,6 +107,24 @@ func (uc *AdminUseCase) DeleteLayer(name string) (*model.Snapshot, error) {
 	if idx < 0 {
 		return nil, fmt.Errorf("layer %q not found", name)
 	}
+
+	var dependents []string
+	for i := range snap.Layers {
+		if i == idx {
+			continue
+		}
+		for _, dep := range snap.Layers[i].DependsOn {
+			if dep == name {
+				dependents = append(dependents, snap.Layers[i].Name)
+				break
+			}
+		}
+	}
+	if len(dependents) > 0 {
+		return nil, fmt.Errorf("layer %q cannot be deleted: %s depend on it",
+			name, strings.Join(dependents, ", "))
+	}
+
 	snap.Layers = append(snap.Layers[:idx], snap.Layers[idx+1:]...)
 	return uc.commitSnapshot(snap)
 }

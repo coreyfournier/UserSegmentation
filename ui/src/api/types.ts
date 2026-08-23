@@ -1,7 +1,32 @@
 export type FieldType = 'string' | 'number' | 'boolean' | 'array';
-export type Operator = 'eq' | 'neq' | 'gt' | 'gte' | 'lt' | 'lte' | 'in' | 'contains' | 'in_lookup' | 'not_in_lookup';
+export type Operator =
+  | 'eq'
+  | 'neq'
+  | 'gt'
+  | 'gte'
+  | 'lt'
+  | 'lte'
+  | 'in'
+  | 'contains'
+  | 'in_lookup'
+  | 'not_in_lookup'
+  | 'is_null'
+  | 'is_null_or_empty';
 export type CompositeOperator = 'And' | 'Or';
-export type StrategyType = 'static' | 'rule' | 'percentage' | 'expression';
+export type StrategyType = 'static' | 'rule' | 'percentage' | 'expression' | 'assert';
+
+/**
+ * Assert layers report the assertion vocabulary; every other strategy reports
+ * the neutral resolution vocabulary. Status is always authoritative — never
+ * infer the outcome from `failures.length`.
+ */
+export type LayerStatus =
+  | 'satisfied'
+  | 'violated'
+  | 'unevaluable'
+  | 'resolved'
+  | 'unresolved'
+  | 'skipped';
 
 export interface SchemaField {
   type: FieldType;
@@ -13,13 +38,20 @@ export type InputSchema = Record<string, SchemaField>;
 export interface Expression {
   field: string;
   operator: Operator;
-  value: unknown;
+  /** Absent for unary operators, which test the field itself. */
+  value?: unknown;
 }
 
 export interface Rule {
   ruleName: string;
   operator?: CompositeOperator;
   enabled?: boolean;
+  /**
+   * Gates this rule and its whole subtree on the context. A rule that does not
+   * apply contributes nothing — no failure, and no effect on its parent's
+   * And/Or outcome. `enabled` is the static form of the same idea.
+   */
+  when?: Rule;
   successEvent?: string;
   errorMessage?: string;
   expression?: Expression;
@@ -56,6 +88,12 @@ export interface ExpressionDef {
 
 export interface Segment {
   id: string;
+  /**
+   * Dispatch predicate. When present and false the segment is passed over
+   * entirely and produces no output — this is how one layer holds
+   * per-entity-type variants.
+   */
+  when?: Rule;
   strategy: StrategyType;
   static?: StaticConfig;
   percentage?: PercentageConfig;
@@ -71,7 +109,12 @@ export interface Segment {
 
 export interface Layer {
   name: string;
-  order: number;
+  /**
+   * Layers this one must follow. A rule referencing `layer:x` must declare x
+   * here. If a dependency does not resolve, this layer is skipped rather than
+   * evaluated against absent context.
+   */
+  dependsOn?: string[];
   segments: Segment[];
   /** Fallback locale for message rendering; empty means "en". */
   defaultLanguage?: string;
@@ -83,12 +126,22 @@ export interface Snapshot {
   lookups?: LookupTable[];
 }
 
+/** One itemised problem from an assert layer. */
+export interface Failure {
+  /** Stable identifier — the rule name doubles as the public contract. */
+  rule: string;
+  message?: string;
+  messages?: Record<string, string>;
+}
+
 export interface LayerResult {
-  segment: string;
-  strategy: string;
-  reason: string;
+  status: LayerStatus;
+  segment?: string;
+  strategy?: string;
+  reason?: string;
   expressions?: Record<string, unknown>;
   messages?: Record<string, string>;
+  failures?: Failure[];
 }
 
 export interface Warning {
@@ -124,10 +177,20 @@ export const OPERATOR_TYPES: Record<Operator, FieldType[]> = {
   contains: ['array', 'string'],
   in_lookup: ['string', 'number'],
   not_in_lookup: ['string', 'number'],
+  // Any optional field of any type can be null.
+  is_null: ['string', 'number', 'boolean', 'array'],
+  // Emptiness here means the empty string, so this is a string test.
+  is_null_or_empty: ['string'],
 };
 
 /** Operators whose value references a lookup table id. */
 export const LOOKUP_OPERATORS: Operator[] = ['in_lookup', 'not_in_lookup'];
+
+/**
+ * Operators that test the field itself and take no value. They are also the
+ * only ones that hold when the field is absent — absent is null.
+ */
+export const UNARY_OPERATORS: Operator[] = ['is_null', 'is_null_or_empty'];
 
 export interface LookupEntry {
   key: unknown;

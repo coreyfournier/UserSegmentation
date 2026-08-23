@@ -31,7 +31,6 @@ func testSnapshot() *model.Snapshot {
 		Layers: []model.Layer{
 			{
 				Name:  "tier",
-				Order: 1,
 				Segments: []model.Segment{
 					{
 						ID:       "lookup",
@@ -115,7 +114,7 @@ func TestEvaluateUseCase_LayerFilter(t *testing.T) {
 	uc, s := newTestEvaluateUC()
 	snap := testSnapshot()
 	snap.Layers = append(snap.Layers, model.Layer{
-		Name: "extra", Order: 2,
+		Name: "extra",
 		Segments: []model.Segment{{ID: "s1", Strategy: "static", Static: &model.StaticConfig{Default: "x"}}},
 	})
 	s.Swap(snap)

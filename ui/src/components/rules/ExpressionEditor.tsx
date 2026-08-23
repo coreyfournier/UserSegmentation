@@ -1,5 +1,5 @@
 import type { Expression, InputSchema } from '../../api/types';
-import { LOOKUP_OPERATORS } from '../../api/types';
+import { LOOKUP_OPERATORS, UNARY_OPERATORS } from '../../api/types';
 import { useLookups } from '../../api/lookups';
 import { parseNumericInput } from '../../utils/parse';
 import OperatorSelect from './OperatorSelect';
@@ -21,6 +21,7 @@ export default function ExpressionEditor({ value, onChange, schema, layerNames }
 
   const fieldType = schema?.[value.field]?.type;
   const isLookupOp = LOOKUP_OPERATORS.includes(value.operator);
+  const isUnaryOp = UNARY_OPERATORS.includes(value.operator);
   // Offer only tables whose key type matches the field's type (all if type unknown).
   const lookupOptions = (lookups ?? []).filter((t) => !fieldType || t.keyType === fieldType);
 
@@ -53,11 +54,21 @@ export default function ExpressionEditor({ value, onChange, schema, layerNames }
       </div>
       <OperatorSelect
         value={value.operator}
-        onChange={(op) => onChange({ ...value, operator: op })}
+        onChange={(op) =>
+          // Drop any value when switching to an operator that takes none, so a
+          // stale one is not left behind in the saved config.
+          onChange(
+            UNARY_OPERATORS.includes(op)
+              ? { field: value.field, operator: op }
+              : { ...value, operator: op }
+          )
+        }
         fieldType={fieldType}
       />
       <div className={styles.value}>
-        {isLookupOp ? (
+        {isUnaryOp ? (
+          <span className={styles.noValue}>no value needed</span>
+        ) : isLookupOp ? (
           <select
             value={typeof value.value === 'string' ? value.value : ''}
             onChange={(e) => onChange({ ...value, value: e.target.value })}

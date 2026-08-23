@@ -42,14 +42,23 @@ func (uc *EvaluateUseCase) Execute(req EvaluateRequest) (*EvaluateResponse, erro
 		DurationUS:  time.Since(start).Microseconds(),
 	}
 
-	for name, a := range result.Layers {
-		resp.Layers[name] = LayerResultDTO{
-			Segment:     a.Segment,
-			Strategy:    a.Strategy,
-			Reason:      a.Reason,
-			Expressions: a.Expressions,
-			Messages:    a.Messages,
+	for name, lr := range result.Layers {
+		dto := LayerResultDTO{Status: string(lr.Status)}
+		if a := lr.Assignment; a != nil {
+			dto.Segment = a.Segment
+			dto.Strategy = a.Strategy
+			dto.Reason = a.Reason
+			dto.Expressions = a.Expressions
+			dto.Messages = a.Messages
 		}
+		for _, f := range lr.Failures {
+			dto.Failures = append(dto.Failures, FailureDTO{
+				Rule:     f.Rule,
+				Message:  f.Message,
+				Messages: f.Messages,
+			})
+		}
+		resp.Layers[name] = dto
 	}
 
 	for _, w := range result.Warnings {

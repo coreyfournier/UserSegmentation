@@ -10,7 +10,7 @@ import (
 func snapWithLookup(t model.LookupTable, seg model.Segment) *model.Snapshot {
 	return &model.Snapshot{
 		Lookups: []model.LookupTable{t},
-		Layers:  []model.Layer{{Name: "l", Order: 1, Segments: []model.Segment{seg}}},
+		Layers:  []model.Layer{{Name: "l", Segments: []model.Segment{seg}}},
 	}
 }
 

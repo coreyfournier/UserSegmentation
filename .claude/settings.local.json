@@ -2,7 +2,10 @@
   "permissions": {
     "allow": [
       "Bash(docker-compose build:*)",
-      "PowerShell(ls C:\\\\Projects\\\\Segmentation\\\\docs\\\\screenshots\\\\ | Sort-Object LastWriteTime -Descending | Select-Object Name, LastWriteTime, @{N='KB';E={[int]\\($_.Length/1KB\\)}})"
+      "PowerShell(ls C:\\\\Projects\\\\Segmentation\\\\docs\\\\screenshots\\\\ | Sort-Object LastWriteTime -Descending | Select-Object Name, LastWriteTime, @{N='KB';E={[int]\\($_.Length/1KB\\)}})",
+      "Bash(npx tsc *)",
+      "Bash(echo \"tsc exit: $?\")",
+      "Bash(npm run *)"
     ]
   }
 }

@@ -25,7 +25,6 @@ func TestEvaluator_StaticLayer(t *testing.T) {
 		Layers: []model.Layer{
 			{
 				Name:  "base-tier",
-				Order: 1,
 				Segments: []model.Segment{
 					{
 						ID:       "tier",
@@ -42,12 +41,12 @@ func TestEvaluator_StaticLayer(t *testing.T) {
 
 	e := newTestEvaluator(0)
 	result := e.Evaluate(snap, "vip", map[string]interface{}{}, nil, nil, false, time.Now())
-	if result.Layers["base-tier"] == nil || result.Layers["base-tier"].Segment != "platinum" {
+	if result.Layers["base-tier"] == nil || result.Layers["base-tier"].Assignment.Segment != "platinum" {
 		t.Errorf("expected platinum, got %v", result.Layers["base-tier"])
 	}
 
 	result = e.Evaluate(snap, "other", map[string]interface{}{}, nil, nil, false, time.Now())
-	if result.Layers["base-tier"] == nil || result.Layers["base-tier"].Segment != "standard" {
+	if result.Layers["base-tier"] == nil || result.Layers["base-tier"].Assignment.Segment != "standard" {
 		t.Errorf("expected standard, got %v", result.Layers["base-tier"])
 	}
 }
@@ -57,7 +56,6 @@ func TestEvaluator_CrossLayerDependency(t *testing.T) {
 		Layers: []model.Layer{
 			{
 				Name:  "base-tier",
-				Order: 1,
 				Segments: []model.Segment{
 					{
 						ID:       "tier",
@@ -71,7 +69,6 @@ func TestEvaluator_CrossLayerDependency(t *testing.T) {
 			},
 			{
 				Name:  "promotions",
-				Order: 2,
 				Segments: []model.Segment{
 					{
 						ID:       "promo",
@@ -94,13 +91,13 @@ func TestEvaluator_CrossLayerDependency(t *testing.T) {
 
 	// VIP user gets pro tier, then promo matches
 	result := e.Evaluate(snap, "vip", map[string]interface{}{}, nil, nil, false, time.Now())
-	if result.Layers["promotions"] == nil || result.Layers["promotions"].Segment != "special-offer" {
+	if result.Layers["promotions"] == nil || result.Layers["promotions"].Assignment.Segment != "special-offer" {
 		t.Errorf("expected special-offer, got %v", result.Layers["promotions"])
 	}
 
 	// Non-VIP gets free tier, promo defaults to none
 	result = e.Evaluate(snap, "other", map[string]interface{}{}, nil, nil, false, time.Now())
-	if result.Layers["promotions"] == nil || result.Layers["promotions"].Segment != "none" {
+	if result.Layers["promotions"] == nil || result.Layers["promotions"].Assignment.Segment != "none" {
 		t.Errorf("expected none, got %v", result.Layers["promotions"])
 	}
 }
@@ -112,7 +109,6 @@ func TestEvaluator_PromotionTimeGating(t *testing.T) {
 		Layers: []model.Layer{
 			{
 				Name:  "promos",
-				Order: 1,
 				Segments: []model.Segment{
 					{
 						ID:       "future-promo",
@@ -132,16 +128,24 @@ func TestEvaluator_PromotionTimeGating(t *testing.T) {
 
 	e := newTestEvaluator(0)
 
-	// Now is before effective_from, segment should be skipped
+	// Now is before effective_from, segment should be skipped. The layer still
+	// reports a status — it resolved to nothing rather than being absent.
 	result := e.Evaluate(snap, "user", map[string]interface{}{"x": "y"}, nil, nil, false, time.Now())
-	if a, ok := result.Layers["promos"]; ok {
-		t.Errorf("expected no assignment for future promo, got %v", a)
+	lr, ok := result.Layers["promos"]
+	if !ok {
+		t.Fatal("expected the layer to report a status")
+	}
+	if lr.Assignment != nil {
+		t.Errorf("expected no assignment for future promo, got %v", lr.Assignment)
+	}
+	if lr.Status != model.StatusUnresolved {
+		t.Errorf("expected status %q, got %q", model.StatusUnresolved, lr.Status)
 	}
 
 	// Now is after effective_from (use past as effective_from)
 	snap.Layers[0].Segments[0].Promotion.EffectiveFrom = &past
 	result = e.Evaluate(snap, "user", map[string]interface{}{"x": "y"}, nil, nil, false, time.Now())
-	if result.Layers["promos"] == nil || result.Layers["promos"].Segment != "promo" {
+	if result.Layers["promos"] == nil || result.Layers["promos"].Assignment.Segment != "promo" {
 		t.Errorf("expected promo, got %v", result.Layers["promos"])
 	}
 }
@@ -149,8 +153,8 @@ func TestEvaluator_PromotionTimeGating(t *testing.T) {
 func TestEvaluator_LayerFilter(t *testing.T) {
 	snap := &model.Snapshot{
 		Layers: []model.Layer{
-			{Name: "a", Order: 1, Segments: []model.Segment{{ID: "s", Strategy: "static", Static: &model.StaticConfig{Default: "a-val"}}}},
-			{Name: "b", Order: 2, Segments: []model.Segment{{ID: "s", Strategy: "static", Static: &model.StaticConfig{Default: "b-val"}}}},
+			{Name: "a", Segments: []model.Segment{{ID: "s", Strategy: "static", Static: &model.StaticConfig{Default: "a-val"}}}},
+			{Name: "b", Segments: []model.Segment{{ID: "s", Strategy: "static", Static: &model.StaticConfig{Default: "b-val"}}}},
 		},
 	}
 
@@ -159,7 +163,7 @@ func TestEvaluator_LayerFilter(t *testing.T) {
 	if _, ok := result.Layers["a"]; ok {
 		t.Error("expected layer 'a' to be filtered out")
 	}
-	if result.Layers["b"] == nil || result.Layers["b"].Segment != "b-val" {
+	if result.Layers["b"] == nil || result.Layers["b"].Assignment.Segment != "b-val" {
 		t.Errorf("expected b-val, got %v", result.Layers["b"])
 	}
 }
@@ -169,7 +173,6 @@ func TestEvaluator_OverrideTakesPriority(t *testing.T) {
 		Layers: []model.Layer{
 			{
 				Name:  "test",
-				Order: 1,
 				Segments: []model.Segment{
 					{
 						ID:       "seg",
@@ -192,16 +195,16 @@ func TestEvaluator_OverrideTakesPriority(t *testing.T) {
 
 	// Override matches
 	result := e.Evaluate(snap, "user", map[string]interface{}{"plan": "enterprise"}, nil, nil, false, time.Now())
-	if result.Layers["test"] == nil || result.Layers["test"].Segment != "override-val" {
+	if result.Layers["test"] == nil || result.Layers["test"].Assignment.Segment != "override-val" {
 		t.Errorf("expected override-val, got %v", result.Layers["test"])
 	}
-	if result.Layers["test"].Strategy != "override" {
-		t.Errorf("expected strategy override, got %s", result.Layers["test"].Strategy)
+	if result.Layers["test"].Assignment.Strategy != "override" {
+		t.Errorf("expected strategy override, got %s", result.Layers["test"].Assignment.Strategy)
 	}
 
 	// Override doesn't match, falls through to static
 	result = e.Evaluate(snap, "user", map[string]interface{}{"plan": "free"}, nil, nil, false, time.Now())
-	if result.Layers["test"] == nil || result.Layers["test"].Segment != "normal" {
+	if result.Layers["test"] == nil || result.Layers["test"].Assignment.Segment != "normal" {
 		t.Errorf("expected normal, got %v", result.Layers["test"])
 	}
 }

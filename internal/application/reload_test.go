@@ -23,7 +23,7 @@ func (m *mockConfigSource) Load() (*model.Snapshot, error) {
 func TestReloadUseCase_Success(t *testing.T) {
 	s := store.NewMemory()
 	snap := &model.Snapshot{Version: 1, Layers: []model.Layer{
-		{Name: "test", Order: 1, Segments: []model.Segment{}},
+		{Name: "test", Segments: []model.Segment{}},
 	}}
 	src := &mockConfigSource{snap: snap}
 	uc := NewReloadUseCase(src, s)
@@ -60,7 +60,6 @@ func TestReloadUseCase_ValidationError(t *testing.T) {
 		Layers: []model.Layer{
 			{
 				Name:  "bad",
-				Order: 1,
 				Segments: []model.Segment{
 					{
 						ID:       "s1",

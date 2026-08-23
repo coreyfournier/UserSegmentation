@@ -1,6 +1,7 @@
 package engine
 
 import (
+	"errors"
 	"fmt"
 	"sort"
 	"time"
@@ -10,7 +11,7 @@ import (
 	"github.com/segmentation-service/segmentation/internal/domain/validation"
 )
 
-// Evaluator is the core domain service that evaluates layers in order.
+// Evaluator is the core domain service that evaluates layers as a dependency graph.
 type Evaluator struct {
 	strategies map[string]strategy.Strategy
 }
@@ -20,34 +21,40 @@ func NewEvaluator(strategies map[string]strategy.Strategy) *Evaluator {
 	return &Evaluator{strategies: strategies}
 }
 
-// LayerResult holds the assignment for a single layer.
+// LayerResult holds the outcome for a single layer.
 type LayerResult struct {
+	Status     model.LayerStatus
 	Assignment *model.Assignment
+	Failures   []model.Failure
 	Warnings   []model.Warning
 }
 
 // EvalResult holds the full evaluation result across all layers.
 type EvalResult struct {
-	Layers   map[string]*model.Assignment
+	Layers   map[string]*LayerResult
 	Warnings []model.Warning
 }
 
-// Evaluate evaluates a subject across the specified layers (or all if filterLayers is nil).
-// languages and renderAll control localized message rendering on the winning
-// rule/override/default of each layer.
+// Evaluate evaluates a subject across the layer graph.
+//
+// Execution order comes from each layer's DependsOn edges, not from any ordinal
+// field. When filterLayers is set, only those layers and everything they
+// transitively depend on are evaluated; the rest never run.
 func (e *Evaluator) Evaluate(snap *model.Snapshot, subjectKey string, ctx map[string]interface{}, filterLayers []string, languages []string, renderAll bool, now time.Time) *EvalResult {
 	result := &EvalResult{
-		Layers: make(map[string]*model.Assignment, len(snap.Layers)),
+		Layers: make(map[string]*LayerResult, len(snap.Layers)),
 	}
 
-	// Sort layers by order
-	layers := make([]model.Layer, len(snap.Layers))
-	copy(layers, snap.Layers)
-	sort.Slice(layers, func(i, j int) bool {
-		return layers[i].Order < layers[j].Order
-	})
+	ordered, err := topoSort(snap.Layers)
+	if err != nil {
+		// Cycles and dangling edges are rejected at config load. If one reaches
+		// here the snapshot is unusable, so report rather than evaluate a
+		// partial graph.
+		result.Warnings = append(result.Warnings, model.Warning{Message: err.Error()})
+		return result
+	}
 
-	// Build filter set
+	// Build the output filter, and the wider execution scope it implies.
 	var filterSet map[string]struct{}
 	if len(filterLayers) > 0 {
 		filterSet = make(map[string]struct{}, len(filterLayers))
@@ -55,9 +62,10 @@ func (e *Evaluator) Evaluate(snap *model.Snapshot, subjectKey string, ctx map[st
 			filterSet[name] = struct{}{}
 		}
 	}
+	scope := dependencyClosure(ordered, filterLayers)
 
 	// Copy context to avoid mutating the caller's map
-	evalCtx := make(map[string]interface{}, len(ctx)+len(layers))
+	evalCtx := make(map[string]interface{}, len(ctx)+len(ordered))
 	for k, v := range ctx {
 		evalCtx[k] = v
 	}
@@ -71,11 +79,33 @@ func (e *Evaluator) Evaluate(snap *model.Snapshot, subjectKey string, ctx map[st
 		}
 	}
 
-	for _, layer := range layers {
-		lr := e.evaluateLayer(&layer, subjectKey, evalCtx, languages, renderAll, lookups, now)
+	statuses := make(map[string]model.LayerStatus, len(ordered))
 
-		// Inject cross-layer result regardless of filter
-		if lr.Assignment != nil {
+	for i := range ordered {
+		layer := &ordered[i]
+
+		if scope != nil {
+			if _, ok := scope[layer.Name]; !ok {
+				continue
+			}
+		}
+
+		var lr *LayerResult
+		if blocker, blocked := blockedBy(layer, statuses); blocked {
+			lr = &LayerResult{Status: skippedStatus(layer)}
+			lr.Warnings = append(lr.Warnings, model.Warning{
+				Segment: layer.Name,
+				Field:   blocker,
+				Message: fmt.Sprintf("layer skipped: dependency %q did not resolve", blocker),
+			})
+		} else {
+			lr = e.evaluateLayer(layer, subjectKey, evalCtx, languages, renderAll, lookups, now)
+		}
+		statuses[layer.Name] = lr.Status
+
+		// Inject the resolved value for downstream layers. Assert layers resolve
+		// no value — dependents gate on status instead.
+		if lr.Assignment != nil && lr.Assignment.Segment != "" {
 			evalCtx["layer:"+layer.Name] = lr.Assignment.Segment
 		}
 
@@ -86,9 +116,7 @@ func (e *Evaluator) Evaluate(snap *model.Snapshot, subjectKey string, ctx map[st
 			}
 		}
 
-		if lr.Assignment != nil {
-			result.Layers[layer.Name] = lr.Assignment
-		}
+		result.Layers[layer.Name] = lr
 		result.Warnings = append(result.Warnings, lr.Warnings...)
 	}
 
@@ -96,7 +124,7 @@ func (e *Evaluator) Evaluate(snap *model.Snapshot, subjectKey string, ctx map[st
 }
 
 func (e *Evaluator) evaluateLayer(layer *model.Layer, subjectKey string, ctx map[string]interface{}, languages []string, renderAll bool, lookups map[string]model.LookupTable, now time.Time) *LayerResult {
-	lr := &LayerResult{}
+	lr := &LayerResult{Status: unresolvedStatus(layer)}
 
 	// Layer default language for message fallback; empty means English.
 	defaultLang := layer.DefaultLanguage
@@ -109,6 +137,12 @@ func (e *Evaluator) evaluateLayer(layer *model.Layer, subjectKey string, ctx map
 
 		// Promotion time gating
 		if !seg.Promotion.IsActive(now) {
+			continue
+		}
+
+		// Dispatch predicate. A segment that does not apply is passed over
+		// entirely and produces no output of any kind — it is not a state.
+		if seg.When != nil && !strategy.EvalRule(seg.When, ctx, lookups) {
 			continue
 		}
 
@@ -127,6 +161,7 @@ func (e *Evaluator) evaluateLayer(layer *model.Layer, subjectKey string, ctx map
 		// Check overrides first
 		if len(seg.Overrides) > 0 {
 			if res, ok := strategy.EvalOverrides(seg.Overrides, evalCtx); ok {
+				lr.Status = model.StatusResolved
 				lr.Assignment = &model.Assignment{
 					Segment:  res.Segment,
 					Strategy: "override",
@@ -144,6 +179,11 @@ func (e *Evaluator) evaluateLayer(layer *model.Layer, subjectKey string, ctx map
 			continue
 		}
 		if res, ok := strat.Evaluate(seg, evalCtx); ok {
+			lr.Status = res.Status
+			if lr.Status == "" {
+				lr.Status = model.StatusResolved
+			}
+			lr.Failures = res.Failures
 			lr.Assignment = &model.Assignment{
 				Segment:     res.Segment,
 				Strategy:    seg.Strategy,
@@ -157,6 +197,143 @@ func (e *Evaluator) evaluateLayer(layer *model.Layer, subjectKey string, ctx map
 	}
 
 	return lr
+}
+
+// topoSort orders layers so every layer follows the layers it depends on.
+// Ready layers are taken in name order so execution is reproducible.
+func topoSort(layers []model.Layer) ([]model.Layer, error) {
+	byName := make(map[string]*model.Layer, len(layers))
+	indegree := make(map[string]int, len(layers))
+	dependents := make(map[string][]string, len(layers))
+
+	for i := range layers {
+		l := &layers[i]
+		if _, dup := byName[l.Name]; dup {
+			return nil, fmt.Errorf("duplicate layer name %q", l.Name)
+		}
+		byName[l.Name] = l
+		indegree[l.Name] = 0
+	}
+
+	for i := range layers {
+		l := &layers[i]
+		for _, dep := range l.DependsOn {
+			if _, ok := byName[dep]; !ok {
+				return nil, fmt.Errorf("layer %q depends on unknown layer %q", l.Name, dep)
+			}
+			indegree[l.Name]++
+			dependents[dep] = append(dependents[dep], l.Name)
+		}
+	}
+
+	ready := make([]string, 0, len(layers))
+	for name, deg := range indegree {
+		if deg == 0 {
+			ready = append(ready, name)
+		}
+	}
+	sort.Strings(ready)
+
+	out := make([]model.Layer, 0, len(layers))
+	for len(ready) > 0 {
+		name := ready[0]
+		ready = ready[1:]
+		out = append(out, *byName[name])
+
+		freed := false
+		for _, dependent := range dependents[name] {
+			indegree[dependent]--
+			if indegree[dependent] == 0 {
+				ready = append(ready, dependent)
+				freed = true
+			}
+		}
+		if freed {
+			sort.Strings(ready)
+		}
+	}
+
+	if len(out) != len(layers) {
+		return nil, errors.New("layer dependency cycle detected")
+	}
+	return out, nil
+}
+
+// dependencyClosure returns the set of layers that must execute to satisfy the
+// requested ones — the requests plus everything they transitively depend on.
+// A nil result means "no filter: evaluate everything".
+func dependencyClosure(layers []model.Layer, requested []string) map[string]struct{} {
+	if len(requested) == 0 {
+		return nil
+	}
+
+	byName := make(map[string]*model.Layer, len(layers))
+	for i := range layers {
+		byName[layers[i].Name] = &layers[i]
+	}
+
+	scope := make(map[string]struct{}, len(requested))
+	var visit func(string)
+	visit = func(name string) {
+		if _, seen := scope[name]; seen {
+			return
+		}
+		l, ok := byName[name]
+		if !ok {
+			return // unknown layer requested: contributes nothing, as before
+		}
+		scope[name] = struct{}{}
+		for _, dep := range l.DependsOn {
+			visit(dep)
+		}
+	}
+	for _, name := range requested {
+		visit(name)
+	}
+	return scope
+}
+
+// blockedBy reports the first dependency that did not resolve successfully.
+// A dependency succeeds when an assert layer is satisfied, or any other layer
+// produced an assignment. Anything else — violated, unevaluable, unresolved,
+// skipped — blocks, so a gate never runs against state an earlier gate failed
+// to establish.
+func blockedBy(layer *model.Layer, statuses map[string]model.LayerStatus) (string, bool) {
+	for _, dep := range layer.DependsOn {
+		switch statuses[dep] {
+		case model.StatusSatisfied, model.StatusResolved:
+			continue
+		default:
+			return dep, true
+		}
+	}
+	return "", false
+}
+
+// isAssertLayer reports whether a layer speaks the assertion vocabulary. It is
+// determined from config alone so a skipped layer still reports the right
+// status without being evaluated.
+func isAssertLayer(layer *model.Layer) bool {
+	for i := range layer.Segments {
+		if layer.Segments[i].Strategy == model.StrategyAssert {
+			return true
+		}
+	}
+	return false
+}
+
+func skippedStatus(layer *model.Layer) model.LayerStatus {
+	if isAssertLayer(layer) {
+		return model.StatusUnevaluable
+	}
+	return model.StatusSkipped
+}
+
+func unresolvedStatus(layer *model.Layer) model.LayerStatus {
+	if isAssertLayer(layer) {
+		return model.StatusUnevaluable
+	}
+	return model.StatusUnresolved
 }
 
 // renderWarnings converts message render errors into layer warnings.

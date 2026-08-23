@@ -10,11 +10,41 @@ import (
 // EvalExpression evaluates a leaf expression against the context. lookups
 // provides the tables referenced by in_lookup / not_in_lookup operators.
 func EvalExpression(expr *model.Expression, ctx map[string]interface{}, lookups map[string]model.LookupTable) bool {
-	val, ok := ctx[expr.Field]
-	if !ok {
+	val, present := model.ResolveField(ctx, expr.Field)
+
+	// Presence tests run first, because they are the only operators with an
+	// answer for a field that is not in the context: absent is null. Checking
+	// presence before them would make is_null false for a missing field, which
+	// is backwards.
+	if model.IsUnary(expr.Operator) {
+		return evalUnary(expr.Operator, val, present)
+	}
+
+	if !present {
 		return false
 	}
 	return evalOp(expr.Operator, val, expr.Value, lookups)
+}
+
+// evalUnary evaluates the operators that test the field itself. A field counts
+// as null when it is absent from the context or explicitly null.
+func evalUnary(op model.Operator, val interface{}, present bool) bool {
+	isNull := !present || val == nil
+
+	switch op {
+	case model.OpIsNull:
+		return isNull
+	case model.OpIsNullOrEmpty:
+		if isNull {
+			return true
+		}
+		// Emptiness is the empty string exactly; whitespace is not trimmed, and
+		// a zero or false value is not empty.
+		s, ok := val.(string)
+		return ok && s == ""
+	default:
+		return false
+	}
 }
 
 func evalOp(op model.Operator, actual, expected interface{}, lookups map[string]model.LookupTable) bool {

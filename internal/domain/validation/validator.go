@@ -16,10 +16,20 @@ func ValidateSnapshot(snap *model.Snapshot) error {
 	lookups := make(map[string]model.LookupTable, len(snap.Lookups))
 	errs = append(errs, validateLookups(snap.Lookups, lookups)...)
 
+	// The dependency graph must be usable before anything that reads it.
+	errs = append(errs, validateLayerGraph(snap.Layers)...)
+
 	for _, layer := range snap.Layers {
+		deps := make(map[string]struct{}, len(layer.DependsOn))
+		for _, d := range layer.DependsOn {
+			deps[d] = struct{}{}
+		}
+
 		for _, seg := range layer.Segments {
-			// Validate expression syntax for expression-strategy segments.
-			if seg.Strategy == "expression" {
+			// Validate expression syntax. Assert carries expressions too, so it
+			// must be included — otherwise an assert segment loses compile-time
+			// checking and a config typo becomes a runtime unevaluable.
+			if seg.Strategy == model.StrategyExpression || seg.Strategy == model.StrategyAssert {
 				for _, def := range seg.Expressions {
 					if _, err := expr.Compile(def.Expression); err != nil {
 						errs = append(errs, fmt.Sprintf("segment %q expression %q: %v", seg.ID, def.Name, err))
@@ -33,17 +43,23 @@ func ValidateSnapshot(snap *model.Snapshot) error {
 
 			// Build the effective schema: inputSchema fields + expression-defined fields.
 			effective := buildEffectiveSchema(seg)
+			vc := ruleContext{
+				schema:  effective,
+				layer:   layer.Name,
+				segment: seg.ID,
+				deps:    deps,
+				lookups: lookups,
+			}
 
-			// Validate rules and overrides against the effective schema.
+			// Validate rules, overrides and the dispatch predicate.
 			for _, r := range seg.Rules {
-				if err := validateRuleTree(&r, effective, seg.ID, lookups); err != nil {
-					errs = append(errs, err...)
-				}
+				errs = append(errs, validateRuleTree(&r, vc)...)
 			}
 			for _, r := range seg.Overrides {
-				if err := validateRuleTree(&r, effective, seg.ID, lookups); err != nil {
-					errs = append(errs, err...)
-				}
+				errs = append(errs, validateRuleTree(&r, vc)...)
+			}
+			if seg.When != nil {
+				errs = append(errs, validateRuleTree(seg.When, vc)...)
 			}
 		}
 	}
@@ -66,30 +82,154 @@ func buildEffectiveSchema(seg model.Segment) model.InputSchema {
 	return effective
 }
 
-func validateRuleTree(r *model.Rule, schema model.InputSchema, segID string, lookups map[string]model.LookupTable) []string {
+// ruleContext carries everything a rule tree is validated against.
+type ruleContext struct {
+	schema  model.InputSchema
+	layer   string
+	segment string
+	deps    map[string]struct{}
+	lookups map[string]model.LookupTable
+}
+
+func validateRuleTree(r *model.Rule, vc ruleContext) []string {
 	var errs []string
+
+	// A When predicate is a rule tree in its own right and is held to the same
+	// schema, so a typo in a gating condition fails at load rather than silently
+	// switching a whole block of checks off.
+	if r.When != nil {
+		errs = append(errs, validateRuleTree(r.When, vc)...)
+	}
+
 	if r.IsLeaf() {
 		field := r.Expression.Field
-		// Cross-layer refs are always valid at config time
-		if strings.HasPrefix(field, "layer:") {
-			return nil
+
+		// A cross-layer reference must be declared as a dependency. Without
+		// this, a typo or a reference to a layer that runs later passes config
+		// validation and then evaluates false forever.
+		if ref, ok := strings.CutPrefix(field, "layer:"); ok {
+			if _, declared := vc.deps[ref]; !declared {
+				errs = append(errs, fmt.Sprintf(
+					"layer %q segment %q rule %q: references %q but %q is not declared in dependsOn",
+					vc.layer, vc.segment, r.RuleName, field, ref))
+			}
+			return errs
 		}
-		sf, ok := schema[field]
+
+		sf, ok := vc.schema[field]
 		if !ok {
-			errs = append(errs, fmt.Sprintf("segment %q rule %q: field %q not in inputSchema", segID, r.RuleName, field))
+			errs = append(errs, fmt.Sprintf("segment %q rule %q: field %q not in inputSchema", vc.segment, r.RuleName, field))
 			return errs
 		}
 		if !model.OperatorSupportsType(r.Expression.Operator, sf.Type) {
 			errs = append(errs, fmt.Sprintf("segment %q rule %q: operator %q not compatible with type %q for field %q",
-				segID, r.RuleName, r.Expression.Operator, sf.Type, field))
+				vc.segment, r.RuleName, r.Expression.Operator, sf.Type, field))
 		}
-		errs = append(errs, validateLookupRef(r, sf.Type, segID, lookups)...)
+		errs = append(errs, validateLookupRef(r, sf.Type, vc.segment, vc.lookups)...)
 		return errs
 	}
 	for i := range r.Rules {
-		errs = append(errs, validateRuleTree(&r.Rules[i], schema, segID, lookups)...)
+		errs = append(errs, validateRuleTree(&r.Rules[i], vc)...)
 	}
 	return errs
+}
+
+// validateLayerGraph checks that dependency edges form a usable DAG: unique
+// layer names, every edge resolving to a real layer, and no cycles.
+func validateLayerGraph(layers []model.Layer) []string {
+	var errs []string
+
+	byName := make(map[string]struct{}, len(layers))
+	for _, l := range layers {
+		if l.Name == "" {
+			errs = append(errs, "layer with empty name")
+			continue
+		}
+		if _, dup := byName[l.Name]; dup {
+			errs = append(errs, fmt.Sprintf("duplicate layer name %q", l.Name))
+			continue
+		}
+		byName[l.Name] = struct{}{}
+	}
+
+	for _, l := range layers {
+		seen := make(map[string]struct{}, len(l.DependsOn))
+		for _, dep := range l.DependsOn {
+			switch {
+			case dep == l.Name:
+				errs = append(errs, fmt.Sprintf("layer %q depends on itself", l.Name))
+			case !contains(byName, dep):
+				errs = append(errs, fmt.Sprintf("layer %q depends on unknown layer %q", l.Name, dep))
+			}
+			if _, dup := seen[dep]; dup {
+				errs = append(errs, fmt.Sprintf("layer %q declares duplicate dependency %q", l.Name, dep))
+			}
+			seen[dep] = struct{}{}
+		}
+	}
+
+	// Only look for cycles once the edges are known to resolve.
+	if len(errs) == 0 {
+		if cycle := findCycle(layers); len(cycle) > 0 {
+			errs = append(errs, fmt.Sprintf("layer dependency cycle: %s", strings.Join(cycle, " -> ")))
+		}
+	}
+	return errs
+}
+
+func contains(set map[string]struct{}, key string) bool {
+	_, ok := set[key]
+	return ok
+}
+
+// findCycle returns one cycle in the dependency graph, as a readable path.
+func findCycle(layers []model.Layer) []string {
+	deps := make(map[string][]string, len(layers))
+	for _, l := range layers {
+		deps[l.Name] = l.DependsOn
+	}
+
+	const (
+		white = iota // unvisited
+		grey         // on the current path
+		black        // fully explored
+	)
+	color := make(map[string]int, len(layers))
+	var path, cycle []string
+
+	var visit func(string) bool
+	visit = func(name string) bool {
+		color[name] = grey
+		path = append(path, name)
+
+		for _, dep := range deps[name] {
+			switch color[dep] {
+			case grey:
+				for i, n := range path {
+					if n == dep {
+						cycle = append(append([]string{}, path[i:]...), dep)
+						break
+					}
+				}
+				return true
+			case white:
+				if visit(dep) {
+					return true
+				}
+			}
+		}
+
+		path = path[:len(path)-1]
+		color[name] = black
+		return false
+	}
+
+	for _, l := range layers {
+		if color[l.Name] == white && visit(l.Name) {
+			return cycle
+		}
+	}
+	return nil
 }
 
 // validateLookupRef checks a lookup-operator expression: its value must name an
@@ -124,7 +264,7 @@ func CheckRequiredFields(seg *model.Segment, ctx map[string]interface{}) []model
 	var warnings []model.Warning
 	for field, sf := range seg.InputSchema {
 		if sf.Required {
-			if _, ok := ctx[field]; !ok {
+			if _, ok := model.ResolveField(ctx, field); !ok {
 				warnings = append(warnings, model.Warning{
 					Segment: seg.ID,
 					Field:   field,
