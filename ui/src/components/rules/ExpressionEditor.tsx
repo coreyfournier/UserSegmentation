@@ -31,7 +31,7 @@ export default function ExpressionEditor({ value, onChange, schema, layerNames }
   };
 
   const parseValue = (raw: string, op: string): unknown => {
-    if (op === 'in') {
+    if (op === 'in' || op === 'not_in') {
       return raw.split(',').map((s) => s.trim()).filter(Boolean);
     }
     if (raw === 'true') return true;
@@ -84,7 +84,7 @@ export default function ExpressionEditor({ value, onChange, schema, layerNames }
             onChange={(e) =>
               onChange({ ...value, value: parseValue(e.target.value, value.operator as string) })
             }
-            placeholder={value.operator === 'in' ? 'val1, val2, ...' : 'value'}
+            placeholder={value.operator === 'in' || value.operator === 'not_in' ? 'val1, val2, ...' : 'value'}
           />
         )}
       </div>

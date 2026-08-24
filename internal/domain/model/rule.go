@@ -11,20 +11,10 @@ const (
 // Rule is a node in the composite rule tree.
 // A leaf rule has an Expression; a composite rule has an Operator and nested Rules.
 type Rule struct {
-	RuleName string            `json:"ruleName"`
-	Operator CompositeOperator `json:"operator,omitempty"`
-	Enabled  *bool             `json:"enabled,omitempty"`
-	// When gates this rule — and its whole subtree — on the evaluation context.
-	// Absent means always applicable.
-	//
-	// A rule that does not apply contributes nothing: no failure is reported for
-	// it, and it neither satisfies nor fails its parent. Putting the condition
-	// here instead of repeating it as an And on every child is what lets one
-	// predicate govern a whole block of checks.
-	//
-	// Enabled is the static form of the same idea; When is the data-dependent one.
-	When         *Rule  `json:"when,omitempty"`
-	SuccessEvent string `json:"successEvent,omitempty"`
+	RuleName     string            `json:"ruleName"`
+	Operator     CompositeOperator `json:"operator,omitempty"`
+	Enabled      *bool             `json:"enabled,omitempty"`
+	SuccessEvent string            `json:"successEvent,omitempty"`
 	ErrorMessage string            `json:"errorMessage,omitempty"`
 	Expression   *Expression       `json:"expression,omitempty"`
 	Rules        []Rule            `json:"rules,omitempty"`

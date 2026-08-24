@@ -67,6 +67,8 @@ func evalOp(op model.Operator, actual, expected interface{}, lookups map[string]
 		return ok && c <= 0
 	case model.OpIn:
 		return evalIn(actual, expected)
+	case model.OpNotIn:
+		return !evalIn(actual, expected)
 	case model.OpContains:
 		return evalContains(actual, expected)
 	case model.OpInLookup:

@@ -12,14 +12,15 @@ import (
 // short-circuits. This is the segmentation hot path — a fifty-rule layer that
 // matches on rule three does no further work.
 //
-// Collect mode (ctx.CollectFailures, set by AssertStrategy): the semantics
-// invert. Every rule is an assertion that must hold, the whole tree is walked,
-// and each assertion that does not hold is itemised.
+// Collect mode (ctx.CollectFailures, set by ChecklistStrategy): every rule is
+// evaluated instead of stopping at the first match, and each one that matches
+// is reported. A rule means the same thing in both modes — it fires when its
+// condition holds — only what happens on a match differs.
 type RuleStrategy struct{}
 
 func (s *RuleStrategy) Evaluate(seg *model.Segment, ctx *EvalContext) (Result, bool) {
 	if ctx.CollectFailures {
-		return collectAssertions(seg, ctx), true
+		return collectViolations(seg, ctx), true
 	}
 
 	for i := range seg.Rules {
@@ -45,58 +46,28 @@ func (s *RuleStrategy) Evaluate(seg *model.Segment, ctx *EvalContext) (Result, b
 	return Result{}, false
 }
 
-// collectAssertions treats every rule in the segment as an assertion that must
-// hold, and reports each one that does not. It always succeeds — an assert
-// segment has no notion of "no rule matched".
-func collectAssertions(seg *model.Segment, ctx *EvalContext) Result {
-	res := Result{Reason: "assert:" + seg.ID}
+// collectViolations evaluates every rule in the segment and reports each one
+// that matches. Each rule is one checklist item: its condition describes a
+// problem, and its message states it.
+//
+// A rule fires on a match here exactly as it does under first-match evaluation,
+// so the same config means the same thing under either strategy. And/Or build
+// one item's condition — they are not a reporting structure — which is why this
+// does not recurse: the tree below a rule decides whether that one item fires.
+//
+// It always succeeds; a checklist has no notion of "no rule matched".
+func collectViolations(seg *model.Segment, ctx *EvalContext) Result {
+	res := Result{Reason: "checklist:" + seg.ID}
 	for i := range seg.Rules {
-		collectRuleFailures(&seg.Rules[i], ctx, &res)
+		r := &seg.Rules[i]
+		if !r.IsEnabled() {
+			continue
+		}
+		if evaluateRule(r, ctx.Context, ctx.Lookups) {
+			appendFailure(&res, r, ctx)
+		}
 	}
 	return res
-}
-
-// collectRuleFailures walks the entire rule tree, appending a failure for every
-// assertion that does not hold. Unlike evaluateRule it never short-circuits —
-// itemising all of a gate's problems at once is the point.
-func collectRuleFailures(r *model.Rule, ctx *EvalContext, res *Result) {
-	// A rule that is switched off, or whose When predicate does not hold,
-	// contributes nothing — no failure, and no effect on its parent. This is how
-	// one condition governs a whole block of checks: gate the group, and every
-	// check inside it is still reported individually when the group does apply.
-	if !active(r, ctx.Context, ctx.Lookups) {
-		return
-	}
-
-	if r.IsLeaf() {
-		if !EvalExpression(r.Expression, ctx.Context, ctx.Lookups) {
-			appendFailure(res, r, ctx)
-		}
-		return
-	}
-
-	switch r.Operator {
-	case model.CompositeAnd:
-		// Every child must hold; report each one that does not.
-		for i := range r.Rules {
-			collectRuleFailures(&r.Rules[i], ctx, res)
-		}
-
-	case model.CompositeOr:
-		// Any branch holding satisfies the node. When none do, report the Or
-		// node itself rather than each branch — listing every branch would tell
-		// the resolver to set all of them when any one would have done.
-		// evaluateRule already skips branches that are off or inapplicable.
-		for i := range r.Rules {
-			if evaluateRule(&r.Rules[i], ctx.Context, ctx.Lookups) {
-				return
-			}
-		}
-		appendFailure(res, r, ctx)
-
-	default:
-		appendFailure(res, r, ctx)
-	}
 }
 
 // appendFailure renders the rule's message templates and records the failure.
@@ -180,26 +151,9 @@ func EvalRule(r *model.Rule, ctx map[string]interface{}, lookups map[string]mode
 	return evaluateRule(r, ctx, lookups)
 }
 
-// ruleApplies reports whether a rule's When predicate holds. A rule with no
-// predicate always applies.
-//
-// This is the data-dependent counterpart to Enabled, and is skipped in the same
-// places: a rule that does not apply neither satisfies nor fails its parent.
-func ruleApplies(r *model.Rule, ctx map[string]interface{}, lookups map[string]model.LookupTable) bool {
-	if r.When == nil {
-		return true
-	}
-	return evaluateRule(r.When, ctx, lookups)
-}
-
-// active reports whether a child should take part in its parent's outcome.
-func active(r *model.Rule, ctx map[string]interface{}, lookups map[string]model.LookupTable) bool {
-	return r.IsEnabled() && ruleApplies(r, ctx, lookups)
-}
-
 // evaluateRule recursively evaluates a rule node.
 func evaluateRule(r *model.Rule, ctx map[string]interface{}, lookups map[string]model.LookupTable) bool {
-	if !active(r, ctx, lookups) {
+	if !r.IsEnabled() {
 		return false
 	}
 	if r.IsLeaf() {
@@ -210,7 +164,7 @@ func evaluateRule(r *model.Rule, ctx map[string]interface{}, lookups map[string]
 	case model.CompositeAnd:
 		for i := range r.Rules {
 			child := &r.Rules[i]
-			if !active(child, ctx, lookups) {
+			if !child.IsEnabled() {
 				continue
 			}
 			if !evaluateRule(child, ctx, lookups) {
@@ -221,7 +175,7 @@ func evaluateRule(r *model.Rule, ctx map[string]interface{}, lookups map[string]
 	case model.CompositeOr:
 		for i := range r.Rules {
 			child := &r.Rules[i]
-			if !active(child, ctx, lookups) {
+			if !child.IsEnabled() {
 				continue
 			}
 			if evaluateRule(child, ctx, lookups) {

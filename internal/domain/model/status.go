@@ -6,18 +6,35 @@ const (
 	StrategyRule       = "rule"
 	StrategyPercentage = "percentage"
 	StrategyExpression = "expression"
-	StrategyAssert     = "assert"
+	StrategyChecklist  = "checklist"
 )
+
+// KnownStrategies is the closed set the evaluator can dispatch to. An unknown
+// name would otherwise be skipped silently and the segment would just never
+// produce anything, so config validation rejects it.
+var KnownStrategies = []string{
+	StrategyStatic, StrategyRule, StrategyPercentage, StrategyExpression, StrategyChecklist,
+}
+
+// IsKnownStrategy reports whether the evaluator has an implementation for name.
+func IsKnownStrategy(name string) bool {
+	for _, s := range KnownStrategies {
+		if s == name {
+			return true
+		}
+	}
+	return false
+}
 
 // LayerStatus reports the outcome of evaluating a layer.
 //
-// The assert strategy owns the assertion vocabulary; every other strategy uses
-// the neutral resolution vocabulary. Status is always emitted explicitly so a
-// consumer never has to infer meaning from the length of the failure list.
+// The checklist strategy owns the satisfied/violated vocabulary; every other
+// strategy uses the neutral resolution vocabulary. Status is always emitted
+// explicitly so a consumer never has to infer meaning from the failure count.
 type LayerStatus string
 
 const (
-	// Assert strategy.
+	// Checklist strategy.
 	StatusSatisfied   LayerStatus = "satisfied"
 	StatusViolated    LayerStatus = "violated"
 	StatusUnevaluable LayerStatus = "unevaluable"
@@ -28,7 +45,7 @@ const (
 	StatusSkipped    LayerStatus = "skipped"
 )
 
-// Failure is a single itemised problem reported by an assert layer.
+// Failure is a single itemised problem reported by a checklist layer.
 //
 // RuleName is the stable identifier: descriptive enough to indicate what is
 // wrong, and unique across the config (enforced by the ConfigSource). No

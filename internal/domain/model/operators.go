@@ -10,6 +10,7 @@ const (
 	OpLt       Operator = "lt"
 	OpLte      Operator = "lte"
 	OpIn         Operator = "in"
+	OpNotIn      Operator = "not_in"
 	OpContains   Operator = "contains"
 	OpInLookup   Operator = "in_lookup"
 	OpNotInLookup Operator = "not_in_lookup"
@@ -38,6 +39,7 @@ var OperatorTypes = map[Operator][]FieldType{
 	OpLt:       {FieldTypeNumber},
 	OpLte:      {FieldTypeNumber},
 	OpIn:          {FieldTypeString, FieldTypeNumber},
+	OpNotIn:       {FieldTypeString, FieldTypeNumber},
 	OpContains:    {FieldTypeArray, FieldTypeString},
 	OpInLookup:    {FieldTypeString, FieldTypeNumber},
 	OpNotInLookup: {FieldTypeString, FieldTypeNumber},

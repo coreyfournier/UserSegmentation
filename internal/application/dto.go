@@ -23,7 +23,7 @@ type EvaluateResponse struct {
 // LayerResultDTO is a single layer's outcome in the response.
 //
 // Status is authoritative: a consumer never needs to inspect the length of
-// Failures to learn whether anything is wrong. Assert layers report
+// Failures to learn whether anything is wrong. Checklist layers report
 // satisfied/violated/unevaluable; every other strategy reports
 // resolved/unresolved/skipped.
 type LayerResultDTO struct {
@@ -36,7 +36,7 @@ type LayerResultDTO struct {
 	Failures    []FailureDTO           `json:"failures,omitempty"`
 }
 
-// FailureDTO is one itemised problem from an assert layer. The rule name is the
+// FailureDTO is one itemised problem from a checklist layer. The rule name is the
 // stable identifier; the message states the problem.
 type FailureDTO struct {
 	Rule     string            `json:"rule"`

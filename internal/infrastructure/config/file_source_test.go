@@ -85,19 +85,19 @@ func TestFileSource_RejectsLegacyOrder(t *testing.T) {
 
 // Rule names are the stable public identifier for a reported failure, so the
 // store rejects collisions across the whole config.
-func TestFileSource_RejectsDuplicateAssertRuleName(t *testing.T) {
+func TestFileSource_RejectsDuplicateChecklistRuleName(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "test.json")
 	data := []byte(`{
 		"version": 1,
 		"layers": [
 			{"name": "gate-one", "segments": [
-				{"id": "s", "strategy": "assert", "rules": [
+				{"id": "s", "strategy": "checklist", "rules": [
 					{"ruleName": "sameName", "expression": {"field": "a", "operator": "eq", "value": 1}}
 				]}
 			]},
 			{"name": "gate-two", "segments": [
-				{"id": "s", "strategy": "assert", "rules": [
+				{"id": "s", "strategy": "checklist", "rules": [
 					{"ruleName": "sameName", "expression": {"field": "b", "operator": "eq", "value": 2}}
 				]}
 			]}
@@ -108,7 +108,7 @@ func TestFileSource_RejectsDuplicateAssertRuleName(t *testing.T) {
 	}
 
 	if _, err := NewFileSource(path).Load(); err == nil {
-		t.Fatal("expected load to fail on duplicate assert ruleName")
+		t.Fatal("expected load to fail on duplicate checklist ruleName")
 	} else if !strings.Contains(err.Error(), "sameName") {
 		t.Errorf("error should name the colliding rule, got: %v", err)
 	}

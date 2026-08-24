@@ -10,15 +10,16 @@ export type Operator =
   | 'contains'
   | 'in_lookup'
   | 'not_in_lookup'
+  | 'not_in'
   | 'is_null'
   | 'is_null_or_empty';
 export type CompositeOperator = 'And' | 'Or';
-export type StrategyType = 'static' | 'rule' | 'percentage' | 'expression' | 'assert';
+export type StrategyType = 'static' | 'rule' | 'percentage' | 'expression' | 'checklist';
 
 /**
- * Assert layers report the assertion vocabulary; every other strategy reports
- * the neutral resolution vocabulary. Status is always authoritative — never
- * infer the outcome from `failures.length`.
+ * Checklist layers report satisfied/violated/unevaluable; every other strategy
+ * reports the neutral resolution vocabulary. Status is always authoritative —
+ * never infer the outcome from `failures.length`.
  */
 export type LayerStatus =
   | 'satisfied'
@@ -46,12 +47,6 @@ export interface Rule {
   ruleName: string;
   operator?: CompositeOperator;
   enabled?: boolean;
-  /**
-   * Gates this rule and its whole subtree on the context. A rule that does not
-   * apply contributes nothing — no failure, and no effect on its parent's
-   * And/Or outcome. `enabled` is the static form of the same idea.
-   */
-  when?: Rule;
   successEvent?: string;
   errorMessage?: string;
   expression?: Expression;
@@ -126,7 +121,7 @@ export interface Snapshot {
   lookups?: LookupTable[];
 }
 
-/** One itemised problem from an assert layer. */
+/** One itemised problem from a checklist layer. */
 export interface Failure {
   /** Stable identifier — the rule name doubles as the public contract. */
   rule: string;
@@ -174,6 +169,7 @@ export const OPERATOR_TYPES: Record<Operator, FieldType[]> = {
   lt: ['number'],
   lte: ['number'],
   in: ['string', 'number'],
+  not_in: ['string', 'number'],
   contains: ['array', 'string'],
   in_lookup: ['string', 'number'],
   not_in_lookup: ['string', 'number'],

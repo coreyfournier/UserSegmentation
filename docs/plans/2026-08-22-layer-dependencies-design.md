@@ -1,7 +1,56 @@
 # Layer Dependencies and Failure Collection — Design
 
 **Date:** 2026-08-22
-**Status:** Implemented
+**Status:** Implemented, with the amendment below
+
+> ## Amendment — 2026-08-23: `assert` became `checklist`, and the polarity flipped
+>
+> Everything below describes `assert`, where **a rule was an assertion that had
+> to hold** and a failure meant it did not. That shipped, and was wrong.
+>
+> **The problem.** The `rule` strategy fires *on match* — a matching rule's
+> `successEvent` wins. `assert` reused the identical rule structure but inverted
+> what a match meant, so the same JSON meant opposite things depending on the
+> segment's strategy. The first real config written against it was inverted:
+> a rule reading `contactEmail is_null_or_empty` with the message "contact email
+> is required" reported the problem when the email *was* supplied.
+>
+> **The change.** A rule now states the condition for a problem and fires when
+> that condition holds — the same meaning it has everywhere else. The strategy is
+> renamed `checklist`, which is what it is.
+>
+> **What this simplified.** Two special cases invented purely to work around the
+> old polarity are gone:
+>
+> | | old (`assert`) | now (`checklist`) |
+> |---|---|---|
+> | leaf fires when | condition is **false** | condition is **true** |
+> | `And` group | reported each failing child | one item; `And` builds its condition |
+> | `Or` group | reported the node, not branches | one item; `Or` builds its condition |
+> | message on an `And` | **never rendered** (a documented wart) | always rendered |
+>
+> The recursive collector was replaced by a loop over the top-level rules.
+>
+> **Rule-level `when` was removed.** It was introduced below to gate a block of
+> checks on one condition. With segments dispatching by `Applies When` and layers
+> all running independently, a conditional block is expressed structurally — its
+> own segment, or its own layer — so a per-rule condition was a second way to say
+> the same thing. `Segment.When` remains.
+>
+> **A status bug this exposed.** A segment whose `Applies When` excluded the
+> subject left the layer `unresolved`, which mapped to `unevaluable` and *blocked
+> readiness* — so an Express company was permanently not-ready because a
+> Precision-only layer did not apply to it. A checklist layer where no segment
+> applies is now **satisfied**: no check ran, so nothing was found wrong.
+> `unevaluable` means only what it should — a dependency failed, or a computed
+> field blew up.
+>
+> **Also added:** `not_in` (the checklist form needs negations), and config-time
+> rejection of unknown strategy names, which were previously skipped in silence.
+>
+> Sections below are kept as the record of how the design arrived here. Where they
+> describe assertion polarity, `And`/`Or` reporting, or rule-level `when`, this
+> amendment supersedes them; the layer-dependency material is unchanged.
 
 ## Summary
 

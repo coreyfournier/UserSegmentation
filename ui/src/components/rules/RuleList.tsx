@@ -12,9 +12,7 @@ interface Props {
   depth: number;
   schema?: InputSchema;
   layerNames?: string[];
-  /** Whether rules here may carry their own applicability condition. */
-  showPredicates?: boolean;
-  /** True when every rule reports its own message (assert), not just the winner. */
+  /** True when every rule reports its own message (checklist), not just the winner. */
   perRuleMessages?: boolean;
 }
 
@@ -30,7 +28,6 @@ export default function RuleList({
   depth,
   schema,
   layerNames,
-  showPredicates = true,
   perRuleMessages = false,
 }: Props) {
   const update = (index: number, rule: Rule) => {
@@ -71,7 +68,6 @@ export default function RuleList({
             depth={depth}
             schema={schema}
             layerNames={layerNames}
-            showPredicates={showPredicates}
             perRuleMessages={perRuleMessages}
           />
         </Fragment>

@@ -81,36 +81,17 @@ func TestGraph_AcyclicPasses(t *testing.T) {
 func TestGraph_AssertExpressionsAreCompiled(t *testing.T) {
 	seg := model.Segment{
 		ID:          "bad",
-		Strategy:    model.StrategyAssert,
+		Strategy:    model.StrategyChecklist,
 		Expressions: []model.ExpressionDef{{Name: "Broken", Type: model.FieldTypeNumber, Expression: "1 +"}},
 	}
 	expectError(t, graphSnapshot(model.Layer{Name: "gate", Segments: []model.Segment{seg}}), "expression")
-}
-
-// A gating predicate on a rule is held to the schema too — a typo there would
-// otherwise silently switch a whole block of checks off.
-func TestGraph_RuleWhenPredicateValidated(t *testing.T) {
-	seg := model.Segment{
-		ID:          "company",
-		Strategy:    model.StrategyAssert,
-		InputSchema: model.InputSchema{"productType": {Type: model.FieldTypeString}},
-		Rules: []model.Rule{{
-			RuleName: "precisionBlock",
-			Operator: model.CompositeAnd,
-			When: &model.Rule{
-				RuleName:   "isPrecision",
-				Expression: &model.Expression{Field: "typoField", Operator: model.OpEq, Value: "Precision"},
-			},
-		}},
-	}
-	expectError(t, graphSnapshot(model.Layer{Name: "gate", Segments: []model.Segment{seg}}), "not in inputSchema")
 }
 
 // The When dispatch predicate is a rule tree and is checked like any other.
 func TestGraph_WhenPredicateValidated(t *testing.T) {
 	seg := model.Segment{
 		ID:          "precision",
-		Strategy:    model.StrategyAssert,
+		Strategy:    model.StrategyChecklist,
 		InputSchema: model.InputSchema{"productType": {Type: model.FieldTypeString}},
 		When: &model.Rule{
 			RuleName:   "isPrecision",

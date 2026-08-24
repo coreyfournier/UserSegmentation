@@ -72,7 +72,7 @@ func rejectLegacyOrder(data []byte) error {
 	return nil
 }
 
-// checkRuleNameUniqueness enforces that assert rule names are unique across the
+// checkRuleNameUniqueness enforces that checklist rule names are unique across the
 // whole config.
 //
 // A reported failure identifies itself by rule name alone, so the name is the
@@ -90,10 +90,10 @@ func checkRuleNameUniqueness(snap *model.Snapshot) error {
 			r := &rules[i]
 			switch prev, dup := seen[r.RuleName]; {
 			case r.RuleName == "":
-				errs = append(errs, fmt.Sprintf("%s: assert rule with empty ruleName", where))
+				errs = append(errs, fmt.Sprintf("%s: checklist rule with empty ruleName", where))
 			case dup:
 				errs = append(errs, fmt.Sprintf(
-					"duplicate assert ruleName %q in %s (already defined in %s)", r.RuleName, where, prev))
+					"duplicate checklist ruleName %q in %s (already defined in %s)", r.RuleName, where, prev))
 			default:
 				seen[r.RuleName] = where
 			}
@@ -103,7 +103,7 @@ func checkRuleNameUniqueness(snap *model.Snapshot) error {
 
 	for _, layer := range snap.Layers {
 		for _, seg := range layer.Segments {
-			if seg.Strategy != model.StrategyAssert {
+			if seg.Strategy != model.StrategyChecklist {
 				continue
 			}
 			walk(seg.Rules, fmt.Sprintf("layer %q segment %q", layer.Name, seg.ID))

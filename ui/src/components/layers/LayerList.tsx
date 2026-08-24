@@ -148,9 +148,9 @@ export default function LayerList() {
                 rules: [],
                 default: '',
               }),
-              // Assert has no default: every rule is an assertion that must
-              // hold, so there is no "nothing matched" outcome to fall back to.
-              ...(newSegStrategy === 'assert' && {
+              // A checklist has no default: every rule is a check that fires or
+              // does not, so there is no "nothing matched" outcome.
+              ...(newSegStrategy === 'checklist' && {
                 expressions: [],
                 rules: [],
               }),

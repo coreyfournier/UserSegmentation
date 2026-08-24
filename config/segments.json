@@ -1,6 +1,6 @@
 {
-  "version": 121,
-  "last_modified": "2026-08-23T21:39:41.674945383Z",
+  "version": 128,
+  "last_modified": "2026-08-23T22:02:43.25708675Z",
   "layers": [
     {
       "name": "base-tier",
@@ -263,7 +263,7 @@
             {
               "name": "TransferFee",
               "type": "number",
-              "expression": "CTTotal \u003e 30.0 ? 0.0 : (CTTotal + 4.0 \u003e 30.0 ? 30.0 - CTTotal : 4.0)"
+              "expression": "CTTotal > 30.0 ? 0.0 : (CTTotal + 4.0 > 30.0 ? 30.0 - CTTotal : 4.0)"
             }
           ],
           "rules": [
@@ -311,7 +311,7 @@
             {
               "name": "Eligible",
               "type": "boolean",
-              "expression": "DaysWorked \u003e= 14 \u0026\u0026 RequestedAmount \u003c= MaxAllowed"
+              "expression": "DaysWorked >= 14 && RequestedAmount <= MaxAllowed"
             }
           ],
           "rules": [
@@ -396,7 +396,7 @@
             {
               "name": "BindingLimit",
               "type": "string",
-              "expression": "RiskCeiling \u003c NetPayCap ? \"risk-ceiling\" : \"net-pay-cap\""
+              "expression": "RiskCeiling < NetPayCap ? \"risk-ceiling\" : \"net-pay-cap\""
             }
           ],
           "rules": [
@@ -505,55 +505,26 @@
       "segments": [
         {
           "id": "all-types",
-          "strategy": "assert",
+          "strategy": "checklist",
           "rules": [
             {
-              "ruleName": "companyHasFederalEIN",
+              "ruleName": "companyMissingFederalEIN",
               "errorMessage": "Federal EIN is required before payroll can be configured.",
               "expression": {
                 "field": "company.ein",
-                "operator": "neq",
-                "value": ""
+                "operator": "is_null_or_empty"
               }
             },
             {
-              "ruleName": "companyHasRegisteredLegalName",
+              "ruleName": "companyMissingLegalName",
               "errorMessage": "Registered legal name is required.",
               "expression": {
                 "field": "company.legalName",
-                "operator": "neq",
-                "value": ""
+                "operator": "is_null_or_empty"
               }
-            },
-            {
-              "ruleName": "precisionPayrollDefaults",
-              "operator": "And",
-              "when": {
-                "ruleName": "isPrecisionCompany",
-                "expression": {
-                  "field": "company.productType",
-                  "operator": "eq",
-                  "value": "Precision"
-                }
-              },
-              "rules": [
-                {
-                  "ruleName": "companyHasDefaultPayRate",
-                  "errorMessage": "A default pay rate is required for Precision companies.",
-                  "expression": {
-                    "field": "company.defaultPayRate",
-                    "operator": "gt",
-                    "value": 0
-                  }
-                }
-              ]
             }
           ],
           "inputSchema": {
-            "company.defaultPayRate": {
-              "type": "number",
-              "required": false
-            },
             "company.ein": {
               "type": "string",
               "required": true
@@ -561,10 +532,6 @@
             "company.legalName": {
               "type": "string",
               "required": true
-            },
-            "company.productType": {
-              "type": "string",
-              "required": false
             }
           }
         }
@@ -586,21 +553,21 @@
               "value": "Precision"
             }
           },
-          "strategy": "assert",
+          "strategy": "checklist",
           "expressions": [
             {
               "name": "PayPeriodDatesValid",
               "type": "boolean",
-              "expression": "company.periodEnd != '' \u0026\u0026 company.checkDate \u003e company.periodEnd"
+              "expression": "company.periodEnd != '' && company.checkDate > company.periodEnd"
             }
           ],
           "rules": [
             {
-              "ruleName": "payFrequencySupportedForPrecision",
+              "ruleName": "payFrequencyUnsupportedForPrecision",
               "errorMessage": "Pay frequency ${company.payFrequency} is not supported for Precision. Use biweekly or semimonthly.",
               "expression": {
                 "field": "company.payFrequency",
-                "operator": "in",
+                "operator": "not_in",
                 "value": [
                   "biweekly",
                   "semimonthly"
@@ -608,13 +575,35 @@
               }
             },
             {
-              "ruleName": "payPeriodDatesFormValidSequence",
+              "ruleName": "payPeriodDatesOutOfSequence",
               "errorMessage": "Pay period end must be set, and the check date must fall after it.",
               "expression": {
                 "field": "PayPeriodDatesValid",
                 "operator": "eq",
-                "value": true
+                "value": false
               }
+            },
+            {
+              "ruleName": "precisionMissingDefaultPayRate",
+              "operator": "Or",
+              "errorMessage": "A default pay rate is required for Precision companies.",
+              "rules": [
+                {
+                  "ruleName": "defaultPayRateAbsent",
+                  "expression": {
+                    "field": "company.defaultPayRate",
+                    "operator": "is_null"
+                  }
+                },
+                {
+                  "ruleName": "defaultPayRateNotPositive",
+                  "expression": {
+                    "field": "company.defaultPayRate",
+                    "operator": "lte",
+                    "value": 0
+                  }
+                }
+              ]
             }
           ],
           "inputSchema": {
@@ -637,6 +626,10 @@
             "company.productType": {
               "type": "string",
               "required": true
+            },
+            "company.defaultPayRate": {
+              "type": "number",
+              "required": false
             }
           }
         },
@@ -650,15 +643,14 @@
               "value": "Express"
             }
           },
-          "strategy": "assert",
+          "strategy": "checklist",
           "rules": [
             {
-              "ruleName": "expressHasFundingAccount",
+              "ruleName": "expressMissingFundingAccount",
               "errorMessage": "A funding account is required for Express.",
               "expression": {
                 "field": "company.fundingAccount",
-                "operator": "neq",
-                "value": ""
+                "operator": "is_null_or_empty"
               }
             }
           ],
@@ -683,45 +675,41 @@
       "segments": [
         {
           "id": "all-employees",
-          "strategy": "assert",
+          "strategy": "checklist",
           "rules": [
             {
-              "ruleName": "employeeHasHireDate",
+              "ruleName": "employeeMissingHireDate",
               "errorMessage": "Hire date is required.",
               "expression": {
                 "field": "employee.hireDate",
-                "operator": "neq",
-                "value": ""
+                "operator": "is_null_or_empty"
               }
             },
             {
-              "ruleName": "employeeAssignedToPayGroup",
+              "ruleName": "employeeMissingPayGroup",
               "errorMessage": "Employee must be assigned to a pay group.",
               "expression": {
                 "field": "employee.payGroupId",
-                "operator": "neq",
-                "value": ""
+                "operator": "is_null_or_empty"
               }
             },
             {
-              "ruleName": "employeeHasAnyContactMethod",
-              "operator": "Or",
+              "ruleName": "employeeMissingAllContactMethods",
+              "operator": "And",
               "errorMessage": "Provide at least one contact method: email or phone.",
               "rules": [
                 {
-                  "ruleName": "hasContactEmail",
+                  "ruleName": "contactEmailAbsent",
                   "expression": {
                     "field": "employee.contactEmail",
-                    "operator": "neq",
-                    "value": ""
+                    "operator": "is_null_or_empty"
                   }
                 },
                 {
-                  "ruleName": "hasContactPhone",
+                  "ruleName": "contactPhoneAbsent",
                   "expression": {
                     "field": "employee.contactPhone",
-                    "operator": "neq",
-                    "value": ""
+                    "operator": "is_null_or_empty"
                   }
                 }
               ]
@@ -761,14 +749,23 @@
               "value": "Precision"
             }
           },
-          "strategy": "assert",
+          "strategy": "checklist",
           "rules": [
+            {
+              "ruleName": "EmailContact",
+              "expression": {
+                "field": "EmailContact",
+                "operator": "is_null_or_empty"
+              },
+              "messages": {
+                "en": "Contact email is required for deduction emails"
+              }
+            },
             {
               "ruleName": "DefaultPayRate",
               "expression": {
                 "field": "DefaultPayRate",
-                "operator": "gte",
-                "value": 0
+                "operator": "is_null"
               },
               "messages": {
                 "en": "Default pay rate is required"
@@ -778,6 +775,10 @@
           "inputSchema": {
             "DefaultPayRate": {
               "type": "number",
+              "required": false
+            },
+            "EmailContact": {
+              "type": "string",
               "required": false
             },
             "ProductType": {

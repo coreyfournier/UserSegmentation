@@ -15,9 +15,7 @@ interface Props {
   hint?: string;
   /** Hides the add buttons once this many root rules exist. */
   maxRules?: number;
-  /** Set false inside a condition, so conditions do not nest without end. */
-  showPredicates?: boolean;
-  /** True when every rule reports its own message (assert), not just the winner. */
+  /** True when every rule reports its own message (checklist), not just the winner. */
   perRuleMessages?: boolean;
 }
 
@@ -29,7 +27,6 @@ export default function RuleTreeBuilder({
   label = 'Rules',
   hint,
   maxRules,
-  showPredicates = true,
   perRuleMessages = false,
 }: Props) {
   const [dragPath, setDragPath] = useState<RulePath | null>(null);
@@ -87,7 +84,6 @@ export default function RuleTreeBuilder({
           depth={0}
           schema={schema}
           layerNames={layerNames}
-          showPredicates={showPredicates}
           perRuleMessages={perRuleMessages}
         />
       </RuleDragContext.Provider>

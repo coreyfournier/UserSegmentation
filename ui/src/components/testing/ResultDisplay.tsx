@@ -11,7 +11,7 @@ const STRATEGY_COLORS: Record<string, string> = {
   percentage: '#8b5cf6',
   expression: '#06b6d4',
   override: '#f97316',
-  assert: '#eab308',
+  checklist: '#eab308',
 };
 
 const STATUS_COLORS: Record<LayerStatus, string> = {
@@ -28,8 +28,8 @@ const STATUS_COLORS: Record<LayerStatus, string> = {
  * unevaluable gate has no failures precisely because it could not be judged.
  */
 const STATUS_HINTS: Record<LayerStatus, string> = {
-  satisfied: 'Every assertion held.',
-  violated: 'One or more assertions did not hold.',
+  satisfied: 'No problems found.',
+  violated: 'One or more checks reported a problem.',
   unevaluable: 'Could not be judged — a dependency did not resolve, or a computed field failed.',
   resolved: 'Resolved to a segment.',
   unresolved: 'No segment matched.',

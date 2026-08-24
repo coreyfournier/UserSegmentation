@@ -2,7 +2,6 @@ import { useRef } from 'react';
 import type { Rule, InputSchema, CompositeOperator } from '../../api/types';
 import ExpressionEditor from './ExpressionEditor';
 import MessagesEditor from './MessagesEditor';
-import PredicateEditor from './PredicateEditor';
 import RuleList from './RuleList';
 import { useRuleDrag } from './RuleDragContext';
 import { describeRule, samePath, type RulePath } from './ruleTree';
@@ -22,13 +21,11 @@ interface Props {
   depth?: number;
   schema?: InputSchema;
   layerNames?: string[];
-  /** Whether this rule may carry its own applicability condition. */
-  showPredicates?: boolean;
-  /** True when every rule reports its own message (assert), not just the winner. */
+  /** True when every rule reports its own message (checklist), not just the winner. */
   perRuleMessages?: boolean;
 }
 
-export default function RuleNode({ rule, path, onChange, onDelete, index, total, onMove, depth = 0, schema, layerNames, showPredicates = true, perRuleMessages = false }: Props) {
+export default function RuleNode({ rule, path, onChange, onDelete, index, total, onMove, depth = 0, schema, layerNames, perRuleMessages = false }: Props) {
   const color = DEPTH_COLORS[depth % DEPTH_COLORS.length];
   const isLeaf = !!rule.expression;
 
@@ -137,7 +134,7 @@ export default function RuleNode({ rule, path, onChange, onDelete, index, total,
           onChange={(e) => onChange({ ...rule, ruleName: e.target.value })}
           placeholder="rule name"
         />
-        {/* An assert segment resolves no segment value, so successEvent is dead
+        {/* A checklist resolves no segment value, so successEvent is dead
             config there. */}
         {!isLeaf && !perRuleMessages && (
           <input
@@ -147,9 +144,9 @@ export default function RuleNode({ rule, path, onChange, onDelete, index, total,
             placeholder="successEvent"
           />
         )}
-        {/* errorMessage is the text reported with an assert failure, so under
-            assert every rule needs it — including leaves, which are the common
-            case. Elsewhere it stays where it has always been. */}
+        {/* errorMessage is the text reported when a check fires, so under a
+            checklist every rule needs it — including leaves, which are the
+            common case. Elsewhere it stays where it has always been. */}
         {(perRuleMessages || !isLeaf) && (
           <input
             className={perRuleMessages ? styles.message : styles.small}
@@ -158,7 +155,7 @@ export default function RuleNode({ rule, path, onChange, onDelete, index, total,
             placeholder={perRuleMessages ? 'failure message' : 'errorMessage'}
             title={
               perRuleMessages
-                ? 'errorMessage — reported when this assertion does not hold. Supports ${field} interpolation.'
+                ? 'errorMessage — reported when this check fires. Supports ${field} interpolation.'
                 : 'errorMessage'
             }
           />
@@ -186,30 +183,18 @@ export default function RuleNode({ rule, path, onChange, onDelete, index, total,
         </div>
       )}
 
-      {/* One condition can govern this rule and everything under it, so a block
-          of checks does not need the same test repeated on every member. */}
-      {showPredicates && (
-        <PredicateEditor
-          value={rule.when}
-          onChange={(when) => onChange({ ...rule, when })}
-          schema={schema}
-          layerNames={layerNames}
-          hint={
-            isLeaf
-              ? 'This check runs only when the condition holds. Otherwise it is skipped entirely — it neither passes nor fails.'
-              : 'This group and every check inside it run only when the condition holds. Otherwise the whole block is skipped — no failures are reported for it.'
-          }
-        />
-      )}
-
       {/* Under first-match strategies only the winning top-level rule's message
-          is ever rendered, so nested editors would be dead config. Assert is the
-          opposite: every failing rule is itemised with its own message. */}
+          is ever rendered, so nested editors would be dead config. A checklist
+          is the opposite: every check that fires carries its own message. */}
       {(depth === 0 || perRuleMessages) && (
         <MessagesEditor
           value={rule.messages}
           onChange={(m) => onChange({ ...rule, messages: m })}
-          hint="Rendered when this rule wins. Use ${field} for variables and expressions."
+          hint={
+            perRuleMessages
+              ? "Localized text reported when this check fires. Use ${field} for variables and expressions."
+              : "Rendered when this rule wins. Use ${field} for variables and expressions."
+          }
         />
       )}
 
@@ -223,7 +208,6 @@ export default function RuleNode({ rule, path, onChange, onDelete, index, total,
             depth={depth + 1}
             schema={schema}
             layerNames={layerNames}
-            showPredicates={showPredicates}
             perRuleMessages={perRuleMessages}
           />
           <div className={styles.addButtons}>

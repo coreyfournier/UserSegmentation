@@ -25,7 +25,7 @@ func graphEvaluator(extra map[string]strategy.Strategy) *Evaluator {
 		"static":     &strategy.StaticStrategy{},
 		"rule":       &strategy.RuleStrategy{},
 		"expression": &strategy.ExpressionStrategy{},
-		"assert":     &strategy.AssertStrategy{},
+		"checklist":  &strategy.ChecklistStrategy{},
 	}
 	for k, v := range extra {
 		strategies[k] = v
@@ -45,18 +45,19 @@ func staticLayer(name, value string, dependsOn ...string) model.Layer {
 	}
 }
 
-// assertLayer builds a gate that holds only when field == want.
-func assertLayer(name, rule, field, want string, dependsOn ...string) model.Layer {
+// checklistLayer builds a gate whose single check reports a problem when the
+// field is not the required value.
+func checklistLayer(name, rule, field, want string, dependsOn ...string) model.Layer {
 	return model.Layer{
 		Name:      name,
 		DependsOn: dependsOn,
 		Segments: []model.Segment{{
 			ID:       name + "-seg",
-			Strategy: "assert",
+			Strategy: model.StrategyChecklist,
 			Rules: []model.Rule{{
 				RuleName:     rule,
 				ErrorMessage: rule + " failed",
-				Expression:   &model.Expression{Field: field, Operator: model.OpEq, Value: want},
+				Expression:   &model.Expression{Field: field, Operator: model.OpNeq, Value: want},
 			}},
 		}},
 	}
@@ -142,9 +143,9 @@ func TestGraph_CycleIsReported(t *testing.T) {
 // A violated gate blocks everything downstream of it, transitively.
 func TestGraph_SkipPropagatesFromViolatedGate(t *testing.T) {
 	snap := &model.Snapshot{Layers: []model.Layer{
-		assertLayer("identity", "hasEIN", "ein", "12-3456789"),
-		assertLayer("payroll", "hasFrequency", "payFrequency", "biweekly", "identity"),
-		assertLayer("tax", "hasTaxId", "taxId", "T-1", "payroll"),
+		checklistLayer("identity", "hasEIN", "ein", "12-3456789"),
+		checklistLayer("payroll", "hasFrequency", "payFrequency", "biweekly", "identity"),
+		checklistLayer("tax", "hasTaxId", "taxId", "T-1", "payroll"),
 	}}
 
 	res := evaluate(t, graphEvaluator(nil), snap, map[string]interface{}{
@@ -169,8 +170,8 @@ func TestGraph_SkipPropagatesFromViolatedGate(t *testing.T) {
 // A satisfied gate lets the next one run.
 func TestGraph_SatisfiedGateReleasesDependents(t *testing.T) {
 	snap := &model.Snapshot{Layers: []model.Layer{
-		assertLayer("identity", "hasEIN", "ein", "12-3456789"),
-		assertLayer("payroll", "hasFrequency", "payFrequency", "biweekly", "identity"),
+		checklistLayer("identity", "hasEIN", "ein", "12-3456789"),
+		checklistLayer("payroll", "hasFrequency", "payFrequency", "biweekly", "identity"),
 	}}
 
 	res := evaluate(t, graphEvaluator(nil), snap, map[string]interface{}{
@@ -222,9 +223,9 @@ func TestGraph_UnresolvedLayerSkipsDependents(t *testing.T) {
 
 // An assert layer resolves no segment value, so nothing is injected under
 // "layer:<name>" — dependents gate on status instead.
-func TestGraph_AssertInjectsNoContextValue(t *testing.T) {
+func TestGraph_ChecklistInjectsNoContextValue(t *testing.T) {
 	snap := &model.Snapshot{Layers: []model.Layer{
-		assertLayer("gate", "hasEIN", "ein", "12-3456789"),
+		checklistLayer("gate", "hasEIN", "ein", "12-3456789"),
 		{
 			Name:      "downstream",
 			DependsOn: []string{"gate"},
@@ -297,11 +298,11 @@ func TestGraph_WhenDispatchSelectsSegment(t *testing.T) {
 		return model.Segment{
 			ID:       id,
 			When:     &model.Rule{RuleName: "is" + id, Expression: &model.Expression{Field: "productType", Operator: model.OpEq, Value: productType}},
-			Strategy: "assert",
+			Strategy: model.StrategyChecklist,
 			Rules: []model.Rule{{
 				RuleName:     rule,
 				ErrorMessage: rule + " failed",
-				Expression:   &model.Expression{Field: field, Operator: model.OpEq, Value: want},
+				Expression:   &model.Expression{Field: field, Operator: model.OpNeq, Value: want},
 			}},
 		}
 	}
@@ -309,8 +310,8 @@ func TestGraph_WhenDispatchSelectsSegment(t *testing.T) {
 	snap := &model.Snapshot{Layers: []model.Layer{{
 		Name: "payroll",
 		Segments: []model.Segment{
-			typeSegment("precision", "Precision", "precisionNeedsAnchor", "anchorDate", "2026-01-01"),
-			typeSegment("express", "Express", "expressNeedsNothing", "ein", "12-3456789"),
+			typeSegment("precision", "Precision", "precisionAnchorDateWrong", "anchorDate", "2026-01-01"),
+			typeSegment("express", "Express", "expressEinWrong", "ein", "12-3456789"),
 		},
 	}}}
 
@@ -326,21 +327,29 @@ func TestGraph_WhenDispatchSelectsSegment(t *testing.T) {
 	}
 
 	// The Precision segment applies to a Precision company, and fails.
+	// A comparison fires on a wrong value; absence needs a presence operator,
+	// which TestChecklist_ComparisonsDoNotFireOnAbsentFields covers.
 	res = evaluate(t, e, snap, map[string]interface{}{
-		"productType": "Precision", "ein": "12-3456789",
+		"productType": "Precision", "ein": "12-3456789", "anchorDate": "1999-01-01",
 	}, nil)
 	lr = res.Layers["payroll"]
 	if lr.Status != model.StatusViolated {
 		t.Fatalf("precision: expected violated, got %q", lr.Status)
 	}
-	if len(lr.Failures) != 1 || lr.Failures[0].Rule != "precisionNeedsAnchor" {
+	if len(lr.Failures) != 1 || lr.Failures[0].Rule != "precisionAnchorDateWrong" {
 		t.Errorf("precision: unexpected failures %v", lr.Failures)
 	}
 
-	// A type no segment claims resolves nothing at all.
+	// A type no segment claims runs no checks, so nothing was found wrong. It
+	// must not report unevaluable — that would block readiness for every
+	// subject a conditional layer simply does not cover.
 	res = evaluate(t, e, snap, map[string]interface{}{"productType": "TimeAndAttendance"}, nil)
-	if got := res.Layers["payroll"].Status; got != model.StatusUnevaluable {
-		t.Errorf("unmatched type: expected unevaluable, got %q", got)
+	lr = res.Layers["payroll"]
+	if lr.Status != model.StatusSatisfied {
+		t.Errorf("unmatched type: expected satisfied, got %q", lr.Status)
+	}
+	if len(lr.Failures) != 0 {
+		t.Errorf("unmatched type: expected no failures, got %v", lr.Failures)
 	}
 }
 
@@ -351,17 +360,17 @@ func TestGraph_NestedEntityContext(t *testing.T) {
 		Name: "employee-readiness",
 		Segments: []model.Segment{{
 			ID:       "all",
-			Strategy: "assert",
+			Strategy: model.StrategyChecklist,
 			Rules: []model.Rule{
 				{
-					RuleName:     "employeeHasHireDate",
+					RuleName:     "employeeMissingHireDate",
 					ErrorMessage: "Hire date is required.",
-					Expression:   &model.Expression{Field: "employee.hireDate", Operator: model.OpNeq, Value: ""},
+					Expression:   &model.Expression{Field: "employee.hireDate", Operator: model.OpIsNullOrEmpty},
 				},
 				{
-					RuleName:     "parentCompanyIsPrecision",
+					RuleName:     "parentCompanyNotPrecision",
 					ErrorMessage: "Parent company must be Precision.",
-					Expression:   &model.Expression{Field: "company.productType", Operator: model.OpEq, Value: "Precision"},
+					Expression:   &model.Expression{Field: "company.productType", Operator: model.OpNeq, Value: "Precision"},
 				},
 			},
 		}},
@@ -376,7 +385,7 @@ func TestGraph_NestedEntityContext(t *testing.T) {
 	if lr.Status != model.StatusViolated {
 		t.Fatalf("expected violated, got %q", lr.Status)
 	}
-	if len(lr.Failures) != 1 || lr.Failures[0].Rule != "employeeHasHireDate" {
+	if len(lr.Failures) != 1 || lr.Failures[0].Rule != "employeeMissingHireDate" {
 		t.Errorf("expected only the hire-date failure, got %v", lr.Failures)
 	}
 }
