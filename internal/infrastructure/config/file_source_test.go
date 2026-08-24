@@ -83,8 +83,35 @@ func TestFileSource_RejectsLegacyOrder(t *testing.T) {
 	}
 }
 
+// Only top-level rules report, so the branches of an And/Or need no name. A
+// group's children are its condition, not separate checklist items.
+func TestFileSource_AllowsUnnamedNestedRules(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "test.json")
+	data := []byte(`{
+		"version": 1,
+		"layers": [
+			{"name": "gates", "segments": [
+				{"id": "g", "strategy": "checklist", "rules": [
+					{"ruleName": "depositAccountMissing", "operator": "Or", "rules": [
+						{"ruleName": "", "expression": {"field": "hasDeposit", "operator": "is_null"}},
+						{"ruleName": "", "expression": {"field": "hasDeposit", "operator": "eq", "value": false}}
+					]}
+				]}
+			]}
+		]
+	}`)
+	if err := os.WriteFile(path, data, 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := NewFileSource(path).Load(); err != nil {
+		t.Fatalf("unnamed condition branches should load, got: %v", err)
+	}
+}
+
 // Rule names are the stable public identifier for a reported failure, so the
-// store rejects collisions across the whole config.
+// store rejects collisions among the rules that actually report.
 func TestFileSource_RejectsDuplicateChecklistRuleName(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "test.json")

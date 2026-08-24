@@ -1,6 +1,6 @@
 {
-  "version": 128,
-  "last_modified": "2026-08-23T22:02:43.25708675Z",
+  "version": 131,
+  "last_modified": "2026-08-24T00:59:28.693865327Z",
   "layers": [
     {
       "name": "base-tier",
@@ -263,7 +263,7 @@
             {
               "name": "TransferFee",
               "type": "number",
-              "expression": "CTTotal > 30.0 ? 0.0 : (CTTotal + 4.0 > 30.0 ? 30.0 - CTTotal : 4.0)"
+              "expression": "CTTotal \u003e 30.0 ? 0.0 : (CTTotal + 4.0 \u003e 30.0 ? 30.0 - CTTotal : 4.0)"
             }
           ],
           "rules": [
@@ -311,7 +311,7 @@
             {
               "name": "Eligible",
               "type": "boolean",
-              "expression": "DaysWorked >= 14 && RequestedAmount <= MaxAllowed"
+              "expression": "DaysWorked \u003e= 14 \u0026\u0026 RequestedAmount \u003c= MaxAllowed"
             }
           ],
           "rules": [
@@ -396,7 +396,7 @@
             {
               "name": "BindingLimit",
               "type": "string",
-              "expression": "RiskCeiling < NetPayCap ? \"risk-ceiling\" : \"net-pay-cap\""
+              "expression": "RiskCeiling \u003c NetPayCap ? \"risk-ceiling\" : \"net-pay-cap\""
             }
           ],
           "rules": [
@@ -558,7 +558,7 @@
             {
               "name": "PayPeriodDatesValid",
               "type": "boolean",
-              "expression": "company.periodEnd != '' && company.checkDate > company.periodEnd"
+              "expression": "company.periodEnd != '' \u0026\u0026 company.checkDate \u003e company.periodEnd"
             }
           ],
           "rules": [
@@ -615,6 +615,10 @@
               "type": "string",
               "required": true
             },
+            "company.defaultPayRate": {
+              "type": "number",
+              "required": false
+            },
             "company.payFrequency": {
               "type": "string",
               "required": true
@@ -626,10 +630,6 @@
             "company.productType": {
               "type": "string",
               "required": true
-            },
-            "company.defaultPayRate": {
-              "type": "number",
-              "required": false
             }
           }
         },
@@ -784,6 +784,64 @@
             "ProductType": {
               "type": "string",
               "required": false
+            }
+          }
+        }
+      ],
+      "defaultLanguage": "en"
+    },
+    {
+      "name": "T\u0026A Gates",
+      "segments": [
+        {
+          "id": "Gate 1",
+          "when": {
+            "ruleName": "ProductCheck",
+            "expression": {
+              "field": "ProductType",
+              "operator": "eq",
+              "value": "TimeAndAttendance"
+            }
+          },
+          "strategy": "checklist",
+          "static": {
+            "mappings": {},
+            "default": ""
+          },
+          "rules": [
+            {
+              "ruleName": "DepositAccountCheck",
+              "operator": "Or",
+              "rules": [
+                {
+                  "ruleName": "",
+                  "expression": {
+                    "field": "HasDepositAccount",
+                    "operator": "is_null"
+                  }
+                },
+                {
+                  "ruleName": "",
+                  "expression": {
+                    "field": "HasDepositAccount",
+                    "operator": "eq",
+                    "value": false
+                  }
+                }
+              ],
+              "messages": {
+                "en": "An account for deposits are required"
+              }
+            }
+          ],
+          "inputSchema": {
+            "HasDepositAccount": {
+              "type": "boolean",
+              "required": false
+            },
+            "ProductType": {
+              "type": "string",
+              "required": true
             }
           }
         }
