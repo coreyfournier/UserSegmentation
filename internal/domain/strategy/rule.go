@@ -2,15 +2,24 @@ package strategy
 
 import (
 	"sort"
+	"strings"
 
 	"github.com/segmentation-service/segmentation/internal/domain/model"
 )
 
-// RuleStrategy evaluates composite rule trees.
+// RuleStrategy evaluates composite rule trees, optionally deriving computed
+// fields first.
+//
+// Computed fields are part of this strategy rather than a separate one, because
+// a strategy that computes nothing is indistinguishable from plain rule
+// evaluation. Keeping them apart meant declaring `computed` on a `rule` segment
+// was silently dead config: the formulas never ran, yet validation accepted
+// rules referencing them because it merged their names into the schema anyway.
 //
 // Default mode: the first matching rule's successEvent wins, and evaluation
 // short-circuits. This is the segmentation hot path — a fifty-rule layer that
-// matches on rule three does no further work.
+// matches on rule three does no further work, and a segment with no computed
+// fields copies no maps.
 //
 // Collect mode (ctx.CollectFailures, set by ChecklistStrategy): every rule is
 // evaluated instead of stopping at the first match, and each one that matches
@@ -19,6 +28,35 @@ import (
 type RuleStrategy struct{}
 
 func (s *RuleStrategy) Evaluate(seg *model.Segment, ctx *EvalContext) (Result, bool) {
+	enriched, computed, failed := enrichWithComputed(seg.Computed, ctx.Context)
+
+	// Under collection a failed computation must not fall through to rule
+	// evaluation: the rules consuming that field would fire and be reported as
+	// real problems, when in truth the value could not be computed. Plain
+	// segmentation keeps the older, quieter behaviour — the field is absent.
+	if ctx.CollectFailures && len(failed) > 0 {
+		return Result{
+			Reason:   "formula error: " + strings.Join(failed, ", "),
+			Status:   model.StatusUnevaluable,
+			Computed: computed,
+		}, true
+	}
+
+	evalCtx := ctx
+	if len(seg.Computed) > 0 {
+		derived := *ctx
+		derived.Context = enriched
+		evalCtx = &derived
+	}
+
+	res, ok := s.evaluateRules(seg, evalCtx)
+	if ok && len(computed) > 0 {
+		res.Computed = computed
+	}
+	return res, ok
+}
+
+func (s *RuleStrategy) evaluateRules(seg *model.Segment, ctx *EvalContext) (Result, bool) {
 	if ctx.CollectFailures {
 		return collectViolations(seg, ctx), true
 	}

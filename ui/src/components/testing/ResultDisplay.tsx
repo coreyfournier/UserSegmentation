@@ -9,7 +9,6 @@ const STRATEGY_COLORS: Record<string, string> = {
   static: '#3b82f6',
   rule: '#22c55e',
   percentage: '#8b5cf6',
-  computed: '#06b6d4',
   override: '#f97316',
   checklist: '#eab308',
 };

@@ -78,13 +78,13 @@ func TestGraph_AcyclicPasses(t *testing.T) {
 // Assert segments carry expressions too, so they must get the same
 // compile-time syntax checking — otherwise a config typo becomes a runtime
 // unevaluable instead of a load failure.
-func TestGraph_AssertExpressionsAreCompiled(t *testing.T) {
+func TestGraph_FormulasAreCompiled(t *testing.T) {
 	seg := model.Segment{
 		ID:          "bad",
 		Strategy:    model.StrategyChecklist,
 		Computed: []model.ComputedField{{Name: "Broken", Type: model.FieldTypeNumber, Formula: "1 +"}},
 	}
-	expectError(t, graphSnapshot(model.Layer{Name: "gate", Segments: []model.Segment{seg}}), "expression")
+	expectError(t, graphSnapshot(model.Layer{Name: "gate", Segments: []model.Segment{seg}}), "formula")
 }
 
 // The When dispatch predicate is a rule tree and is checked like any other.

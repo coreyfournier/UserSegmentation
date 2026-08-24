@@ -51,11 +51,6 @@ export default function SegmentEditor() {
         next.rules = prev.rules ?? [];
         next.default = prev.default ?? '';
       }
-      if (strategy === 'computed') {
-        next.computed = prev.computed ?? [];
-        next.rules = prev.rules ?? [];
-        next.default = prev.default ?? '';
-      }
       if (strategy === 'checklist') {
         // No default: every rule is a check that fires or does not, so there is no
         // "nothing matched" outcome to fall back to.
@@ -69,8 +64,7 @@ export default function SegmentEditor() {
   // Computed and checklist both compute fields before rules run, so merge them
   // into the schema used for the rule field autocomplete.
   const effectiveSchema = (s: Segment): InputSchema | undefined => {
-    const computes = s.strategy === 'computed' || s.strategy === 'checklist';
-    if (!computes || !s.computed?.length) return s.inputSchema;
+    if (!s.computed?.length) return s.inputSchema;
     const merged: InputSchema = { ...s.inputSchema };
     for (const def of s.computed) {
       if (def.name) merged[def.name] = { type: def.type, required: false };
@@ -157,21 +151,6 @@ export default function SegmentEditor() {
             onDefaultChange={(v) => update({ default: v })}
             defaultMessages={seg.defaultMessages}
             onDefaultMessagesChange={(m) => update({ defaultMessages: m })}
-            ruleSchema={seg.inputSchema}
-            overrideSchema={seg.inputSchema}
-            layerNames={layerNames}
-          />
-        )}
-        {seg.strategy === 'computed' && (
-          <RuleConfig
-            rules={seg.rules ?? []}
-            overrides={seg.overrides ?? []}
-            onRulesChange={(r) => update({ rules: r })}
-            onOverridesChange={(r) => update({ overrides: r })}
-            defaultValue={seg.default ?? ''}
-            onDefaultChange={(v) => update({ default: v })}
-            defaultMessages={seg.defaultMessages}
-            onDefaultMessagesChange={(m) => update({ defaultMessages: m })}
             ruleSchema={effectiveSchema(seg)}
             overrideSchema={seg.inputSchema}
             layerNames={layerNames}
@@ -182,6 +161,10 @@ export default function SegmentEditor() {
                   value={seg.computed ?? []}
                   onChange={(c) => update({ computed: c })}
                 />
+                <p style={{ fontSize: 11, color: 'var(--text-muted)', margin: '4px 0 0' }}>
+                  Optional. Values derived before the rules run, available to rule
+                  conditions as ordinary fields and returned with the result.
+                </p>
               </div>
             }
           />
@@ -233,7 +216,7 @@ export default function SegmentEditor() {
       </section>
 
       {/* Overrides for strategies whose config section does not already include them */}
-      {seg.strategy !== 'rule' && seg.strategy !== 'computed' && seg.strategy !== 'checklist' && (
+      {seg.strategy !== 'rule' && seg.strategy !== 'checklist' && (
         <section className={`card ${styles.section}`}>
           <h3>Overrides</h3>
           <RuleTreeBuilder

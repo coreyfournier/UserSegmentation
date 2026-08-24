@@ -10,7 +10,6 @@ export const STRATEGY_OPTIONS: { value: StrategyType; label: string }[] = [
   { value: 'static', label: 'Static' },
   { value: 'rule', label: 'Rule' },
   { value: 'percentage', label: 'Percentage' },
-  { value: 'computed', label: 'Computed' },
   { value: 'checklist', label: 'Checklist' },
 ];
 

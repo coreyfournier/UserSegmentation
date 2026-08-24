@@ -20,7 +20,7 @@ Configure segments with strategy selection, promotion time windows, input schema
 ![Segment Editor](docs/screenshots/segment-editor.png)
 
 ### Computed Fields
-Define named values with [expr-lang](https://expr-lang.org/) formulas. Computed values are merged into the evaluation context and available to rule conditions, with results surfaced in the testing zone.
+A `rule` segment may declare named values derived from [expr-lang](https://expr-lang.org/) formulas. They are merged into the evaluation context before the conditions run, available to them as ordinary fields, and returned with the result.
 
 ![Computed Fields](docs/screenshots/computed-fields.png)
 
@@ -51,7 +51,7 @@ Export and import full configuration snapshots as JSON for backup or environment
 - **Cross-layer dependencies** — Later layers can reference earlier results via `"field": "layer:<name>"`, validated against the declared graph
 - **Composite rule trees** — AND/OR rules with short-circuit evaluation, inspired by Microsoft Rules Engine; the editor supports dragging a rule into, out of, and between groups
 - **Conditional blocks** — an `Applies When` predicate on a segment gates the whole segment, so one condition governs a block of checks structurally rather than being repeated on each one
-- **Five strategies** — Static (map lookup), Rule (composite tree), Percentage (FNV-1a hash bucketing), Computed (expr-lang formulas), [Checklist](#checklist-strategy) (validation gates that itemise every problem at once)
+- **Four strategies** — Static (map lookup), Rule (composite tree, optionally with expr-lang computed fields), Percentage (FNV-1a hash bucketing), [Checklist](#checklist-strategy) (validation gates that itemise every problem at once)
 - **Nested entity context** — Rules address a document by path (`company.payFrequency`, `employee.hireDate`), so an entity and its parent travel in one request
 - **Computed fields** — Derive named values from context before rule evaluation via expr-lang formulas (e.g. `abs(Rating) * -1 + Bonus`); results included in the API response
 - **Overrides** — Rule-based overrides evaluated before the primary strategy
@@ -148,7 +148,7 @@ Evaluate a single user across all (or selected) layers.
     "pricing-tier": {
       "status": "resolved",
       "segment": "premium",
-      "strategy": "computed",
+      "strategy": "rule",
       "reason": "rule:high-value",
       "computed": {
         "AdjustedScore": 7.5,
@@ -200,9 +200,9 @@ See `config/segments.json` for a complete example with all strategies, promotion
 | Strategy | Description |
 |---|---|
 | `static` | Direct subject key → segment mapping with default |
-| `rule` | Composite AND/OR rule tree; first match wins |
+| `rule` | Composite AND/OR rule tree; first match wins. May declare [computed fields](#computed-fields) evaluated before the conditions |
 | `percentage` | FNV-1a hash bucketing with weighted segments (deterministic — same subject always gets the same bucket given the same salt and weights) |
-| `computed` | Derives named fields from [expr-lang](https://expr-lang.org/) formulas, then applies rule evaluation against the enriched context |
+
 | `checklist` | Validation gate. Every rule states a condition for a problem; each one that holds is itemised. See [Checklist Strategy](#checklist-strategy) |
 
 ### Condition or computation?
@@ -218,16 +218,22 @@ test indistinguishable from an expr-lang formula in both config and code:
 
 ```json
 {
-  "strategy": "computed",
+  "strategy": "rule",
   "computed": [
     { "name": "MaxAllowed", "type": "number", "formula": "min(EarnedWages * 0.5, StateCap)" }
   ],
   "rules": [
-    { "ruleName": "advanceLimitBelowFloor",
-      "condition": { "field": "MaxAllowed", "operator": "lt", "value": 25 } }
+    { "ruleName": "highAdvance",
+      "successEvent": "premium",
+      "condition": { "field": "MaxAllowed", "operator": "gte", "value": 100 } }
   ]
 }
 ```
+
+`computed` is a feature of `rule`, not a strategy of its own — a strategy that
+computes nothing is indistinguishable from plain rule evaluation. Keeping them
+separate meant declaring `computed` on a `rule` segment was silently dead
+config: the formulas never ran, yet validation accepted rules referencing them.
 
 A config still using `expression` or `expressions` fails to load, naming the
 replacement — unmarshalling ignores unknown fields, so a stale key would
@@ -337,7 +343,7 @@ Attach optional, localized messages to any top-level **rule**, **override**, or 
   "layers": {
     "fees": {
       "segment": "fee-partial",
-      "strategy": "computed",
+      "strategy": "rule",
       "reason": "rule:fee-partial",
       "messages": { "es": "Pagarás una tarifa de 2 en tu transferencia de 28." }
     }
@@ -398,12 +404,12 @@ Manage tables via the **Lookups** admin screen (or the `/v1/admin/lookups` CRUD 
 
 ### Computed Fields
 
-The `computed` strategy derives named fields from [expr-lang](https://expr-lang.org/) formulas before rule evaluation. Formulas are evaluated in declaration order — a later formula can reference an earlier result. Computed values overwrite any `inputSchema` fields of the same name.
+A `rule` or `checklist` segment may declare `computed` fields: named values derived from [expr-lang](https://expr-lang.org/) formulas before the conditions run. Formulas are evaluated in declaration order — a later formula can reference an earlier result. Computed values overwrite any `inputSchema` fields of the same name, and are returned with the result.
 
 ```json
 {
   "id": "pricing-tier",
-  "strategy": "computed",
+  "strategy": "rule",
   "computed": [
     { "name": "AdjustedScore", "type": "number", "formula": "abs(Rating) * Weight" },
     { "name": "IsHighValue",   "type": "boolean", "formula": "Revenue > 10000 && AdjustedScore > 5" }
@@ -629,7 +635,7 @@ A segment whose `when` is false is passed over entirely. If no segment in a chec
 
 #### Computed fields
 
-`checklist` composes the [computed-field](#computed-fields) evaluation, so computed fields are available to the conditions and to their messages:
+`checklist` builds on the same [computed-field](#computed-fields) evaluation, so computed fields are available to the conditions and to their messages:
 
 ```json
 {
@@ -705,7 +711,7 @@ Computes the total EWA transfer spend for CT-state employees in the current batc
 ```json
 {
   "id": "ct-fee",
-  "strategy": "computed",
+  "strategy": "rule",
   "computed": [
     {
       "name": "CTTotal",
@@ -772,7 +778,7 @@ Three scenarios, same config:
 ```json
 {
   "segment": "fee-waived",
-  "strategy": "computed",
+  "strategy": "rule",
   "computed": { "CTTotal": 40, "TransferFee": 0 }
 }
 ```
@@ -781,7 +787,7 @@ Three scenarios, same config:
 ```json
 {
   "segment": "fee-partial",
-  "strategy": "computed",
+  "strategy": "rule",
   "computed": { "CTTotal": 28, "TransferFee": 2 }
 }
 ```
@@ -798,7 +804,7 @@ A logistic risk model for pricing and approving an earned wage advance. Age-deca
 ```json
 {
   "id": "ewa-risk",
-  "strategy": "computed",
+  "strategy": "rule",
   "computed": [
     {
       "name": "Z", "type": "number",
@@ -864,7 +870,7 @@ Response:
 ```json
 {
   "segment": "approve-risk-ceiling",
-  "strategy": "computed",
+  "strategy": "rule",
   "computed": {
     "Z": -3.0, "P": 0.047, "M": 4.0,
     "RiskCeiling": 54.2, "NetPayCap": 520.0,
@@ -896,7 +902,7 @@ The segment editor shows: strategy = Expression, promotion window = Jul 4–31 2
   "segments": [
     {
       "id": "july4-promo",
-      "strategy": "computed",
+      "strategy": "rule",
       "computed": [
         { "name": "BaseFee", "type": "number", "formula": "5.0" },
         { "name": "Fee",     "type": "number", "formula": "4.0" }
@@ -913,7 +919,7 @@ The segment editor shows: strategy = Expression, promotion window = Jul 4–31 2
     },
     {
       "id": "standard",
-      "strategy": "computed",
+      "strategy": "rule",
       "computed": [
         { "name": "Fee", "type": "number", "formula": "5.0" }
       ],
@@ -953,7 +959,7 @@ POST /v1/evaluate
   "layers": {
     "transfer-fee": {
       "segment": "july4-promo",
-      "strategy": "computed",
+      "strategy": "rule",
       "reason": "default",
       "computed": { "BaseFee": 5, "Fee": 4 },
       "messages": {
@@ -972,7 +978,7 @@ POST /v1/evaluate
   "layers": {
     "transfer-fee": {
       "segment": "standard",
-      "strategy": "computed",
+      "strategy": "rule",
       "reason": "default",
       "computed": { "Fee": 5 },
       "messages": {
@@ -1027,7 +1033,6 @@ problem, these are the natural way to say *"this is not set"*:
   "condition": { "field": "employee.contactEmail", "operator": "is_null_or_empty" },
   "errorMessage": "A contact email is required." }
 ```
-
 
 Two things to note. `is_null_or_empty` means the empty string exactly — whitespace
 is not trimmed, and `0` or `false` are values, not emptiness. And `is_null` is

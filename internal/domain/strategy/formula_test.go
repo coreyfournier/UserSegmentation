@@ -7,9 +7,9 @@ import (
 	"github.com/segmentation-service/segmentation/internal/domain/model"
 )
 
-func TestComputedStrategy_ComputedFieldUsedInRule(t *testing.T) {
+func TestRuleStrategy_ComputedFieldUsedInRule(t *testing.T) {
 	seg := &model.Segment{
-		Strategy: model.StrategyComputed,
+		Strategy: model.StrategyRule,
 		Computed: []model.ComputedField{
 			{Name: "Adjusted", Type: "number", Formula: "Rating * 2"},
 		},
@@ -23,7 +23,7 @@ func TestComputedStrategy_ComputedFieldUsedInRule(t *testing.T) {
 		Default: "normal",
 	}
 
-	s := &ComputedStrategy{}
+	s := &RuleStrategy{}
 
 	// Rating=6 → Adjusted=12 → matches "gt 10"
 	res, ok := s.Evaluate(seg, &EvalContext{
@@ -44,9 +44,9 @@ func TestComputedStrategy_ComputedFieldUsedInRule(t *testing.T) {
 	}
 }
 
-func TestComputedStrategy_FormulaOverwritesContext(t *testing.T) {
+func TestRuleStrategy_FormulaOverwritesContext(t *testing.T) {
 	seg := &model.Segment{
-		Strategy: model.StrategyComputed,
+		Strategy: model.StrategyRule,
 		Computed: []model.ComputedField{
 			{Name: "Score", Type: "number", Formula: "Base + Bonus"},
 		},
@@ -59,7 +59,7 @@ func TestComputedStrategy_FormulaOverwritesContext(t *testing.T) {
 		},
 	}
 
-	s := &ComputedStrategy{}
+	s := &RuleStrategy{}
 
 	// Score from inputSchema would be 50, but expression computes Base+Bonus=120 → overwrites
 	res, ok := s.Evaluate(seg, &EvalContext{
@@ -71,9 +71,9 @@ func TestComputedStrategy_FormulaOverwritesContext(t *testing.T) {
 	}
 }
 
-func TestComputedStrategy_ChainedFormulas(t *testing.T) {
+func TestRuleStrategy_ChainedFormulas(t *testing.T) {
 	seg := &model.Segment{
-		Strategy: model.StrategyComputed,
+		Strategy: model.StrategyRule,
 		Computed: []model.ComputedField{
 			{Name: "Double", Type: "number", Formula: "X * 2"},
 			{Name: "Quad", Type: "number", Formula: "Double * 2"}, // references previous
@@ -87,7 +87,7 @@ func TestComputedStrategy_ChainedFormulas(t *testing.T) {
 		},
 	}
 
-	s := &ComputedStrategy{}
+	s := &RuleStrategy{}
 
 	res, ok := s.Evaluate(seg, &EvalContext{
 		SubjectKey: "u",
@@ -98,8 +98,8 @@ func TestComputedStrategy_ChainedFormulas(t *testing.T) {
 	}
 }
 
-func TestComputedStrategy_MathFunctions(t *testing.T) {
-	s := &ComputedStrategy{}
+func TestRuleStrategy_MathFunctions(t *testing.T) {
+	s := &RuleStrategy{}
 
 	cases := []struct {
 		name       string
@@ -148,7 +148,7 @@ func TestComputedStrategy_MathFunctions(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			seg := &model.Segment{
-				Strategy: model.StrategyComputed,
+				Strategy: model.StrategyRule,
 				Computed: []model.ComputedField{
 					{Name: "Result", Type: "number", Formula: tc.formula},
 				},
@@ -172,10 +172,10 @@ func TestComputedStrategy_MathFunctions(t *testing.T) {
 	}
 }
 
-func TestComputedStrategy_LogisticChain(t *testing.T) {
+func TestRuleStrategy_LogisticChain(t *testing.T) {
 	// Models a full logistic scoring chain: Z → P → segment decision.
 	seg := &model.Segment{
-		Strategy: model.StrategyComputed,
+		Strategy: model.StrategyRule,
 		Computed: []model.ComputedField{
 			{Name: "Z", Type: "number", Formula: "W0 + (W1 * S1) + (W2 * S2)"},
 			{Name: "P", Type: "number", Formula: "1.0 / (1.0 + exp(-Z))"},
@@ -190,7 +190,7 @@ func TestComputedStrategy_LogisticChain(t *testing.T) {
 		Default: "approve",
 	}
 
-	s := &ComputedStrategy{}
+	s := &RuleStrategy{}
 
 	// W0=-3, W1=2, S1=1 (strong positive signal), W2=0, S2=0 → Z=-1, P≈0.27 → approve
 	res, ok := s.Evaluate(seg, &EvalContext{
@@ -232,13 +232,13 @@ func employee(id int, state string, spend float64) map[string]interface{} {
 	}
 }
 
-func TestComputedStrategy_CTFeeOverride(t *testing.T) {
+func TestRuleStrategy_CTFeeOverride(t *testing.T) {
 	// Mirrors the three scenarios from the C#/Lua POC:
 	//   Scenario A: CT total = 40  → fee-waived  (fee = 0,  exceeds 30)
 	//   Scenario B: CT total = 25  → fee-standard (fee = 4,  total+4 ≤ 30)
 	//   Scenario C: CT total = 28  → fee-partial  (fee = 2,  total+4 > 30)
 	seg := &model.Segment{
-		Strategy: model.StrategyComputed,
+		Strategy: model.StrategyRule,
 		Computed: []model.ComputedField{
 			{
 				Name:       "CTTotal",
@@ -266,7 +266,7 @@ func TestComputedStrategy_CTFeeOverride(t *testing.T) {
 		Default: "fee-standard",
 	}
 
-	s := &ComputedStrategy{}
+	s := &RuleStrategy{}
 
 	type want struct {
 		segment    string
@@ -330,9 +330,9 @@ func TestComputedStrategy_CTFeeOverride(t *testing.T) {
 	}
 }
 
-func TestComputedStrategy_BadFormulaSkipped(t *testing.T) {
+func TestRuleStrategy_BadFormulaSkipped(t *testing.T) {
 	seg := &model.Segment{
-		Strategy: model.StrategyComputed,
+		Strategy: model.StrategyRule,
 		Computed: []model.ComputedField{
 			{Name: "Bad", Type: "number", Formula: "!!!invalid!!!"}, // compile error
 			{Name: "Good", Type: "number", Formula: "X + 1"},
@@ -346,7 +346,7 @@ func TestComputedStrategy_BadFormulaSkipped(t *testing.T) {
 		},
 	}
 
-	s := &ComputedStrategy{}
+	s := &RuleStrategy{}
 
 	res, ok := s.Evaluate(seg, &EvalContext{
 		SubjectKey: "u",

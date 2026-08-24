@@ -68,6 +68,19 @@
 > `expression` would leave a rule with no condition and no children, evaluating
 > false forever — the same silent-break shape as the removed `order` field.
 >
+> Follow-up in the same change: the `computed` strategy was **folded into
+> `rule`**. A strategy that computes nothing is indistinguishable from plain rule
+> evaluation — `ComputedStrategy` literally enriched the context and then called
+> `RuleStrategy` — so the split bought nothing and cost something: declaring
+> `computed` on a `rule` segment was silently dead config, because the formulas
+> never ran while validation still merged their names into the schema, so rules
+> referencing them passed and then evaluated false forever.
+>
+> Computed fields are now an optional feature of `rule` (and of `checklist`,
+> which builds on it). Four strategies remain: `static`, `rule`, `percentage`,
+> `checklist`. Formulas are syntax-checked wherever declared, and a segment that
+> computes nothing copies no maps, so the segmentation hot path is unchanged.
+>
 > Also fixed here: `ruleName` uniqueness applied to *every* rule in a checklist,
 > including the branches of an And/Or. Under checklist semantics only the
 > top-level rule reports, so unnamed branches are correct — and the editor

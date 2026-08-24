@@ -22,10 +22,10 @@ func (c *countingStrategy) Evaluate(_ *model.Segment, _ *strategy.EvalContext) (
 
 func graphEvaluator(extra map[string]strategy.Strategy) *Evaluator {
 	strategies := map[string]strategy.Strategy{
-		"static":     &strategy.StaticStrategy{},
-		"rule":       &strategy.RuleStrategy{},
-		"computed":   &strategy.ComputedStrategy{},
-		"checklist":  &strategy.ChecklistStrategy{},
+		"static": &strategy.StaticStrategy{},
+		"rule":   &strategy.RuleStrategy{},
+
+		"checklist": &strategy.ChecklistStrategy{},
 	}
 	for k, v := range extra {
 		strategies[k] = v
@@ -57,7 +57,7 @@ func checklistLayer(name, rule, field, want string, dependsOn ...string) model.L
 			Rules: []model.Rule{{
 				RuleName:     rule,
 				ErrorMessage: rule + " failed",
-				Condition:   &model.Condition{Field: field, Operator: model.OpNeq, Value: want},
+				Condition:    &model.Condition{Field: field, Operator: model.OpNeq, Value: want},
 			}},
 		}},
 	}
@@ -80,7 +80,7 @@ func TestGraph_DependencyOrderIgnoresDeclarationOrder(t *testing.T) {
 				Rules: []model.Rule{{
 					RuleName:     "sawUpstream",
 					SuccessEvent: "saw-pro",
-					Condition:   &model.Condition{Field: "layer:upstream", Operator: model.OpEq, Value: "pro"},
+					Condition:    &model.Condition{Field: "layer:upstream", Operator: model.OpEq, Value: "pro"},
 				}},
 				Default: "missed",
 			}},
@@ -200,7 +200,7 @@ func TestGraph_UnresolvedLayerSkipsDependents(t *testing.T) {
 				ID:       "s",
 				Strategy: "rule",
 				Rules: []model.Rule{{
-					RuleName:   "never",
+					RuleName:  "never",
 					Condition: &model.Condition{Field: "nope", Operator: model.OpEq, Value: "x"},
 				}},
 				// No default, so nothing resolves.
@@ -235,7 +235,7 @@ func TestGraph_ChecklistInjectsNoContextValue(t *testing.T) {
 				Rules: []model.Rule{{
 					RuleName:     "readsGate",
 					SuccessEvent: "read-something",
-					Condition:   &model.Condition{Field: "layer:gate", Operator: model.OpEq, Value: "satisfied"},
+					Condition:    &model.Condition{Field: "layer:gate", Operator: model.OpEq, Value: "satisfied"},
 				}},
 				Default: "nothing-injected",
 			}},
@@ -263,7 +263,7 @@ func TestGraph_FilterEvaluatesDependencyClosureOnly(t *testing.T) {
 				Rules: []model.Rule{{
 					RuleName:     "sawUpstream",
 					SuccessEvent: "saw-pro",
-					Condition:   &model.Condition{Field: "layer:upstream", Operator: model.OpEq, Value: "pro"},
+					Condition:    &model.Condition{Field: "layer:upstream", Operator: model.OpEq, Value: "pro"},
 				}},
 				Default: "missed",
 			}},
@@ -302,7 +302,7 @@ func TestGraph_WhenDispatchSelectsSegment(t *testing.T) {
 			Rules: []model.Rule{{
 				RuleName:     rule,
 				ErrorMessage: rule + " failed",
-				Condition:   &model.Condition{Field: field, Operator: model.OpNeq, Value: want},
+				Condition:    &model.Condition{Field: field, Operator: model.OpNeq, Value: want},
 			}},
 		}
 	}
@@ -365,12 +365,12 @@ func TestGraph_NestedEntityContext(t *testing.T) {
 				{
 					RuleName:     "employeeMissingHireDate",
 					ErrorMessage: "Hire date is required.",
-					Condition:   &model.Condition{Field: "employee.hireDate", Operator: model.OpIsNullOrEmpty},
+					Condition:    &model.Condition{Field: "employee.hireDate", Operator: model.OpIsNullOrEmpty},
 				},
 				{
 					RuleName:     "parentCompanyNotPrecision",
 					ErrorMessage: "Parent company must be Precision.",
-					Condition:   &model.Condition{Field: "company.productType", Operator: model.OpNeq, Value: "Precision"},
+					Condition:    &model.Condition{Field: "company.productType", Operator: model.OpNeq, Value: "Precision"},
 				},
 			},
 		}},

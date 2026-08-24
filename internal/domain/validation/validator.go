@@ -33,15 +33,13 @@ func ValidateSnapshot(snap *model.Snapshot) error {
 					seg.ID, seg.Strategy, strings.Join(model.KnownStrategies, ", ")))
 			}
 
-			// Validate expression syntax. Checklist carries expressions too, so
-			// it must be included — otherwise a checklist segment loses
-			// compile-time checking and a config typo becomes a runtime
-			// unevaluable.
-			if seg.Strategy == model.StrategyComputed || seg.Strategy == model.StrategyChecklist {
-				for _, def := range seg.Computed {
-					if _, err := expr.Compile(def.Formula); err != nil {
-						errs = append(errs, fmt.Sprintf("segment %q expression %q: %v", seg.ID, def.Name, err))
-					}
+			// Formulas are syntax-checked wherever they are declared. Gating
+			// this on the strategy used to mean a typo on a segment that never
+			// ran it was accepted, and a genuine typo on one that did became a
+			// runtime unevaluable instead of a load failure.
+			for _, def := range seg.Computed {
+				if _, err := expr.Compile(def.Formula); err != nil {
+					errs = append(errs, fmt.Sprintf("segment %q formula %q: %v", seg.ID, def.Name, err))
 				}
 			}
 

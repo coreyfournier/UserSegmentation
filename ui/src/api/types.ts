@@ -14,7 +14,7 @@ export type Operator =
   | 'is_null'
   | 'is_null_or_empty';
 export type CompositeOperator = 'And' | 'Or';
-export type StrategyType = 'static' | 'rule' | 'percentage' | 'computed' | 'checklist';
+export type StrategyType = 'static' | 'rule' | 'percentage' | 'checklist';
 
 /**
  * Checklist layers report satisfied/violated/unevaluable; every other strategy

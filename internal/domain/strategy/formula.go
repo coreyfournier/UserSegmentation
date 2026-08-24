@@ -3,7 +3,6 @@ package strategy
 import (
 	"fmt"
 	"math"
-	"strings"
 	"sync"
 
 	"github.com/expr-lang/expr"
@@ -49,44 +48,53 @@ var mathOptions = []expr.Option{
 	}),
 }
 
-// ComputedStrategy evaluates named expr-lang expressions to enrich the context,
-// then delegates to rule evaluation against the enriched context.
-type ComputedStrategy struct {
-	mu    sync.Mutex
-	cache map[string]runFn
-}
+// Formulas are compiled once and cached for the process. The cache is
+// package-level so any RuleStrategy value benefits, including the throwaway
+// ones created inline.
+var (
+	formulaCacheMu sync.Mutex
+	formulaCache   = map[string]runFn{}
+)
 
-func (s *ComputedStrategy) compiled(expression string) (runFn, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if s.cache == nil {
-		s.cache = make(map[string]runFn)
-	}
-	if fn, ok := s.cache[expression]; ok {
+func compileFormula(source string) (runFn, error) {
+	formulaCacheMu.Lock()
+	defer formulaCacheMu.Unlock()
+	if fn, ok := formulaCache[source]; ok {
 		return fn, nil
 	}
-	program, err := expr.Compile(expression, mathOptions...)
+	program, err := expr.Compile(source, mathOptions...)
 	if err != nil {
 		return nil, err
 	}
 	fn := func(env interface{}) (interface{}, error) {
 		return expr.Run(program, env)
 	}
-	s.cache[expression] = fn
+	formulaCache[source] = fn
 	return fn, nil
 }
 
-func (s *ComputedStrategy) Evaluate(seg *model.Segment, ctx *EvalContext) (Result, bool) {
-	// Copy caller's context, then overwrite with expression results in declaration order.
-	enriched := make(map[string]interface{}, len(ctx.Context)+len(seg.Computed))
-	for k, v := range ctx.Context {
+// enrichWithComputed derives each named field in declaration order, so a later
+// formula can reference an earlier result. Computed values shadow context fields
+// of the same name.
+//
+// With no fields declared it returns the caller's map untouched — a rule segment
+// that computes nothing pays no copy, which keeps the segmentation hot path as
+// cheap as it was before computed fields folded into this strategy.
+func enrichWithComputed(fields []model.ComputedField, base map[string]interface{}) (
+	enriched map[string]interface{}, computed map[string]interface{}, failed []string,
+) {
+	if len(fields) == 0 {
+		return base, nil, nil
+	}
+
+	enriched = make(map[string]interface{}, len(base)+len(fields))
+	for k, v := range base {
 		enriched[k] = v
 	}
 
-	computed := make(map[string]interface{}, len(seg.Computed))
-	var failed []string
-	for _, def := range seg.Computed {
-		run, err := s.compiled(def.Formula)
+	computed = make(map[string]interface{}, len(fields))
+	for _, def := range fields {
+		run, err := compileFormula(def.Formula)
 		if err != nil {
 			failed = append(failed, def.Name)
 			continue
@@ -99,28 +107,5 @@ func (s *ComputedStrategy) Evaluate(seg *model.Segment, ctx *EvalContext) (Resul
 		enriched[def.Name] = val
 		computed[def.Name] = val
 	}
-
-	// Under collection a failed computation must not fall through to rule
-	// evaluation. The rules consuming that field would evaluate false and be
-	// reported as violations, telling the resolver a value is wrong when it
-	// could not in fact be computed. Segmentation keeps the old behavior — the
-	// computed field is simply absent.
-	if ctx.CollectFailures && len(failed) > 0 {
-		return Result{
-			Reason:      "expression error: " + strings.Join(failed, ", "),
-			Status:      model.StatusUnevaluable,
-			Computed: computed,
-		}, true
-	}
-
-	// Copy the struct rather than rebuilding it field by field, so fields added
-	// later (Lookups, CollectFailures) cannot be silently dropped here.
-	derived := *ctx
-	derived.Context = enriched
-
-	res, ok := (&RuleStrategy{}).Evaluate(seg, &derived)
-	if ok && len(computed) > 0 {
-		res.Computed = computed
-	}
-	return res, ok
+	return enriched, computed, failed
 }

@@ -143,11 +143,6 @@ export default function LayerList() {
                 rules: [],
                 default: '',
               }),
-              ...(newSegStrategy === 'computed' && {
-                computed: [],
-                rules: [],
-                default: '',
-              }),
               // A checklist has no default: every rule is a check that fires or
               // does not, so there is no "nothing matched" outcome.
               ...(newSegStrategy === 'checklist' && {

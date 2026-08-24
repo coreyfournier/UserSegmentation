@@ -1,5 +1,5 @@
 {
-  "version": 132,
+  "version": 133,
   "last_modified": "2026-08-24T00:59:28.693865327Z",
   "layers": [
     {
@@ -61,7 +61,7 @@
       "segments": [
         {
           "id": "IsRisky",
-          "strategy": "computed",
+          "strategy": "rule",
           "rules": [
             {
               "ruleName": "RiskEval",
@@ -105,7 +105,7 @@
       "segments": [
         {
           "id": "expression test",
-          "strategy": "computed"
+          "strategy": "rule"
         }
       ]
     },
@@ -253,7 +253,7 @@
       "segments": [
         {
           "id": "ct-fee",
-          "strategy": "computed",
+          "strategy": "rule",
           "rules": [
             {
               "ruleName": "fee-waived",
@@ -301,7 +301,7 @@
       "segments": [
         {
           "id": "ewa-eligibility",
-          "strategy": "computed",
+          "strategy": "rule",
           "rules": [
             {
               "ruleName": "ineligible-tenure",
@@ -361,7 +361,7 @@
       "segments": [
         {
           "id": "ewa-risk",
-          "strategy": "computed",
+          "strategy": "rule",
           "rules": [
             {
               "ruleName": "below-minimum",
@@ -458,11 +458,11 @@
       "segments": [
         {
           "id": "july4-promo",
-          "strategy": "computed",
+          "strategy": "rule",
           "default": "july4-promo",
           "defaultMessages": {
             "en": "Happy 4th of July! Your transfer fee has been reduced from $${BaseFee} to $${Fee}.",
-            "es": "¡Feliz 4 de Julio! Su tarifa de transferencia se ha reducido de $${BaseFee} a $${Fee}."
+            "es": "\u00c2\u00a1Feliz 4 de Julio! Su tarifa de transferencia se ha reducido de $${BaseFee} a $${Fee}."
           },
           "promotion": {
             "effective_from": "2026-07-04T00:00:00Z",
@@ -483,11 +483,11 @@
         },
         {
           "id": "standard",
-          "strategy": "computed",
+          "strategy": "rule",
           "default": "standard",
           "defaultMessages": {
             "en": "Your standard transfer fee is $${Fee}.",
-            "es": "Su tarifa de transferencia estándar es $${Fee}."
+            "es": "Su tarifa de transferencia est\u00c3\u00a1ndar es $${Fee}."
           },
           "computed": [
             {
