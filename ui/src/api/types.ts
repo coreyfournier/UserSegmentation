@@ -14,7 +14,7 @@ export type Operator =
   | 'is_null'
   | 'is_null_or_empty';
 export type CompositeOperator = 'And' | 'Or';
-export type StrategyType = 'static' | 'rule' | 'percentage' | 'expression' | 'checklist';
+export type StrategyType = 'static' | 'rule' | 'percentage' | 'checklist';
 
 /**
  * Checklist layers report satisfied/violated/unevaluable; every other strategy
@@ -36,7 +36,7 @@ export interface SchemaField {
 
 export type InputSchema = Record<string, SchemaField>;
 
-export interface Expression {
+export interface Condition {
   field: string;
   operator: Operator;
   /** Absent for unary operators, which test the field itself. */
@@ -49,7 +49,7 @@ export interface Rule {
   enabled?: boolean;
   successEvent?: string;
   errorMessage?: string;
-  expression?: Expression;
+  condition?: Condition;
   rules?: Rule[];
   /** Optional localized message templates keyed by language code (e.g. "en"). */
   messages?: Record<string, string>;
@@ -75,10 +75,10 @@ export interface StaticConfig {
   default: string;
 }
 
-export interface ExpressionDef {
+export interface ComputedField {
   name: string;
   type: FieldType;
-  expression: string;
+  formula: string;
 }
 
 export interface Segment {
@@ -92,7 +92,7 @@ export interface Segment {
   strategy: StrategyType;
   static?: StaticConfig;
   percentage?: PercentageConfig;
-  expressions?: ExpressionDef[];
+  computed?: ComputedField[];
   rules?: Rule[];
   overrides?: Rule[];
   default?: string;
@@ -134,7 +134,7 @@ export interface LayerResult {
   segment?: string;
   strategy?: string;
   reason?: string;
-  expressions?: Record<string, unknown>;
+  computed?: Record<string, unknown>;
   messages?: Record<string, string>;
   failures?: Failure[];
 }

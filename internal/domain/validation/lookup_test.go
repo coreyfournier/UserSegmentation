@@ -20,7 +20,7 @@ func zipRuleSegment(op model.Operator, tableID string) model.Segment {
 		InputSchema: model.InputSchema{"zip": {Type: model.FieldTypeString}},
 		Rules: []model.Rule{{
 			RuleName:   "r",
-			Expression: &model.Expression{Field: "zip", Operator: op, Value: tableID},
+			Condition: &model.Condition{Field: "zip", Operator: op, Value: tableID},
 		}},
 	}
 }

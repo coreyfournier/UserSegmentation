@@ -77,7 +77,7 @@ func TestEvaluator_CrossLayerDependency(t *testing.T) {
 							{
 								RuleName:     "pro-promo",
 								SuccessEvent: "special-offer",
-								Expression:   &model.Expression{Field: "layer:base-tier", Operator: model.OpEq, Value: "pro"},
+								Condition:   &model.Condition{Field: "layer:base-tier", Operator: model.OpEq, Value: "pro"},
 							},
 						},
 						Default: "none",
@@ -117,7 +117,7 @@ func TestEvaluator_PromotionTimeGating(t *testing.T) {
 							EffectiveFrom: &future,
 						},
 						Rules: []model.Rule{
-							{RuleName: "always", SuccessEvent: "promo", Expression: &model.Expression{Field: "x", Operator: model.OpEq, Value: "y"}},
+							{RuleName: "always", SuccessEvent: "promo", Condition: &model.Condition{Field: "x", Operator: model.OpEq, Value: "y"}},
 						},
 						Default: "none",
 					},
@@ -182,7 +182,7 @@ func TestEvaluator_OverrideTakesPriority(t *testing.T) {
 							{
 								RuleName:     "vip-override",
 								SuccessEvent: "override-val",
-								Expression:   &model.Expression{Field: "plan", Operator: model.OpEq, Value: "enterprise"},
+								Condition:   &model.Condition{Field: "plan", Operator: model.OpEq, Value: "enterprise"},
 							},
 						},
 					},

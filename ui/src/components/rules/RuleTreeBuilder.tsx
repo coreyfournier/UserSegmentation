@@ -64,7 +64,7 @@ export default function RuleTreeBuilder({
   };
 
   const addLeaf = () => {
-    onChange([...rules, { ruleName: '', expression: { field: '', operator: 'eq', value: '' } }]);
+    onChange([...rules, { ruleName: '', condition: { field: '', operator: 'eq', value: '' } }]);
   };
 
   const atCapacity = maxRules !== undefined && rules.length >= maxRules;
@@ -90,7 +90,7 @@ export default function RuleTreeBuilder({
       {!atCapacity && (
         <div className={styles.addButtons}>
           <button className="btn-ghost btn-sm" onClick={addTopLevel}>+ Add Group</button>
-          <button className="btn-ghost btn-sm" onClick={addLeaf}>+ Add Expression</button>
+          <button className="btn-ghost btn-sm" onClick={addLeaf}>+ Add Check</button>
         </div>
       )}
     </div>

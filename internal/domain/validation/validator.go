@@ -33,19 +33,17 @@ func ValidateSnapshot(snap *model.Snapshot) error {
 					seg.ID, seg.Strategy, strings.Join(model.KnownStrategies, ", ")))
 			}
 
-			// Validate expression syntax. Checklist carries expressions too, so
-			// it must be included — otherwise a checklist segment loses
-			// compile-time checking and a config typo becomes a runtime
-			// unevaluable.
-			if seg.Strategy == model.StrategyExpression || seg.Strategy == model.StrategyChecklist {
-				for _, def := range seg.Expressions {
-					if _, err := expr.Compile(def.Expression); err != nil {
-						errs = append(errs, fmt.Sprintf("segment %q expression %q: %v", seg.ID, def.Name, err))
-					}
+			// Formulas are syntax-checked wherever they are declared. Gating
+			// this on the strategy used to mean a typo on a segment that never
+			// ran it was accepted, and a genuine typo on one that did became a
+			// runtime unevaluable instead of a load failure.
+			for _, def := range seg.Computed {
+				if _, err := expr.Compile(def.Formula); err != nil {
+					errs = append(errs, fmt.Sprintf("segment %q formula %q: %v", seg.ID, def.Name, err))
 				}
 			}
 
-			if seg.InputSchema == nil && len(seg.Expressions) == 0 {
+			if seg.InputSchema == nil && len(seg.Computed) == 0 {
 				continue
 			}
 
@@ -80,11 +78,11 @@ func ValidateSnapshot(snap *model.Snapshot) error {
 // buildEffectiveSchema merges the segment's inputSchema with any expression-defined fields.
 // Expression fields overwrite inputSchema entries with the same name.
 func buildEffectiveSchema(seg model.Segment) model.InputSchema {
-	effective := make(model.InputSchema, len(seg.InputSchema)+len(seg.Expressions))
+	effective := make(model.InputSchema, len(seg.InputSchema)+len(seg.Computed))
 	for k, v := range seg.InputSchema {
 		effective[k] = v
 	}
-	for _, def := range seg.Expressions {
+	for _, def := range seg.Computed {
 		effective[def.Name] = model.SchemaField{Type: def.Type}
 	}
 	return effective
@@ -102,7 +100,7 @@ type ruleContext struct {
 func validateRuleTree(r *model.Rule, vc ruleContext) []string {
 	var errs []string
 	if r.IsLeaf() {
-		field := r.Expression.Field
+		field := r.Condition.Field
 
 		// A cross-layer reference must be declared as a dependency. Without
 		// this, a typo or a reference to a layer that runs later passes config
@@ -121,9 +119,9 @@ func validateRuleTree(r *model.Rule, vc ruleContext) []string {
 			errs = append(errs, fmt.Sprintf("segment %q rule %q: field %q not in inputSchema", vc.segment, r.RuleName, field))
 			return errs
 		}
-		if !model.OperatorSupportsType(r.Expression.Operator, sf.Type) {
+		if !model.OperatorSupportsType(r.Condition.Operator, sf.Type) {
 			errs = append(errs, fmt.Sprintf("segment %q rule %q: operator %q not compatible with type %q for field %q",
-				vc.segment, r.RuleName, r.Expression.Operator, sf.Type, field))
+				vc.segment, r.RuleName, r.Condition.Operator, sf.Type, field))
 		}
 		errs = append(errs, validateLookupRef(r, sf.Type, vc.segment, vc.lookups)...)
 		return errs
@@ -235,11 +233,11 @@ func findCycle(layers []model.Layer) []string {
 // validateLookupRef checks a lookup-operator expression: its value must name an
 // existing table, and the field type must match the table's key type.
 func validateLookupRef(r *model.Rule, fieldType model.FieldType, segID string, lookups map[string]model.LookupTable) []string {
-	op := r.Expression.Operator
+	op := r.Condition.Operator
 	if op != model.OpInLookup && op != model.OpNotInLookup {
 		return nil
 	}
-	id, ok := r.Expression.Value.(string)
+	id, ok := r.Condition.Value.(string)
 	if !ok || id == "" {
 		return []string{fmt.Sprintf("segment %q rule %q: operator %q requires a lookup table id as value",
 			segID, r.RuleName, op)}

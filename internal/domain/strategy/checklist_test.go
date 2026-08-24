@@ -21,7 +21,7 @@ func check(name, field string, op model.Operator, value interface{}, msg string)
 	return model.Rule{
 		RuleName:     name,
 		ErrorMessage: msg,
-		Expression:   &model.Expression{Field: field, Operator: op, Value: value},
+		Condition:   &model.Condition{Field: field, Operator: op, Value: value},
 	}
 }
 
@@ -29,7 +29,7 @@ func missing(name, field, msg string) model.Rule {
 	return model.Rule{
 		RuleName:     name,
 		ErrorMessage: msg,
-		Expression:   &model.Expression{Field: field, Operator: model.OpIsNullOrEmpty},
+		Condition:   &model.Condition{Field: field, Operator: model.OpIsNullOrEmpty},
 	}
 }
 
@@ -87,14 +87,14 @@ func TestChecklist_ReportsEveryProblemAtOnce(t *testing.T) {
 // A rule fires on a match here exactly as it does under first-match evaluation.
 // The same expression must not mean opposite things across strategies.
 func TestChecklist_FiresOnMatchLikeRuleStrategy(t *testing.T) {
-	expr := &model.Expression{Field: "ein", Operator: model.OpIsNullOrEmpty}
+	expr := &model.Condition{Field: "ein", Operator: model.OpIsNullOrEmpty}
 	ctx := map[string]interface{}{"ein": ""}
 
 	// Under first-match the rule matches and wins.
 	ruleSeg := &model.Segment{
 		ID:       "s",
 		Strategy: model.StrategyRule,
-		Rules:    []model.Rule{{RuleName: "einEmpty", SuccessEvent: "matched", Expression: expr}},
+		Rules:    []model.Rule{{RuleName: "einEmpty", SuccessEvent: "matched", Condition: expr}},
 	}
 	first, ok := (&RuleStrategy{}).Evaluate(ruleSeg, checkCtx(ctx))
 	if !ok || first.Segment != "matched" {
@@ -105,7 +105,7 @@ func TestChecklist_FiresOnMatchLikeRuleStrategy(t *testing.T) {
 	listSeg := &model.Segment{
 		ID:       "s",
 		Strategy: model.StrategyChecklist,
-		Rules:    []model.Rule{{RuleName: "einEmpty", ErrorMessage: "empty", Expression: expr}},
+		Rules:    []model.Rule{{RuleName: "einEmpty", ErrorMessage: "empty", Condition: expr}},
 	}
 	if got := failureNames(run(listSeg, ctx)); len(got) != 1 || got[0] != "einEmpty" {
 		t.Errorf("checklist: expected the same rule to fire, got %v", got)
@@ -188,7 +188,7 @@ func TestChecklist_DisabledRuleIgnored(t *testing.T) {
 		Rules: []model.Rule{{
 			RuleName:   "retired",
 			Enabled:    &off,
-			Expression: &model.Expression{Field: "anything", Operator: model.OpIsNull},
+			Condition: &model.Condition{Field: "anything", Operator: model.OpIsNull},
 		}},
 	}
 	if res := run(seg, map[string]interface{}{}); res.Status != model.StatusSatisfied {
@@ -196,25 +196,25 @@ func TestChecklist_DisabledRuleIgnored(t *testing.T) {
 	}
 }
 
-// Checklist composes ExpressionStrategy, so computed fields are available to
+// Checklist composes ComputedStrategy, so computed fields are available to
 // the conditions and to their messages.
 func TestChecklist_InheritsComputedFields(t *testing.T) {
 	seg := &model.Segment{
 		ID:       "limits",
 		Strategy: model.StrategyChecklist,
-		Expressions: []model.ExpressionDef{
-			{Name: "MaxAllowed", Type: model.FieldTypeNumber, Expression: "EarnedWages * 0.5"},
+		Computed: []model.ComputedField{
+			{Name: "MaxAllowed", Type: model.FieldTypeNumber, Formula: "EarnedWages * 0.5"},
 		},
 		Rules: []model.Rule{{
 			RuleName:     "advanceLimitBelowFloor",
 			ErrorMessage: "Advance limit of ${MaxAllowed} is below the required floor of 60.",
-			Expression:   &model.Expression{Field: "MaxAllowed", Operator: model.OpLt, Value: 60},
+			Condition:   &model.Condition{Field: "MaxAllowed", Operator: model.OpLt, Value: 60},
 		}},
 	}
 
 	res := run(seg, map[string]interface{}{"EarnedWages": 100.0})
-	if res.Expressions["MaxAllowed"] != 50.0 {
-		t.Fatalf("computed field missing: %v", res.Expressions)
+	if res.Computed["MaxAllowed"] != 50.0 {
+		t.Fatalf("computed field missing: %v", res.Computed)
 	}
 	if len(res.Failures) != 1 {
 		t.Fatalf("expected the floor check to fire, got %v", failureNames(res))
@@ -228,7 +228,7 @@ func TestChecklist_InheritsComputedFields(t *testing.T) {
 	}
 }
 
-// Regression: ExpressionStrategy used to rebuild EvalContext field by field and
+// Regression: ComputedStrategy used to rebuild EvalContext field by field and
 // drop Lookups, so lookup operators silently evaluated false.
 func TestChecklist_LookupsReachRules(t *testing.T) {
 	ctx := checkCtx(map[string]interface{}{"payFrequency": "weekly"})
@@ -242,11 +242,11 @@ func TestChecklist_LookupsReachRules(t *testing.T) {
 	seg := &model.Segment{
 		ID:          "frequency",
 		Strategy:    model.StrategyChecklist,
-		Expressions: []model.ExpressionDef{{Name: "Unused", Type: model.FieldTypeNumber, Expression: "1"}},
+		Computed: []model.ComputedField{{Name: "Unused", Type: model.FieldTypeNumber, Formula: "1"}},
 		Rules: []model.Rule{{
 			RuleName:     "frequencyUnsupported",
 			ErrorMessage: "unsupported",
-			Expression:   &model.Expression{Field: "payFrequency", Operator: model.OpNotInLookup, Value: "frequencies"},
+			Condition:   &model.Condition{Field: "payFrequency", Operator: model.OpNotInLookup, Value: "frequencies"},
 		}},
 	}
 
@@ -258,17 +258,17 @@ func TestChecklist_LookupsReachRules(t *testing.T) {
 
 // A computed field that fails at runtime makes the list unevaluable. Falling
 // through would report checks that consumed it as real problems.
-func TestChecklist_ExpressionRuntimeFailureIsUnevaluable(t *testing.T) {
+func TestChecklist_FormulaRuntimeFailureIsUnevaluable(t *testing.T) {
 	seg := &model.Segment{
 		ID:       "limits",
 		Strategy: model.StrategyChecklist,
-		Expressions: []model.ExpressionDef{
-			{Name: "Ratio", Type: model.FieldTypeNumber, Expression: "Missing + 1"},
+		Computed: []model.ComputedField{
+			{Name: "Ratio", Type: model.FieldTypeNumber, Formula: "Missing + 1"},
 		},
 		Rules: []model.Rule{{
 			RuleName:     "ratioTooHigh",
 			ErrorMessage: "ratio too high",
-			Expression:   &model.Expression{Field: "Ratio", Operator: model.OpGt, Value: 1},
+			Condition:   &model.Condition{Field: "Ratio", Operator: model.OpGt, Value: 1},
 		}},
 	}
 
@@ -291,13 +291,13 @@ func TestChecklist_MessageAlwaysPopulated(t *testing.T) {
 			{
 				RuleName:   "localizedOnly",
 				Messages:   map[string]string{"en": "Localized only.", "es": "Solo localizado."},
-				Expression: &model.Expression{Field: "ein", Operator: model.OpIsNullOrEmpty},
+				Condition: &model.Condition{Field: "ein", Operator: model.OpIsNullOrEmpty},
 			},
 			{
 				RuleName:     "plainWins",
 				ErrorMessage: "Plain wins.",
 				Messages:     map[string]string{"en": "Localized loses."},
-				Expression:   &model.Expression{Field: "ein", Operator: model.OpIsNullOrEmpty},
+				Condition:   &model.Condition{Field: "ein", Operator: model.OpIsNullOrEmpty},
 			},
 		},
 	}
@@ -324,7 +324,7 @@ func TestChecklist_MessageFallbackUsesLayerDefaultLanguage(t *testing.T) {
 		Rules: []model.Rule{{
 			RuleName:   "localizedOnly",
 			Messages:   map[string]string{"en": "English.", "es": "Español."},
-			Expression: &model.Expression{Field: "ein", Operator: model.OpIsNullOrEmpty},
+			Condition: &model.Condition{Field: "ein", Operator: model.OpIsNullOrEmpty},
 		}},
 	}
 
@@ -343,7 +343,7 @@ func TestChecklist_FailureWithoutAnyMessage(t *testing.T) {
 		Strategy: model.StrategyChecklist,
 		Rules: []model.Rule{{
 			RuleName:   "noText",
-			Expression: &model.Expression{Field: "ein", Operator: model.OpIsNullOrEmpty},
+			Condition: &model.Condition{Field: "ein", Operator: model.OpIsNullOrEmpty},
 		}},
 	}
 
@@ -397,8 +397,8 @@ func TestRuleStrategy_StillShortCircuits(t *testing.T) {
 		ID:       "tier",
 		Strategy: model.StrategyRule,
 		Rules: []model.Rule{
-			{RuleName: "first", SuccessEvent: "us-tier", Expression: &model.Expression{Field: "country", Operator: model.OpEq, Value: "US"}},
-			{RuleName: "second", SuccessEvent: "ca-tier", Expression: &model.Expression{Field: "country", Operator: model.OpEq, Value: "CA"}},
+			{RuleName: "first", SuccessEvent: "us-tier", Condition: &model.Condition{Field: "country", Operator: model.OpEq, Value: "US"}},
+			{RuleName: "second", SuccessEvent: "ca-tier", Condition: &model.Condition{Field: "country", Operator: model.OpEq, Value: "CA"}},
 		},
 		Default: "other",
 	}

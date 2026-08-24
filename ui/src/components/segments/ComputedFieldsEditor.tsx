@@ -1,18 +1,18 @@
-import type { ExpressionDef, FieldType } from '../../api/types';
-import ExpressionHelpPanel from './ExpressionHelpPanel';
-import styles from './ExpressionConfig.module.css';
+import type { ComputedField, FieldType } from '../../api/types';
+import FormulaReference from './FormulaReference';
+import styles from './ComputedFieldsEditor.module.css';
 
 interface Props {
-  value: ExpressionDef[];
-  onChange: (defs: ExpressionDef[]) => void;
+  value: ComputedField[];
+  onChange: (defs: ComputedField[]) => void;
 }
 
 const FIELD_TYPES: FieldType[] = ['string', 'number', 'boolean', 'array'];
 
-const empty = (): ExpressionDef => ({ name: '', type: 'number', expression: '' });
+const empty = (): ComputedField => ({ name: '', type: 'number', formula: '' });
 
-export default function ExpressionConfig({ value, onChange }: Props) {
-  const update = (idx: number, patch: Partial<ExpressionDef>) => {
+export default function ComputedFieldsEditor({ value, onChange }: Props) {
+  const update = (idx: number, patch: Partial<ComputedField>) => {
     const next = value.map((d, i) => (i === idx ? { ...d, ...patch } : d));
     onChange(next);
   };
@@ -29,7 +29,7 @@ export default function ExpressionConfig({ value, onChange }: Props) {
             <tr>
               <th>Name</th>
               <th>Type</th>
-              <th>Expression</th>
+              <th>Formula</th>
               <th></th>
             </tr>
           </thead>
@@ -55,8 +55,8 @@ export default function ExpressionConfig({ value, onChange }: Props) {
                 </td>
                 <td>
                   <input
-                    value={def.expression}
-                    onChange={(e) => update(i, { expression: e.target.value })}
+                    value={def.formula}
+                    onChange={(e) => update(i, { formula: e.target.value })}
                     placeholder='e.g. abs(Rating) * -1 + Bonus'
                     className={styles.expr}
                   />
@@ -70,9 +70,9 @@ export default function ExpressionConfig({ value, onChange }: Props) {
         </table>
       )}
       <button className="btn-ghost btn-sm" style={{ marginTop: 8 }} onClick={add}>
-        + Add Expression
+        + Add Computed Field
       </button>
-      <ExpressionHelpPanel />
+      <FormulaReference />
     </div>
   );
 }

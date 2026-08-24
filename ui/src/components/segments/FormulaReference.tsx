@@ -1,4 +1,4 @@
-import styles from './ExpressionHelpPanel.module.css';
+import styles from './FormulaReference.module.css';
 
 const BUILTIN = [
   'abs', 'ceil', 'floor', 'round', 'min', 'max', 'len',
@@ -52,11 +52,11 @@ const EXAMPLES: Array<{
   },
 ];
 
-export default function ExpressionHelpPanel() {
+export default function FormulaReference() {
   return (
     <details className={styles.panel}>
       <summary className={styles.summary}>
-        ▸ Expression Reference
+        ▸ Formula Reference
       </summary>
       <div className={styles.body}>
         <div className={styles.section}>

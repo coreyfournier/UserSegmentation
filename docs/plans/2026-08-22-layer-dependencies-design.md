@@ -48,6 +48,46 @@
 > **Also added:** `not_in` (the checklist form needs negations), and config-time
 > rejection of unknown strategy names, which were previously skipped in silence.
 >
+> ## Amendment — 2026-08-24: "expression" split into `condition` and `computed`
+>
+> One word covered two unrelated things, in config and in code: a rule's
+> field/operator/value test, and an expr-lang formula. `ExpressionEditor` edited
+> the former while `ExpressionConfig` edited the latter, and `ExpressionDef`
+> carried a field called `Expression` — an expression's expression.
+>
+> | Was | Now |
+> |---|---|
+> | `Rule.expression` | **`condition`** — does this hold? |
+> | `Segment.expressions[]` | **`computed[]`** — named derived values |
+> | `ComputedField.expression` | **`formula`** — the expr-lang source |
+> | `Assignment.expressions` | **`computed`** |
+> | `strategy: "expression"` | **`strategy: "computed"`** |
+>
+> A config still using the old keys fails to load and names the replacement.
+> This has to be explicit: unmarshalling ignores unknown fields, so a stale
+> `expression` would leave a rule with no condition and no children, evaluating
+> false forever — the same silent-break shape as the removed `order` field.
+>
+> Follow-up in the same change: the `computed` strategy was **folded into
+> `rule`**. A strategy that computes nothing is indistinguishable from plain rule
+> evaluation — `ComputedStrategy` literally enriched the context and then called
+> `RuleStrategy` — so the split bought nothing and cost something: declaring
+> `computed` on a `rule` segment was silently dead config, because the formulas
+> never ran while validation still merged their names into the schema, so rules
+> referencing them passed and then evaluated false forever.
+>
+> Computed fields are now an optional feature of `rule` (and of `checklist`,
+> which builds on it). Four strategies remain: `static`, `rule`, `percentage`,
+> `checklist`. Formulas are syntax-checked wherever declared, and a segment that
+> computes nothing copies no maps, so the segmentation hot path is unchanged.
+>
+> Also fixed here: `ruleName` uniqueness applied to *every* rule in a checklist,
+> including the branches of an And/Or. Under checklist semantics only the
+> top-level rule reports, so unnamed branches are correct — and the editor
+> produces them by default. The check now applies to top-level rules only. A
+> config with unnamed branches previously failed to load outright, which a
+> running instance masked by serving its last good snapshot.
+>
 > Sections below are kept as the record of how the design arrived here. Where they
 > describe assertion polarity, `And`/`Or` reporting, or rule-level `when`, this
 > amendment supersedes them; the layer-dependency material is unchanged.

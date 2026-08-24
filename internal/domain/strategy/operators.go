@@ -7,23 +7,23 @@ import (
 	"github.com/segmentation-service/segmentation/internal/domain/model"
 )
 
-// EvalExpression evaluates a leaf expression against the context. lookups
+// EvalCondition evaluates a leaf condition against the context. lookups
 // provides the tables referenced by in_lookup / not_in_lookup operators.
-func EvalExpression(expr *model.Expression, ctx map[string]interface{}, lookups map[string]model.LookupTable) bool {
-	val, present := model.ResolveField(ctx, expr.Field)
+func EvalCondition(cond *model.Condition, ctx map[string]interface{}, lookups map[string]model.LookupTable) bool {
+	val, present := model.ResolveField(ctx, cond.Field)
 
 	// Presence tests run first, because they are the only operators with an
 	// answer for a field that is not in the context: absent is null. Checking
 	// presence before them would make is_null false for a missing field, which
 	// is backwards.
-	if model.IsUnary(expr.Operator) {
-		return evalUnary(expr.Operator, val, present)
+	if model.IsUnary(cond.Operator) {
+		return evalUnary(cond.Operator, val, present)
 	}
 
 	if !present {
 		return false
 	}
-	return evalOp(expr.Operator, val, expr.Value, lookups)
+	return evalOp(cond.Operator, val, cond.Value, lookups)
 }
 
 // evalUnary evaluates the operators that test the field itself. A field counts

@@ -48,7 +48,7 @@ export default function PredicateEditor({ value, onChange, schema, layerNames, h
             <button
               type="button"
               className="btn-ghost btn-sm"
-              onClick={() => onChange({ ruleName: '', expression: { field: '', operator: 'eq', value: '' } })}
+              onClick={() => onChange({ ruleName: '', condition: { field: '', operator: 'eq', value: '' } })}
             >
               + Add condition
             </button>

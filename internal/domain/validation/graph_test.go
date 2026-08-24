@@ -78,13 +78,13 @@ func TestGraph_AcyclicPasses(t *testing.T) {
 // Assert segments carry expressions too, so they must get the same
 // compile-time syntax checking — otherwise a config typo becomes a runtime
 // unevaluable instead of a load failure.
-func TestGraph_AssertExpressionsAreCompiled(t *testing.T) {
+func TestGraph_FormulasAreCompiled(t *testing.T) {
 	seg := model.Segment{
 		ID:          "bad",
 		Strategy:    model.StrategyChecklist,
-		Expressions: []model.ExpressionDef{{Name: "Broken", Type: model.FieldTypeNumber, Expression: "1 +"}},
+		Computed: []model.ComputedField{{Name: "Broken", Type: model.FieldTypeNumber, Formula: "1 +"}},
 	}
-	expectError(t, graphSnapshot(model.Layer{Name: "gate", Segments: []model.Segment{seg}}), "expression")
+	expectError(t, graphSnapshot(model.Layer{Name: "gate", Segments: []model.Segment{seg}}), "formula")
 }
 
 // The When dispatch predicate is a rule tree and is checked like any other.
@@ -95,7 +95,7 @@ func TestGraph_WhenPredicateValidated(t *testing.T) {
 		InputSchema: model.InputSchema{"productType": {Type: model.FieldTypeString}},
 		When: &model.Rule{
 			RuleName:   "isPrecision",
-			Expression: &model.Expression{Field: "notInSchema", Operator: model.OpEq, Value: "Precision"},
+			Condition: &model.Condition{Field: "notInSchema", Operator: model.OpEq, Value: "Precision"},
 		},
 	}
 	expectError(t, graphSnapshot(model.Layer{Name: "payroll", Segments: []model.Segment{seg}}), "not in inputSchema")

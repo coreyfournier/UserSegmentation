@@ -67,7 +67,7 @@ func TestReloadUseCase_ValidationError(t *testing.T) {
 						Rules: []model.Rule{
 							{
 								RuleName: "r1",
-								Expression: &model.Expression{
+								Condition: &model.Condition{
 									Field: "age", Operator: "gt", Value: 18,
 								},
 								SuccessEvent: "young",

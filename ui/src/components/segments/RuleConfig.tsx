@@ -12,17 +12,17 @@ interface Props {
   onDefaultChange: (v: string) => void;
   defaultMessages?: Record<string, string>;
   onDefaultMessagesChange: (v: Record<string, string> | undefined) => void;
-  /** Schema for rules — includes computed expression fields when applicable. */
+  /** Schema for rules — includes computed fields when applicable. */
   ruleSchema?: InputSchema;
   /** Schema for overrides — raw input fields only (no computed fields). */
   overrideSchema?: InputSchema;
   layerNames?: string[];
-  /** Expressions editor, rendered between overrides and rules (expression strategy). */
-  expressionsSlot?: ReactNode;
+  /** Computed-fields editor, rendered between overrides and rules. */
+  computedSlot?: ReactNode;
 }
 
 // Sections are laid out top-to-bottom in evaluation order:
-// overrides → expressions → rules → default.
+// overrides → computed fields → rules → default.
 export default function RuleConfig({
   rules,
   overrides,
@@ -35,7 +35,7 @@ export default function RuleConfig({
   ruleSchema,
   overrideSchema,
   layerNames,
-  expressionsSlot,
+  computedSlot,
 }: Props) {
   return (
     <div>
@@ -48,12 +48,12 @@ export default function RuleConfig({
           label="Overrides"
         />
         <p style={{ fontSize: 11, color: 'var(--text-muted)', fontStyle: 'italic', margin: '4px 0 0' }}>
-          Evaluated first, before expressions and rules. Only raw input fields are
-          available here — computed expression fields cannot be referenced.
+          Evaluated first, before computed fields and rules. Only raw input fields are
+          available here — computed fields cannot be referenced.
         </p>
       </div>
 
-      {expressionsSlot && <div style={{ marginTop: 24 }}>{expressionsSlot}</div>}
+      {computedSlot && <div style={{ marginTop: 24 }}>{computedSlot}</div>}
 
       <div style={{ marginTop: 24 }}>
         <RuleTreeBuilder

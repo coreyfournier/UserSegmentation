@@ -9,7 +9,6 @@ const STRATEGY_COLORS: Record<string, string> = {
   static: '#3b82f6',
   rule: '#22c55e',
   percentage: '#8b5cf6',
-  expression: '#06b6d4',
   override: '#f97316',
   checklist: '#eab308',
 };
@@ -96,9 +95,9 @@ export default function ResultDisplay({ result }: Props) {
               ))}
             </ul>
           )}
-          {lr.expressions && Object.keys(lr.expressions).length > 0 && (
-            <div className={styles.expressions}>
-              {Object.entries(lr.expressions).map(([k, v]) => (
+          {lr.computed && Object.keys(lr.computed).length > 0 && (
+            <div className={styles.computed}>
+              {Object.entries(lr.computed).map(([k, v]) => (
                 <span key={k} className={styles.expr}>
                   {k}: <strong>{String(v)}</strong>
                 </span>

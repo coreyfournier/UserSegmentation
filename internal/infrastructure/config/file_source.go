@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -35,6 +36,9 @@ func (fs *FileSource) Load() (*model.Snapshot, error) {
 
 	// Execution order comes from dependsOn; the evaluator topologically sorts.
 	if err := rejectLegacyOrder(data); err != nil {
+		return nil, err
+	}
+	if err := rejectLegacyExpressionKeys(data); err != nil {
 		return nil, err
 	}
 	if err := checkRuleNameUniqueness(&snap); err != nil {
@@ -72,41 +76,90 @@ func rejectLegacyOrder(data []byte) error {
 	return nil
 }
 
-// checkRuleNameUniqueness enforces that checklist rule names are unique across the
-// whole config.
+// rejectLegacyExpressionKeys fails a config still using the old "expression"
+// vocabulary, which split into two names: a rule's test is a `condition`, and a
+// named expr-lang value is an entry in `computed` whose source is a `formula`.
+//
+// This has to be checked explicitly. Unmarshalling ignores unknown fields, so a
+// stale `expression` on a rule would leave it with no condition and no children
+// — evaluating false forever — and a stale `expressions` list would silently
+// drop every computed field.
+func rejectLegacyExpressionKeys(data []byte) error {
+	var raw interface{}
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return nil // the primary unmarshal already reported anything fatal
+	}
+
+	found := map[string]bool{}
+	var walk func(node interface{})
+	walk = func(node interface{}) {
+		switch n := node.(type) {
+		case map[string]interface{}:
+			for key, child := range n {
+				if key == "expression" || key == "expressions" {
+					found[key] = true
+				}
+				walk(child)
+			}
+		case []interface{}:
+			for _, child := range n {
+				walk(child)
+			}
+		}
+	}
+	walk(raw)
+
+	if len(found) == 0 {
+		return nil
+	}
+
+	var stale []string
+	for _, key := range []string{"expression", "expressions"} {
+		if found[key] {
+			stale = append(stale, strconv.Quote(key))
+		}
+	}
+	return fmt.Errorf(
+		"config still uses the removed %s field(s): a rule's test is now %q, and a named "+
+			"expr-lang value is an entry in %q whose source is %q",
+		strings.Join(stale, " and "), "condition", "computed", "formula")
+}
+
+// checkRuleNameUniqueness enforces that the names of reported checks are unique
+// across the whole config.
 //
 // A reported failure identifies itself by rule name alone, so the name is the
 // stable public contract and must not collide. This is a property of the
 // persisted collection rather than of any single rule's meaning, which is why
 // it lives in the config source and not in domain validation — a
 // database-backed source would get the same guarantee from a unique index.
+//
+// Only top-level rules are checked. A checklist item is one rule; the tree
+// beneath it builds that item's condition and never reports on its own, so the
+// branches of an And/Or need no name at all.
 func checkRuleNameUniqueness(snap *model.Snapshot) error {
 	seen := make(map[string]string) // ruleName -> where it was first defined
 	var errs []string
-
-	var walk func(rules []model.Rule, where string)
-	walk = func(rules []model.Rule, where string) {
-		for i := range rules {
-			r := &rules[i]
-			switch prev, dup := seen[r.RuleName]; {
-			case r.RuleName == "":
-				errs = append(errs, fmt.Sprintf("%s: checklist rule with empty ruleName", where))
-			case dup:
-				errs = append(errs, fmt.Sprintf(
-					"duplicate checklist ruleName %q in %s (already defined in %s)", r.RuleName, where, prev))
-			default:
-				seen[r.RuleName] = where
-			}
-			walk(r.Rules, where)
-		}
-	}
 
 	for _, layer := range snap.Layers {
 		for _, seg := range layer.Segments {
 			if seg.Strategy != model.StrategyChecklist {
 				continue
 			}
-			walk(seg.Rules, fmt.Sprintf("layer %q segment %q", layer.Name, seg.ID))
+			where := fmt.Sprintf("layer %q segment %q", layer.Name, seg.ID)
+
+			for i := range seg.Rules {
+				name := seg.Rules[i].RuleName
+				switch prev, dup := seen[name]; {
+				case name == "":
+					errs = append(errs, fmt.Sprintf("%s: checklist rule with empty ruleName", where))
+				case dup:
+					errs = append(errs, fmt.Sprintf(
+						"duplicate checklist ruleName %q in %s (already defined in %s)", name, where, prev))
+				default:
+					seen[name] = where
+				}
+			}
 		}
 	}
 

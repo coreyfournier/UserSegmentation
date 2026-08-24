@@ -123,10 +123,10 @@ func lookupReferences(snap *model.Snapshot, id string) []string {
 
 func findLookupRefs(r *model.Rule, id, segID string) []string {
 	var refs []string
-	if r.Expression != nil {
-		op := r.Expression.Operator
+	if r.Condition != nil {
+		op := r.Condition.Operator
 		if op == model.OpInLookup || op == model.OpNotInLookup {
-			if v, ok := r.Expression.Value.(string); ok && v == id {
+			if v, ok := r.Condition.Value.(string); ok && v == id {
 				refs = append(refs, fmt.Sprintf("segment %q rule %q", segID, r.RuleName))
 			}
 		}

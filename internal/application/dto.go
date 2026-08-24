@@ -31,7 +31,7 @@ type LayerResultDTO struct {
 	Segment     string                 `json:"segment,omitempty"`
 	Strategy    string                 `json:"strategy,omitempty"`
 	Reason      string                 `json:"reason,omitempty"`
-	Expressions map[string]interface{} `json:"expressions,omitempty"`
+	Computed    map[string]interface{} `json:"computed,omitempty"`
 	Messages    map[string]string      `json:"messages,omitempty"`
 	Failures    []FailureDTO           `json:"failures,omitempty"`
 }
