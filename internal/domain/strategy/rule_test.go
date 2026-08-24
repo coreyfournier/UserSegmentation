@@ -15,7 +15,7 @@ func TestRuleStrategy_SimpleLeaf(t *testing.T) {
 			{
 				RuleName:     "us-check",
 				SuccessEvent: "us-segment",
-				Expression:   &model.Expression{Field: "country", Operator: model.OpEq, Value: "US"},
+				Condition:   &model.Condition{Field: "country", Operator: model.OpEq, Value: "US"},
 			},
 		},
 		Default: "other",
@@ -42,8 +42,8 @@ func TestRuleStrategy_CompositeAnd(t *testing.T) {
 				Operator:     model.CompositeAnd,
 				SuccessEvent: "premium",
 				Rules: []model.Rule{
-					{RuleName: "age", Expression: &model.Expression{Field: "age", Operator: model.OpGte, Value: float64(18)}},
-					{RuleName: "country", Expression: &model.Expression{Field: "country", Operator: model.OpEq, Value: "US"}},
+					{RuleName: "age", Condition: &model.Condition{Field: "age", Operator: model.OpGte, Value: float64(18)}},
+					{RuleName: "country", Condition: &model.Condition{Field: "country", Operator: model.OpEq, Value: "US"}},
 				},
 			},
 		},
@@ -72,8 +72,8 @@ func TestRuleStrategy_CompositeOr(t *testing.T) {
 				Operator:     model.CompositeOr,
 				SuccessEvent: "eligible",
 				Rules: []model.Rule{
-					{RuleName: "us", Expression: &model.Expression{Field: "country", Operator: model.OpEq, Value: "US"}},
-					{RuleName: "high-spend", Expression: &model.Expression{Field: "total_spend", Operator: model.OpGte, Value: float64(5000)}},
+					{RuleName: "us", Condition: &model.Condition{Field: "country", Operator: model.OpEq, Value: "US"}},
+					{RuleName: "high-spend", Condition: &model.Condition{Field: "total_spend", Operator: model.OpGte, Value: float64(5000)}},
 				},
 			},
 		},
@@ -109,13 +109,13 @@ func TestRuleStrategy_NestedAndOr(t *testing.T) {
 				Operator:     model.CompositeAnd,
 				SuccessEvent: "premium",
 				Rules: []model.Rule{
-					{RuleName: "age-check", Expression: &model.Expression{Field: "age", Operator: model.OpGte, Value: float64(18)}},
+					{RuleName: "age-check", Condition: &model.Condition{Field: "age", Operator: model.OpGte, Value: float64(18)}},
 					{
 						RuleName: "region-or-spend",
 						Operator: model.CompositeOr,
 						Rules: []model.Rule{
-							{RuleName: "us-user", Expression: &model.Expression{Field: "country", Operator: model.OpEq, Value: "US"}},
-							{RuleName: "high-spender", Expression: &model.Expression{Field: "total_spend", Operator: model.OpGte, Value: float64(5000)}},
+							{RuleName: "us-user", Condition: &model.Condition{Field: "country", Operator: model.OpEq, Value: "US"}},
+							{RuleName: "high-spender", Condition: &model.Condition{Field: "total_spend", Operator: model.OpGte, Value: float64(5000)}},
 						},
 					},
 				},
@@ -151,7 +151,7 @@ func TestRuleStrategy_DisabledRule(t *testing.T) {
 				RuleName:     "disabled-rule",
 				Enabled:      boolPtr(false),
 				SuccessEvent: "should-not-match",
-				Expression:   &model.Expression{Field: "country", Operator: model.OpEq, Value: "US"},
+				Condition:   &model.Condition{Field: "country", Operator: model.OpEq, Value: "US"},
 			},
 		},
 		Default: "fallback",

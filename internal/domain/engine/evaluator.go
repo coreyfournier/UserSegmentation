@@ -174,8 +174,16 @@ func (e *Evaluator) evaluateLayer(layer *model.Layer, subjectKey string, ctx map
 		}
 
 		// Evaluate primary strategy
+		// A strategy named in config but absent from the composition root would
+		// otherwise make the segment produce nothing at all, silently. Config
+		// validation cannot catch this — the name is legal, the wiring is not.
 		strat, ok := e.strategies[seg.Strategy]
 		if !ok {
+			lr.Warnings = append(lr.Warnings, model.Warning{
+				Segment: seg.ID,
+				Field:   seg.Strategy,
+				Message: fmt.Sprintf("strategy %q is not registered; segment skipped", seg.Strategy),
+			})
 			continue
 		}
 		if res, ok := strat.Evaluate(seg, evalCtx); ok {
@@ -188,7 +196,7 @@ func (e *Evaluator) evaluateLayer(layer *model.Layer, subjectKey string, ctx map
 				Segment:     res.Segment,
 				Strategy:    seg.Strategy,
 				Reason:      res.Reason,
-				Expressions: res.Expressions,
+				Computed: res.Computed,
 				Messages:    res.Messages,
 			}
 			lr.Warnings = append(lr.Warnings, renderWarnings(seg.ID, res.RenderErrors)...)

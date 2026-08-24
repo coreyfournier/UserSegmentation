@@ -64,7 +64,7 @@ func TestDeleteLookup_BlockedWhenReferenced(t *testing.T) {
 			ID: "seg", Strategy: "rule",
 			InputSchema: model.InputSchema{"zip": {Type: model.FieldTypeString}},
 			Rules: []model.Rule{{RuleName: "r",
-				Expression: &model.Expression{Field: "zip", Operator: model.OpInLookup, Value: "zips"}}},
+				Condition: &model.Condition{Field: "zip", Operator: model.OpInLookup, Value: "zips"}}},
 		}}}},
 	})
 	_, err := uc.DeleteLookup("zips")

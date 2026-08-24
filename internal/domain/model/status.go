@@ -5,7 +5,7 @@ const (
 	StrategyStatic     = "static"
 	StrategyRule       = "rule"
 	StrategyPercentage = "percentage"
-	StrategyExpression = "expression"
+	StrategyComputed = "computed"
 	StrategyChecklist  = "checklist"
 )
 
@@ -13,7 +13,7 @@ const (
 // name would otherwise be skipped silently and the segment would just never
 // produce anything, so config validation rejects it.
 var KnownStrategies = []string{
-	StrategyStatic, StrategyRule, StrategyPercentage, StrategyExpression, StrategyChecklist,
+	StrategyStatic, StrategyRule, StrategyPercentage, StrategyComputed, StrategyChecklist,
 }
 
 // IsKnownStrategy reports whether the evaluator has an implementation for name.

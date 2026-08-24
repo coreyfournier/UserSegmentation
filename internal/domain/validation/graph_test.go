@@ -82,7 +82,7 @@ func TestGraph_AssertExpressionsAreCompiled(t *testing.T) {
 	seg := model.Segment{
 		ID:          "bad",
 		Strategy:    model.StrategyChecklist,
-		Expressions: []model.ExpressionDef{{Name: "Broken", Type: model.FieldTypeNumber, Expression: "1 +"}},
+		Computed: []model.ComputedField{{Name: "Broken", Type: model.FieldTypeNumber, Formula: "1 +"}},
 	}
 	expectError(t, graphSnapshot(model.Layer{Name: "gate", Segments: []model.Segment{seg}}), "expression")
 }
@@ -95,7 +95,7 @@ func TestGraph_WhenPredicateValidated(t *testing.T) {
 		InputSchema: model.InputSchema{"productType": {Type: model.FieldTypeString}},
 		When: &model.Rule{
 			RuleName:   "isPrecision",
-			Expression: &model.Expression{Field: "notInSchema", Operator: model.OpEq, Value: "Precision"},
+			Condition: &model.Condition{Field: "notInSchema", Operator: model.OpEq, Value: "Precision"},
 		},
 	}
 	expectError(t, graphSnapshot(model.Layer{Name: "payroll", Segments: []model.Segment{seg}}), "not in inputSchema")

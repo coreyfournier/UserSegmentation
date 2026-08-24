@@ -83,6 +83,37 @@ func TestFileSource_RejectsLegacyOrder(t *testing.T) {
 	}
 }
 
+// The old vocabulary must fail loudly. Unmarshalling ignores unknown fields, so
+// a stale "expression" would leave a rule with no condition and no children,
+// evaluating false forever.
+func TestFileSource_RejectsLegacyExpressionKeys(t *testing.T) {
+	cases := map[string]string{
+		"rule condition": `{"version":1,"layers":[{"name":"l","segments":[
+			{"id":"s","strategy":"rule","rules":[
+				{"ruleName":"r","expression":{"field":"a","operator":"eq","value":1}}
+			]}
+		]}]}`,
+		"computed field list": `{"version":1,"layers":[{"name":"l","segments":[
+			{"id":"s","strategy":"computed","expressions":[{"name":"X","type":"number","formula":"1"}]}
+		]}]}`,
+	}
+
+	for name, body := range cases {
+		path := filepath.Join(t.TempDir(), "test.json")
+		if err := os.WriteFile(path, []byte(body), 0644); err != nil {
+			t.Fatal(err)
+		}
+		_, err := NewFileSource(path).Load()
+		if err == nil {
+			t.Errorf("%s: expected load to fail on the removed key", name)
+			continue
+		}
+		if !strings.Contains(err.Error(), "condition") {
+			t.Errorf("%s: error should name the replacement, got: %v", name, err)
+		}
+	}
+}
+
 // Only top-level rules report, so the branches of an And/Or need no name. A
 // group's children are its condition, not separate checklist items.
 func TestFileSource_AllowsUnnamedNestedRules(t *testing.T) {
@@ -94,8 +125,8 @@ func TestFileSource_AllowsUnnamedNestedRules(t *testing.T) {
 			{"name": "gates", "segments": [
 				{"id": "g", "strategy": "checklist", "rules": [
 					{"ruleName": "depositAccountMissing", "operator": "Or", "rules": [
-						{"ruleName": "", "expression": {"field": "hasDeposit", "operator": "is_null"}},
-						{"ruleName": "", "expression": {"field": "hasDeposit", "operator": "eq", "value": false}}
+						{"ruleName": "", "condition": {"field": "hasDeposit", "operator": "is_null"}},
+						{"ruleName": "", "condition": {"field": "hasDeposit", "operator": "eq", "value": false}}
 					]}
 				]}
 			]}
@@ -120,12 +151,12 @@ func TestFileSource_RejectsDuplicateChecklistRuleName(t *testing.T) {
 		"layers": [
 			{"name": "gate-one", "segments": [
 				{"id": "s", "strategy": "checklist", "rules": [
-					{"ruleName": "sameName", "expression": {"field": "a", "operator": "eq", "value": 1}}
+					{"ruleName": "sameName", "condition": {"field": "a", "operator": "eq", "value": 1}}
 				]}
 			]},
 			{"name": "gate-two", "segments": [
 				{"id": "s", "strategy": "checklist", "rules": [
-					{"ruleName": "sameName", "expression": {"field": "b", "operator": "eq", "value": 2}}
+					{"ruleName": "sameName", "condition": {"field": "b", "operator": "eq", "value": 2}}
 				]}
 			]}
 		]

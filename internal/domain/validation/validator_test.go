@@ -23,11 +23,11 @@ func TestValidateSnapshot_ValidConfig(t *testing.T) {
 						Rules: []model.Rule{
 							{
 								RuleName:   "check",
-								Expression: &model.Expression{Field: "country", Operator: model.OpEq, Value: "US"},
+								Condition: &model.Condition{Field: "country", Operator: model.OpEq, Value: "US"},
 							},
 							{
 								RuleName:   "age-check",
-								Expression: &model.Expression{Field: "age", Operator: model.OpGte, Value: 18},
+								Condition: &model.Condition{Field: "age", Operator: model.OpGte, Value: 18},
 							},
 						},
 					},
@@ -51,7 +51,7 @@ func TestValidateSnapshot_MissingField(t *testing.T) {
 						Strategy:    model.StrategyRule,
 						InputSchema: model.InputSchema{"country": {Type: model.FieldTypeString}},
 						Rules: []model.Rule{
-							{RuleName: "bad", Expression: &model.Expression{Field: "missing_field", Operator: model.OpEq, Value: "x"}},
+							{RuleName: "bad", Condition: &model.Condition{Field: "missing_field", Operator: model.OpEq, Value: "x"}},
 						},
 					},
 				},
@@ -74,7 +74,7 @@ func TestValidateSnapshot_IncompatibleOperator(t *testing.T) {
 						Strategy:    model.StrategyRule,
 						InputSchema: model.InputSchema{"name": {Type: model.FieldTypeString}},
 						Rules: []model.Rule{
-							{RuleName: "bad", Expression: &model.Expression{Field: "name", Operator: model.OpGt, Value: "x"}},
+							{RuleName: "bad", Condition: &model.Condition{Field: "name", Operator: model.OpGt, Value: "x"}},
 						},
 					},
 				},
@@ -97,7 +97,7 @@ func crossLayerSnapshot(declared bool) *model.Snapshot {
 				Strategy:    model.StrategyRule,
 				InputSchema: model.InputSchema{"country": {Type: model.FieldTypeString}},
 				Rules: []model.Rule{
-					{RuleName: "cross", Expression: &model.Expression{Field: "layer:base-tier", Operator: model.OpEq, Value: "pro"}},
+					{RuleName: "cross", Condition: &model.Condition{Field: "layer:base-tier", Operator: model.OpEq, Value: "pro"}},
 				},
 			},
 		},
@@ -141,7 +141,7 @@ func TestValidateSnapshot_DependencyWithoutReference(t *testing.T) {
 						Strategy:    model.StrategyRule,
 						InputSchema: model.InputSchema{"country": {Type: model.FieldTypeString}},
 						Rules: []model.Rule{
-							{RuleName: "plain", Expression: &model.Expression{Field: "country", Operator: model.OpEq, Value: "US"}},
+							{RuleName: "plain", Condition: &model.Condition{Field: "country", Operator: model.OpEq, Value: "US"}},
 						},
 					},
 				},

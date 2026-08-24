@@ -9,14 +9,14 @@ const (
 )
 
 // Rule is a node in the composite rule tree.
-// A leaf rule has an Expression; a composite rule has an Operator and nested Rules.
+// A leaf rule has a Condition; a composite rule has an Operator and nested Rules.
 type Rule struct {
 	RuleName     string            `json:"ruleName"`
 	Operator     CompositeOperator `json:"operator,omitempty"`
 	Enabled      *bool             `json:"enabled,omitempty"`
 	SuccessEvent string            `json:"successEvent,omitempty"`
 	ErrorMessage string            `json:"errorMessage,omitempty"`
-	Expression   *Expression       `json:"expression,omitempty"`
+	Condition    *Condition        `json:"condition,omitempty"`
 	Rules        []Rule            `json:"rules,omitempty"`
 	// Messages are optional localized templates keyed by language code (e.g. "en").
 	// Rendered with ${ ... } expr-lang interpolation when this rule wins.
@@ -33,5 +33,5 @@ func (r *Rule) IsEnabled() bool {
 
 // IsLeaf returns true when this rule has an expression (no nested rules).
 func (r *Rule) IsLeaf() bool {
-	return r.Expression != nil
+	return r.Condition != nil
 }

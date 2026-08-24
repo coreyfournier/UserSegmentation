@@ -19,15 +19,15 @@ Configure segments with strategy selection, promotion time windows, input schema
 
 ![Segment Editor](docs/screenshots/segment-editor.png)
 
-### Expression Strategy
-Define named computed fields using [expr-lang](https://expr-lang.org/) expressions. Computed values are merged into the evaluation context and available as rule fields, with results surfaced in the testing zone.
+### Computed Fields
+Define named values with [expr-lang](https://expr-lang.org/) formulas. Computed values are merged into the evaluation context and available to rule conditions, with results surfaced in the testing zone.
 
-![Expression Strategy](docs/screenshots/expression-strategy.png)
+![Computed Fields](docs/screenshots/computed-fields.png)
 
-### Expression Reference Panel
+### Formula Reference
 Inline function reference — collapsible panel showing built-in functions, registered math functions (`exp`, `ln`, `pow`, etc.), and annotated examples directly in the segment editor.
 
-![Expression Help Panel](docs/screenshots/expression-help-panel.png)
+![Formula Reference](docs/screenshots/formula-reference.png)
 
 ### Checklist Strategy — Progressive Validation Gates
 Three gates evaluated in dependency order. `company-identity` is **satisfied**, so `company-payroll-setup` runs and itemises *all* of its problems at once. `employee-readiness` is **unevaluable** — it never ran, because the gate it depends on failed, so it reports no misleading problems of its own. See [Checklist Strategy](#checklist-strategy).
@@ -51,12 +51,12 @@ Export and import full configuration snapshots as JSON for backup or environment
 - **Cross-layer dependencies** — Later layers can reference earlier results via `"field": "layer:<name>"`, validated against the declared graph
 - **Composite rule trees** — AND/OR rules with short-circuit evaluation, inspired by Microsoft Rules Engine; the editor supports dragging a rule into, out of, and between groups
 - **Conditional blocks** — an `Applies When` predicate on a segment gates the whole segment, so one condition governs a block of checks structurally rather than being repeated on each one
-- **Five strategies** — Static (map lookup), Rule (composite tree), Percentage (FNV-1a hash bucketing), Expression (computed fields via expr-lang), [Checklist](#checklist-strategy) (validation gates that itemise every problem at once)
+- **Five strategies** — Static (map lookup), Rule (composite tree), Percentage (FNV-1a hash bucketing), Computed (expr-lang formulas), [Checklist](#checklist-strategy) (validation gates that itemise every problem at once)
 - **Nested entity context** — Rules address a document by path (`company.payFrequency`, `employee.hireDate`), so an entity and its parent travel in one request
-- **Expression computed fields** — Derive new values from context before rule evaluation (e.g. `abs(Rating) * -1 + Bonus`); results included in API response
+- **Computed fields** — Derive named values from context before rule evaluation via expr-lang formulas (e.g. `abs(Rating) * -1 + Bonus`); results included in the API response
 - **Overrides** — Rule-based overrides evaluated before the primary strategy
 - **Lookup tables** — Centralized, named key/value tables referenced by rules via `in_lookup` / `not_in_lookup`; replaces inline value lists so shared sets are maintained in one place
-- **Localized messages** — Optional message templates on rules, overrides, and defaults with `${…}` variable/expression interpolation, resolved per requested language with a layer-level fallback
+- **Localized messages** — Optional message templates on rules, overrides, and defaults with `${…}` variable/formula interpolation, resolved per requested language with a layer-level fallback
 - **Promotions** — Time-bound segments with `effective_from`/`effective_until`
 - **Input schema validation** — Config-time validation of rule fields against declared schemas
 - **Hot-reload** — File-polling watcher (500ms) with validation before swap
@@ -148,9 +148,9 @@ Evaluate a single user across all (or selected) layers.
     "pricing-tier": {
       "status": "resolved",
       "segment": "premium",
-      "strategy": "expression",
+      "strategy": "computed",
       "reason": "rule:high-value",
-      "expressions": {
+      "computed": {
         "AdjustedScore": 7.5,
         "IsHighValue": true
       }
@@ -202,8 +202,36 @@ See `config/segments.json` for a complete example with all strategies, promotion
 | `static` | Direct subject key → segment mapping with default |
 | `rule` | Composite AND/OR rule tree; first match wins |
 | `percentage` | FNV-1a hash bucketing with weighted segments (deterministic — same subject always gets the same bucket given the same salt and weights) |
-| `expression` | Evaluates named [expr-lang](https://expr-lang.org/) expressions to derive computed fields, then applies rule evaluation against the enriched context |
+| `computed` | Derives named fields from [expr-lang](https://expr-lang.org/) formulas, then applies rule evaluation against the enriched context |
 | `checklist` | Validation gate. Every rule states a condition for a problem; each one that holds is itemised. See [Checklist Strategy](#checklist-strategy) |
+
+### Condition or computation?
+
+Two different things used to share the name "expression", which made a rule's
+test indistinguishable from an expr-lang formula in both config and code:
+
+| Term | What it is |
+|---|---|
+| **`condition`** | A rule's test — `field` / `operator` / `value`. Answers *does this hold?* |
+| **`computed`** | A list of named values derived before rules run. Answers *what is this value?* |
+| **`formula`** | The expr-lang source of one computed field |
+
+```json
+{
+  "strategy": "computed",
+  "computed": [
+    { "name": "MaxAllowed", "type": "number", "formula": "min(EarnedWages * 0.5, StateCap)" }
+  ],
+  "rules": [
+    { "ruleName": "advanceLimitBelowFloor",
+      "condition": { "field": "MaxAllowed", "operator": "lt", "value": 25 } }
+  ]
+}
+```
+
+A config still using `expression` or `expressions` fails to load, naming the
+replacement — unmarshalling ignores unknown fields, so a stale key would
+otherwise leave a rule with no condition, evaluating false forever.
 
 ### Rule Structure
 
@@ -216,13 +244,13 @@ Rules follow a composite tree pattern:
   "successEvent": "premium",
   "enabled": true,
   "rules": [
-    { "ruleName": "age-check", "expression": { "field": "age", "operator": "gte", "value": 18 } },
+    { "ruleName": "age-check", "condition": { "field": "age", "operator": "gte", "value": 18 } },
     {
       "ruleName": "region-or-spend",
       "operator": "Or",
       "rules": [
-        { "ruleName": "us-user", "expression": { "field": "country", "operator": "eq", "value": "US" } },
-        { "ruleName": "high-spender", "expression": { "field": "total_spend", "operator": "gte", "value": 5000 } }
+        { "ruleName": "us-user", "condition": { "field": "country", "operator": "eq", "value": "US" } },
+        { "ruleName": "high-spender", "condition": { "field": "total_spend", "operator": "gte", "value": 5000 } }
       ]
     }
   ]
@@ -239,7 +267,7 @@ Evaluation is **order-sensitive — first match wins** at every level:
 
 Because order determines precedence, the segment editor UI lets you **reorder rules and overrides** with up/down controls at every nesting level, and shows a position badge plus an evaluation-order caption so the precedence is explicit.
 
-**Restructuring the tree.** The up/down arrows only move a rule among its own siblings. To change *where a rule sits* — an expression added at the top level that belongs inside a group, or one that needs moving to a different group — drag its **⠿** handle. Drop targets appear between rules at every level while you drag, including inside empty groups, and only where the move is legal (a group cannot be dropped inside itself). The arrows remain the keyboard-reachable way to reorder siblings.
+**Restructuring the tree.** The up/down arrows only move a rule among its own siblings. To change *where a rule sits* — a check added at the top level that belongs inside a group, or one that needs moving to a different group — drag its **⠿** handle. Drop targets appear between rules at every level while you drag, including inside empty groups, and only where the move is legal (a group cannot be dropped inside itself). The arrows remain the keyboard-reachable way to reorder siblings.
 
 ![Rule drag and drop](docs/screenshots/rule-drag-drop.png)
 
@@ -285,7 +313,7 @@ Attach optional, localized messages to any top-level **rule**, **override**, or 
 {
   "ruleName": "fee-partial",
   "successEvent": "fee-partial",
-  "expression": { "field": "CTTotal", "operator": "gt", "value": 26 },
+  "condition": { "field": "CTTotal", "operator": "gt", "value": 26 },
   "messages": {
     "en": "You'll pay a ${TransferFee} fee on your ${CTTotal} transfer.",
     "es": "Pagarás una tarifa de ${TransferFee} en tu transferencia de ${CTTotal}."
@@ -296,7 +324,7 @@ Attach optional, localized messages to any top-level **rule**, **override**, or 
 - The evaluate request selects locales with `"languages": ["en", "es"]`, or `"render_all": true` to return every defined locale (a testing aid).
 - If a requested locale is missing on the winning rule, it falls back to the layer's `defaultLanguage` (which defaults to `"en"`).
 - Only the winning rule/override/default renders; the rendered text is returned per layer under `messages`.
-- If a `${…}` expression fails, the raw token is left in place and a warning is added to the response.
+- If a `${…}` formula fails, the raw token is left in place and a warning is added to the response.
 
 **Request:**
 ```json
@@ -309,7 +337,7 @@ Attach optional, localized messages to any top-level **rule**, **override**, or 
   "layers": {
     "fees": {
       "segment": "fee-partial",
-      "strategy": "expression",
+      "strategy": "computed",
       "reason": "rule:fee-partial",
       "messages": { "es": "Pagarás una tarifa de 2 en tu transferencia de 28." }
     }
@@ -325,7 +353,7 @@ Centralized, named tables of typed keys that rules match against — instead of 
 
 **Why:** maintain a shared set of values (zip codes, plan ids, SKUs) in one place. Rules reference a table by a **stable internal id**, so you can rename its display name or edit its entries without touching any rule.
 
-**How:** tables live at the top level of the config under `lookups`. Each table has an immutable `id` (auto-slugged from the display `name` at creation), a `keyType` (`string` or `number`, immutable), and `entries` of `key` (the matched value) plus an optional `value` (a human-readable description of the key). Rules reference a table with the `in_lookup` / `not_in_lookup` operators, whose expression `value` is the table id. The field's type must match the table's `keyType`.
+**How:** tables live at the top level of the config under `lookups`. Each table has an immutable `id` (auto-slugged from the display `name` at creation), a `keyType` (`string` or `number`, immutable), and `entries` of `key` (the matched value) plus an optional `value` (a human-readable description of the key). Rules reference a table with the `in_lookup` / `not_in_lookup` operators, whose condition `value` is the table id. The field's type must match the table's `keyType`.
 
 ```json
 {
@@ -353,7 +381,7 @@ Centralized, named tables of typed keys that rules match against — instead of 
             {
               "ruleName": "premium",
               "successEvent": "premium-region",
-              "expression": { "field": "zip", "operator": "in_lookup", "value": "premium-zips" }
+              "condition": { "field": "zip", "operator": "in_lookup", "value": "premium-zips" }
             }
           ],
           "default": "standard-region"
@@ -368,17 +396,17 @@ At evaluation the table's keys are treated exactly like an inline array — `in_
 
 Manage tables via the **Lookups** admin screen (or the `/v1/admin/lookups` CRUD endpoints). A table cannot be deleted while any rule references it — the API returns `409` listing the referencing rules.
 
-### Expression Strategy
+### Computed Fields
 
-The `expression` strategy computes derived fields from [expr-lang](https://expr-lang.org/) expressions before rule evaluation. Expressions are evaluated in declaration order — later expressions can reference earlier results. Computed values overwrite any `inputSchema` fields of the same name.
+The `computed` strategy derives named fields from [expr-lang](https://expr-lang.org/) formulas before rule evaluation. Formulas are evaluated in declaration order — a later formula can reference an earlier result. Computed values overwrite any `inputSchema` fields of the same name.
 
 ```json
 {
   "id": "pricing-tier",
-  "strategy": "expression",
-  "expressions": [
-    { "name": "AdjustedScore", "type": "number", "expression": "abs(Rating) * Weight" },
-    { "name": "IsHighValue",   "type": "boolean", "expression": "Revenue > 10000 && AdjustedScore > 5" }
+  "strategy": "computed",
+  "computed": [
+    { "name": "AdjustedScore", "type": "number", "formula": "abs(Rating) * Weight" },
+    { "name": "IsHighValue",   "type": "boolean", "formula": "Revenue > 10000 && AdjustedScore > 5" }
   ],
   "inputSchema": {
     "Rating":  { "type": "number", "required": true },
@@ -389,7 +417,7 @@ The `expression` strategy computes derived fields from [expr-lang](https://expr-
     {
       "ruleName": "high-value",
       "successEvent": "premium",
-      "expression": { "field": "IsHighValue", "operator": "eq", "value": true }
+      "condition": { "field": "IsHighValue", "operator": "eq", "value": true }
     }
   ],
   "default": "standard"
@@ -398,7 +426,7 @@ The `expression` strategy computes derived fields from [expr-lang](https://expr-
 
 **How it works:**
 1. Expressions are compiled at config save time — invalid syntax is rejected immediately.
-2. At evaluation time, each expression runs against the current context in order; failures are silently skipped.
+2. At evaluation time, each formula runs against the current context in order; failures are silently skipped.
 3. Computed values are merged into the context (overwriting input values with the same name).
 4. Rules evaluate against the enriched context exactly like the `rule` strategy.
 5. Computed values are returned in the API response alongside the segment assignment.
@@ -454,7 +482,7 @@ Three round trips for problems that were all visible on the first pass. `rule` s
     "rules": [
       {
         "ruleName": "companyMissingFederalEIN",
-        "expression": { "field": "company.ein", "operator": "is_null_or_empty" },
+        "condition": { "field": "company.ein", "operator": "is_null_or_empty" },
         "errorMessage": "Federal EIN is required before payroll can be configured."
       }
     ]
@@ -501,8 +529,8 @@ State the problem, not the requirement. Most operators have a negative form for 
   "operator": "Or",
   "errorMessage": "A default pay rate is required for Precision companies.",
   "rules": [
-    { "ruleName": "defaultPayRateAbsent",      "expression": { "field": "company.defaultPayRate", "operator": "is_null" } },
-    { "ruleName": "defaultPayRateNotPositive", "expression": { "field": "company.defaultPayRate", "operator": "lte", "value": 0 } }
+    { "ruleName": "defaultPayRateAbsent",      "condition": { "field": "company.defaultPayRate", "operator": "is_null" } },
+    { "ruleName": "defaultPayRateNotPositive", "condition": { "field": "company.defaultPayRate", "operator": "lte", "value": 0 } }
   ]
 }
 ```
@@ -519,8 +547,8 @@ State the problem, not the requirement. Most operators have a negative form for 
   "operator": "And",
   "errorMessage": "Provide at least one contact method: email or phone.",
   "rules": [
-    { "ruleName": "contactEmailAbsent", "expression": { "field": "employee.contactEmail", "operator": "is_null_or_empty" } },
-    { "ruleName": "contactPhoneAbsent", "expression": { "field": "employee.contactPhone", "operator": "is_null_or_empty" } }
+    { "ruleName": "contactEmailAbsent", "condition": { "field": "employee.contactEmail", "operator": "is_null_or_empty" } },
+    { "ruleName": "contactPhoneAbsent", "condition": { "field": "employee.contactPhone", "operator": "is_null_or_empty" } }
   ]
 }
 ```
@@ -578,14 +606,14 @@ A check that does not apply to a type simply is not in that type's list — ther
     {
       "id": "precision",
       "when": { "ruleName": "isPrecision",
-                "expression": { "field": "company.productType", "operator": "eq", "value": "Precision" } },
+                "condition": { "field": "company.productType", "operator": "eq", "value": "Precision" } },
       "strategy": "checklist",
       "rules": [ "…Precision's pay-group requirements…" ]
     },
     {
       "id": "express",
       "when": { "ruleName": "isExpress",
-                "expression": { "field": "company.productType", "operator": "eq", "value": "Express" } },
+                "condition": { "field": "company.productType", "operator": "eq", "value": "Express" } },
       "strategy": "checklist",
       "rules": [ "…Express checks; pay-group rules simply absent…" ]
     }
@@ -601,17 +629,17 @@ A segment whose `when` is false is passed over entirely. If no segment in a chec
 
 #### Computed fields
 
-`checklist` composes the [Expression strategy](#expression-strategy), so computed fields are available to the conditions and to their messages:
+`checklist` composes the [computed-field](#computed-fields) evaluation, so computed fields are available to the conditions and to their messages:
 
 ```json
 {
   "strategy": "checklist",
-  "expressions": [
-    { "name": "MaxAllowed", "type": "number", "expression": "min(EarnedWages * 0.5, StateCap)" }
+  "computed": [
+    { "name": "MaxAllowed", "type": "number", "formula": "min(EarnedWages * 0.5, StateCap)" }
   ],
   "rules": [{
     "ruleName": "advanceLimitBelowFloor",
-    "expression": { "field": "MaxAllowed", "operator": "lt", "value": 25 },
+    "condition": { "field": "MaxAllowed", "operator": "lt", "value": 25 },
     "errorMessage": "Advance limit of ${MaxAllowed} is below the $25 minimum."
   }]
 }
@@ -664,7 +692,7 @@ The caller reads one layer and gets one canonical result — no merging required
 
 ### Example: CT State Fee Override (Aggregated Array)
 
-Computes the total EWA transfer spend for CT-state employees in the current batch, then determines which fee tier applies. The context contains an **array of employees** — each with their own state and spend — and the expressions aggregate across it using `filter` + `map` + `sum`.
+Computes the total EWA transfer spend for CT-state employees in the current batch, then determines which fee tier applies. The context contains an **array of employees** — each with their own state and spend — and the formulas aggregate across it using `filter` + `map` + `sum`.
 
 **Fee logic (mirrors the reference Lua implementation):**
 - CT total > $30 → fee waived (employees have already paid enough this month)
@@ -677,17 +705,17 @@ Computes the total EWA transfer spend for CT-state employees in the current batc
 ```json
 {
   "id": "ct-fee",
-  "strategy": "expression",
-  "expressions": [
+  "strategy": "computed",
+  "computed": [
     {
       "name": "CTTotal",
       "type": "number",
-      "expression": "sum(map(filter(Employees, {.State == \"CT\"}), {.TransferSpendThisMonth}))"
+      "formula": "sum(map(filter(Employees, {.State == \"CT\"}), {.TransferSpendThisMonth}))"
     },
     {
       "name": "TransferFee",
       "type": "number",
-      "expression": "CTTotal > 30.0 ? 0.0 : (CTTotal + 4.0 > 30.0 ? 30.0 - CTTotal : 4.0)"
+      "formula": "CTTotal > 30.0 ? 0.0 : (CTTotal + 4.0 > 30.0 ? 30.0 - CTTotal : 4.0)"
     }
   ],
   "inputSchema": {
@@ -697,12 +725,12 @@ Computes the total EWA transfer spend for CT-state employees in the current batc
     {
       "ruleName": "fee-waived",
       "successEvent": "fee-waived",
-      "expression": { "field": "CTTotal", "operator": "gt", "value": 30 }
+      "condition": { "field": "CTTotal", "operator": "gt", "value": 30 }
     },
     {
       "ruleName": "fee-partial",
       "successEvent": "fee-partial",
-      "expression": { "field": "CTTotal", "operator": "gt", "value": 26 }
+      "condition": { "field": "CTTotal", "operator": "gt", "value": 26 }
     }
   ],
   "default": "fee-standard"
@@ -711,7 +739,7 @@ Computes the total EWA transfer spend for CT-state employees in the current batc
 
 </details>
 
-> **Note on nested array schemas:** `inputSchema` validates the presence and type of top-level fields. For `Employees: { type: "array" }`, the service confirms the field exists and is an array. Element-level field validation (`State`, `TransferSpendThisMonth`) is not declared in the schema — instead it is enforced by the expressions themselves. Missing or mistyped element fields cause the expression to silently return its zero value and fall through to the default segment.
+> **Note on nested array schemas:** `inputSchema` validates the presence and type of top-level fields. For `Employees: { type: "array" }`, the service confirms the field exists and is an array. Element-level field validation (`State`, `TransferSpendThisMonth`) is not declared in the schema — instead it is enforced by the formulas themselves. Missing or mistyped element fields cause the formula to silently return its zero value and fall through to the default segment.
 
 Three scenarios, same config:
 
@@ -744,8 +772,8 @@ Three scenarios, same config:
 ```json
 {
   "segment": "fee-waived",
-  "strategy": "expression",
-  "expressions": { "CTTotal": 40, "TransferFee": 0 }
+  "strategy": "computed",
+  "computed": { "CTTotal": 40, "TransferFee": 0 }
 }
 ```
 
@@ -753,8 +781,8 @@ Three scenarios, same config:
 ```json
 {
   "segment": "fee-partial",
-  "strategy": "expression",
-  "expressions": { "CTTotal": 28, "TransferFee": 2 }
+  "strategy": "computed",
+  "computed": { "CTTotal": 28, "TransferFee": 2 }
 }
 ```
 
@@ -770,21 +798,21 @@ A logistic risk model for pricing and approving an earned wage advance. Age-deca
 ```json
 {
   "id": "ewa-risk",
-  "strategy": "expression",
-  "expressions": [
+  "strategy": "computed",
+  "computed": [
     {
       "name": "Z", "type": "number",
-      "expression": "w0 + sum(map(Signals, {.weight * .score * exp(-.age_sec / .tau_sec)}))"
+      "formula": "w0 + sum(map(Signals, {.weight * .score * exp(-.age_sec / .tau_sec)}))"
     },
-    { "name": "P",              "type": "number", "expression": "1.0 / (1.0 + exp(-Z))" },
-    { "name": "M",              "type": "number", "expression": "Fee - AchCost" },
+    { "name": "P",              "type": "number", "formula": "1.0 / (1.0 + exp(-Z))" },
+    { "name": "M",              "type": "number", "formula": "Fee - AchCost" },
     {
       "name": "RiskCeiling", "type": "number",
-      "expression": "(M * (1.0 - P) - AchCost * P) / (P + Lambda * P * (1.0 - P))"
+      "formula": "(M * (1.0 - P) - AchCost * P) / (P + Lambda * P * (1.0 - P))"
     },
-    { "name": "NetPayCap",      "type": "number", "expression": "Alpha * NetPay" },
-    { "name": "Offered",        "type": "number", "expression": "max(0.0, min(RiskCeiling, NetPayCap))" },
-    { "name": "BindingLimit",   "type": "string", "expression": "RiskCeiling < NetPayCap ? \"risk-ceiling\" : \"net-pay-cap\"" }
+    { "name": "NetPayCap",      "type": "number", "formula": "Alpha * NetPay" },
+    { "name": "Offered",        "type": "number", "formula": "max(0.0, min(RiskCeiling, NetPayCap))" },
+    { "name": "BindingLimit",   "type": "string", "formula": "RiskCeiling < NetPayCap ? \"risk-ceiling\" : \"net-pay-cap\"" }
   ],
   "inputSchema": {
     "Signals":  { "type": "array",  "required": true  },
@@ -799,12 +827,12 @@ A logistic risk model for pricing and approving an earned wage advance. Age-deca
     {
       "ruleName": "below-minimum",
       "successEvent": "decline",
-      "expression": { "field": "Offered", "operator": "lt", "value": 1 }
+      "condition": { "field": "Offered", "operator": "lt", "value": 1 }
     },
     {
       "ruleName": "risk-limited",
       "successEvent": "approve-risk-ceiling",
-      "expression": { "field": "BindingLimit", "operator": "eq", "value": "risk-ceiling" }
+      "condition": { "field": "BindingLimit", "operator": "eq", "value": "risk-ceiling" }
     }
   ],
   "default": "approve-net-pay-cap"
@@ -813,7 +841,7 @@ A logistic risk model for pricing and approving an earned wage advance. Age-deca
 
 </details>
 
-The `segment` carries the routing decision; `expressions` give the full numeric audit trail — `P`, `Offered`, and which limit was binding.
+The `segment` carries the routing decision; `computed` gives the full numeric audit trail — `P`, `Offered`, and which limit was binding.
 
 ![EWA Risk Scoring Result](docs/screenshots/ewa-risk-result.png)
 
@@ -836,8 +864,8 @@ Response:
 ```json
 {
   "segment": "approve-risk-ceiling",
-  "strategy": "expression",
-  "expressions": {
+  "strategy": "computed",
+  "computed": {
     "Z": -3.0, "P": 0.047, "M": 4.0,
     "RiskCeiling": 54.2, "NetPayCap": 520.0,
     "Offered": 54.2, "BindingLimit": "risk-ceiling"
@@ -868,10 +896,10 @@ The segment editor shows: strategy = Expression, promotion window = Jul 4–31 2
   "segments": [
     {
       "id": "july4-promo",
-      "strategy": "expression",
-      "expressions": [
-        { "name": "BaseFee", "type": "number", "expression": "5.0" },
-        { "name": "Fee",     "type": "number", "expression": "4.0" }
+      "strategy": "computed",
+      "computed": [
+        { "name": "BaseFee", "type": "number", "formula": "5.0" },
+        { "name": "Fee",     "type": "number", "formula": "4.0" }
       ],
       "default": "july4-promo",
       "promotion": {
@@ -885,9 +913,9 @@ The segment editor shows: strategy = Expression, promotion window = Jul 4–31 2
     },
     {
       "id": "standard",
-      "strategy": "expression",
-      "expressions": [
-        { "name": "Fee", "type": "number", "expression": "5.0" }
+      "strategy": "computed",
+      "computed": [
+        { "name": "Fee", "type": "number", "formula": "5.0" }
       ],
       "default": "standard",
       "defaultMessages": {
@@ -908,7 +936,7 @@ The segment editor shows: strategy = Expression, promotion window = Jul 4–31 2
 <details>
 <summary>Request and response JSON (both states)</summary>
 
-No external context is needed — both segments use expression constants. Pass `languages` to receive rendered messages.
+No external context is needed — both segments use constant formulas. Pass `languages` to receive rendered messages.
 
 ```json
 POST /v1/evaluate
@@ -925,9 +953,9 @@ POST /v1/evaluate
   "layers": {
     "transfer-fee": {
       "segment": "july4-promo",
-      "strategy": "expression",
+      "strategy": "computed",
       "reason": "default",
-      "expressions": { "BaseFee": 5, "Fee": 4 },
+      "computed": { "BaseFee": 5, "Fee": 4 },
       "messages": {
         "en": "Happy 4th of July! Your transfer fee has been reduced from $5 to $4.",
         "es": "¡Feliz 4 de Julio! Su tarifa de transferencia se ha reducido de $5 a $4."
@@ -944,9 +972,9 @@ POST /v1/evaluate
   "layers": {
     "transfer-fee": {
       "segment": "standard",
-      "strategy": "expression",
+      "strategy": "computed",
       "reason": "default",
-      "expressions": { "Fee": 5 },
+      "computed": { "Fee": 5 },
       "messages": {
         "en": "Your standard transfer fee is $5.",
         "es": "Su tarifa de transferencia estándar es $5."
@@ -996,7 +1024,7 @@ problem, these are the natural way to say *"this is not set"*:
 
 ```json
 { "ruleName": "contactEmailMissing",
-  "expression": { "field": "employee.contactEmail", "operator": "is_null_or_empty" },
+  "condition": { "field": "employee.contactEmail", "operator": "is_null_or_empty" },
   "errorMessage": "A contact email is required." }
 ```
 

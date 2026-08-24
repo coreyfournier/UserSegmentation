@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -35,6 +36,9 @@ func (fs *FileSource) Load() (*model.Snapshot, error) {
 
 	// Execution order comes from dependsOn; the evaluator topologically sorts.
 	if err := rejectLegacyOrder(data); err != nil {
+		return nil, err
+	}
+	if err := rejectLegacyExpressionKeys(data); err != nil {
 		return nil, err
 	}
 	if err := checkRuleNameUniqueness(&snap); err != nil {
@@ -70,6 +74,55 @@ func rejectLegacyOrder(data []byte) error {
 			"order", strings.Join(stale, ", "), "dependsOn")
 	}
 	return nil
+}
+
+// rejectLegacyExpressionKeys fails a config still using the old "expression"
+// vocabulary, which split into two names: a rule's test is a `condition`, and a
+// named expr-lang value is an entry in `computed` whose source is a `formula`.
+//
+// This has to be checked explicitly. Unmarshalling ignores unknown fields, so a
+// stale `expression` on a rule would leave it with no condition and no children
+// — evaluating false forever — and a stale `expressions` list would silently
+// drop every computed field.
+func rejectLegacyExpressionKeys(data []byte) error {
+	var raw interface{}
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return nil // the primary unmarshal already reported anything fatal
+	}
+
+	found := map[string]bool{}
+	var walk func(node interface{})
+	walk = func(node interface{}) {
+		switch n := node.(type) {
+		case map[string]interface{}:
+			for key, child := range n {
+				if key == "expression" || key == "expressions" {
+					found[key] = true
+				}
+				walk(child)
+			}
+		case []interface{}:
+			for _, child := range n {
+				walk(child)
+			}
+		}
+	}
+	walk(raw)
+
+	if len(found) == 0 {
+		return nil
+	}
+
+	var stale []string
+	for _, key := range []string{"expression", "expressions"} {
+		if found[key] {
+			stale = append(stale, strconv.Quote(key))
+		}
+	}
+	return fmt.Errorf(
+		"config still uses the removed %s field(s): a rule's test is now %q, and a named "+
+			"expr-lang value is an entry in %q whose source is %q",
+		strings.Join(stale, " and "), "condition", "computed", "formula")
 }
 
 // checkRuleNameUniqueness enforces that the names of reported checks are unique

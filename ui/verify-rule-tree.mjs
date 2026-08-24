@@ -28,7 +28,7 @@ const { moveRule, canDrop } = await import(
   pathToFileURL(join(out, 'components', 'rules', 'ruleTree.js')).href
 );
 
-const leaf = (name) => ({ ruleName: name, expression: { field: name, operator: 'eq', value: 1 } });
+const leaf = (name) => ({ ruleName: name, condition: { field: name, operator: 'eq', value: 1 } });
 const group = (name, ...kids) => ({ ruleName: name, operator: 'And', rules: kids });
 
 /** Renders the tree as "a,G(b,c)" so failures read clearly. */
@@ -53,7 +53,7 @@ const is = (label, actual, expected) => {
   check('middle up', show(moveRule(t, [1], [0])), 'b,a,c');
 }
 
-// An expression into a group — the case that previously required rebuilding it.
+// A check into a group — the case that previously required rebuilding it.
 {
   const t = [leaf('a'), group('G', leaf('x'))];
   check('into group, at end', show(moveRule(t, [0], [1, 1])), 'G(x,a)');

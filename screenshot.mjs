@@ -86,15 +86,15 @@ async function main() {
   await page.screenshot({ path: join(SHOTS, 'ewa-risk-result.png') });
 
   // ── 3. Expression Help Panel ─────────────────────────────────────────────────
-  console.log('Screenshotting expression help panel…');
+  console.log('Screenshotting the formula reference…');
   await page.goto(`${BASE}/layers/ewa-risk/segments/ewa-risk`);
   await page.waitForLoadState('networkidle');
   await page.waitForSelector('[class*="editor"]', { timeout: 10_000 });
   // Scroll down to the Configuration section so expressions are visible
-  await page.locator('summary').filter({ hasText: 'Expression Reference' }).scrollIntoViewIfNeeded();
-  await page.locator('summary').filter({ hasText: 'Expression Reference' }).click();
+  await page.locator('summary').filter({ hasText: 'Formula Reference' }).scrollIntoViewIfNeeded();
+  await page.locator('summary').filter({ hasText: 'Formula Reference' }).click();
   await page.waitForTimeout(400);
-  await page.screenshot({ path: join(SHOTS, 'expression-help-panel.png') });
+  await page.screenshot({ path: join(SHOTS, 'formula-reference.png') });
 
   // ── 4. Assert gates: satisfied → violated → unevaluable ─────────────────────
   console.log('Screenshotting checklist gate results…');

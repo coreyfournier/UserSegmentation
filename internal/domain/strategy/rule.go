@@ -157,7 +157,7 @@ func evaluateRule(r *model.Rule, ctx map[string]interface{}, lookups map[string]
 		return false
 	}
 	if r.IsLeaf() {
-		return EvalExpression(r.Expression, ctx, lookups)
+		return EvalCondition(r.Condition, ctx, lookups)
 	}
 	// Composite rule
 	switch r.Operator {

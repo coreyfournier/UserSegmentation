@@ -22,7 +22,7 @@ type EvalContext struct {
 type Result struct {
 	Segment      string
 	Reason       string
-	Expressions  map[string]interface{}
+	Computed     map[string]interface{}
 	Messages     map[string]string
 	RenderErrors []RenderError
 	// Failures is populated only in collect mode.

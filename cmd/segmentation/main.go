@@ -11,6 +11,7 @@ import (
 
 	"github.com/segmentation-service/segmentation/internal/application"
 	"github.com/segmentation-service/segmentation/internal/domain/engine"
+	"github.com/segmentation-service/segmentation/internal/domain/model"
 	"github.com/segmentation-service/segmentation/internal/domain/strategy"
 	infraConfig "github.com/segmentation-service/segmentation/internal/infrastructure/config"
 	"github.com/segmentation-service/segmentation/internal/infrastructure/hash"
@@ -37,12 +38,14 @@ func main() {
 	log.Printf("loaded config version %d with %d layers", snap.Version, len(snap.Layers))
 
 	// Domain: strategies + evaluator
+	// Keyed by the model's strategy constants so a rename cannot leave the map
+	// pointing at a name the evaluator will never look up.
 	strategies := map[string]strategy.Strategy{
-		"static":     &strategy.StaticStrategy{},
-		"rule":       &strategy.RuleStrategy{},
-		"percentage": &strategy.PercentageStrategy{Hasher: hasher},
-		"expression": &strategy.ExpressionStrategy{},
-		"checklist":  &strategy.ChecklistStrategy{},
+		model.StrategyStatic:     &strategy.StaticStrategy{},
+		model.StrategyRule:       &strategy.RuleStrategy{},
+		model.StrategyPercentage: &strategy.PercentageStrategy{Hasher: hasher},
+		model.StrategyComputed:   &strategy.ComputedStrategy{},
+		model.StrategyChecklist:  &strategy.ChecklistStrategy{},
 	}
 	evaluator := engine.NewEvaluator(strategies)
 

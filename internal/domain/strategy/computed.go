@@ -49,14 +49,14 @@ var mathOptions = []expr.Option{
 	}),
 }
 
-// ExpressionStrategy evaluates named expr-lang expressions to enrich the context,
+// ComputedStrategy evaluates named expr-lang expressions to enrich the context,
 // then delegates to rule evaluation against the enriched context.
-type ExpressionStrategy struct {
+type ComputedStrategy struct {
 	mu    sync.Mutex
 	cache map[string]runFn
 }
 
-func (s *ExpressionStrategy) compiled(expression string) (runFn, error) {
+func (s *ComputedStrategy) compiled(expression string) (runFn, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.cache == nil {
@@ -76,17 +76,17 @@ func (s *ExpressionStrategy) compiled(expression string) (runFn, error) {
 	return fn, nil
 }
 
-func (s *ExpressionStrategy) Evaluate(seg *model.Segment, ctx *EvalContext) (Result, bool) {
+func (s *ComputedStrategy) Evaluate(seg *model.Segment, ctx *EvalContext) (Result, bool) {
 	// Copy caller's context, then overwrite with expression results in declaration order.
-	enriched := make(map[string]interface{}, len(ctx.Context)+len(seg.Expressions))
+	enriched := make(map[string]interface{}, len(ctx.Context)+len(seg.Computed))
 	for k, v := range ctx.Context {
 		enriched[k] = v
 	}
 
-	computed := make(map[string]interface{}, len(seg.Expressions))
+	computed := make(map[string]interface{}, len(seg.Computed))
 	var failed []string
-	for _, def := range seg.Expressions {
-		run, err := s.compiled(def.Expression)
+	for _, def := range seg.Computed {
+		run, err := s.compiled(def.Formula)
 		if err != nil {
 			failed = append(failed, def.Name)
 			continue
@@ -109,7 +109,7 @@ func (s *ExpressionStrategy) Evaluate(seg *model.Segment, ctx *EvalContext) (Res
 		return Result{
 			Reason:      "expression error: " + strings.Join(failed, ", "),
 			Status:      model.StatusUnevaluable,
-			Expressions: computed,
+			Computed: computed,
 		}, true
 	}
 
@@ -120,7 +120,7 @@ func (s *ExpressionStrategy) Evaluate(seg *model.Segment, ctx *EvalContext) (Res
 
 	res, ok := (&RuleStrategy{}).Evaluate(seg, &derived)
 	if ok && len(computed) > 0 {
-		res.Expressions = computed
+		res.Computed = computed
 	}
 	return res, ok
 }

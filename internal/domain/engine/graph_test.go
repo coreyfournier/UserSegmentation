@@ -24,7 +24,7 @@ func graphEvaluator(extra map[string]strategy.Strategy) *Evaluator {
 	strategies := map[string]strategy.Strategy{
 		"static":     &strategy.StaticStrategy{},
 		"rule":       &strategy.RuleStrategy{},
-		"expression": &strategy.ExpressionStrategy{},
+		"computed":   &strategy.ComputedStrategy{},
 		"checklist":  &strategy.ChecklistStrategy{},
 	}
 	for k, v := range extra {
@@ -57,7 +57,7 @@ func checklistLayer(name, rule, field, want string, dependsOn ...string) model.L
 			Rules: []model.Rule{{
 				RuleName:     rule,
 				ErrorMessage: rule + " failed",
-				Expression:   &model.Expression{Field: field, Operator: model.OpNeq, Value: want},
+				Condition:   &model.Condition{Field: field, Operator: model.OpNeq, Value: want},
 			}},
 		}},
 	}
@@ -80,7 +80,7 @@ func TestGraph_DependencyOrderIgnoresDeclarationOrder(t *testing.T) {
 				Rules: []model.Rule{{
 					RuleName:     "sawUpstream",
 					SuccessEvent: "saw-pro",
-					Expression:   &model.Expression{Field: "layer:upstream", Operator: model.OpEq, Value: "pro"},
+					Condition:   &model.Condition{Field: "layer:upstream", Operator: model.OpEq, Value: "pro"},
 				}},
 				Default: "missed",
 			}},
@@ -110,8 +110,8 @@ func TestGraph_DiamondDependency(t *testing.T) {
 					Operator:     model.CompositeAnd,
 					SuccessEvent: "joined",
 					Rules: []model.Rule{
-						{RuleName: "l", Expression: &model.Expression{Field: "layer:left", Operator: model.OpEq, Value: "l"}},
-						{RuleName: "r", Expression: &model.Expression{Field: "layer:right", Operator: model.OpEq, Value: "x"}},
+						{RuleName: "l", Condition: &model.Condition{Field: "layer:left", Operator: model.OpEq, Value: "l"}},
+						{RuleName: "r", Condition: &model.Condition{Field: "layer:right", Operator: model.OpEq, Value: "x"}},
 					},
 				}},
 				Default: "incomplete",
@@ -201,7 +201,7 @@ func TestGraph_UnresolvedLayerSkipsDependents(t *testing.T) {
 				Strategy: "rule",
 				Rules: []model.Rule{{
 					RuleName:   "never",
-					Expression: &model.Expression{Field: "nope", Operator: model.OpEq, Value: "x"},
+					Condition: &model.Condition{Field: "nope", Operator: model.OpEq, Value: "x"},
 				}},
 				// No default, so nothing resolves.
 			}},
@@ -235,7 +235,7 @@ func TestGraph_ChecklistInjectsNoContextValue(t *testing.T) {
 				Rules: []model.Rule{{
 					RuleName:     "readsGate",
 					SuccessEvent: "read-something",
-					Expression:   &model.Expression{Field: "layer:gate", Operator: model.OpEq, Value: "satisfied"},
+					Condition:   &model.Condition{Field: "layer:gate", Operator: model.OpEq, Value: "satisfied"},
 				}},
 				Default: "nothing-injected",
 			}},
@@ -263,7 +263,7 @@ func TestGraph_FilterEvaluatesDependencyClosureOnly(t *testing.T) {
 				Rules: []model.Rule{{
 					RuleName:     "sawUpstream",
 					SuccessEvent: "saw-pro",
-					Expression:   &model.Expression{Field: "layer:upstream", Operator: model.OpEq, Value: "pro"},
+					Condition:   &model.Condition{Field: "layer:upstream", Operator: model.OpEq, Value: "pro"},
 				}},
 				Default: "missed",
 			}},
@@ -297,12 +297,12 @@ func TestGraph_WhenDispatchSelectsSegment(t *testing.T) {
 	typeSegment := func(id, productType, rule, field, want string) model.Segment {
 		return model.Segment{
 			ID:       id,
-			When:     &model.Rule{RuleName: "is" + id, Expression: &model.Expression{Field: "productType", Operator: model.OpEq, Value: productType}},
+			When:     &model.Rule{RuleName: "is" + id, Condition: &model.Condition{Field: "productType", Operator: model.OpEq, Value: productType}},
 			Strategy: model.StrategyChecklist,
 			Rules: []model.Rule{{
 				RuleName:     rule,
 				ErrorMessage: rule + " failed",
-				Expression:   &model.Expression{Field: field, Operator: model.OpNeq, Value: want},
+				Condition:   &model.Condition{Field: field, Operator: model.OpNeq, Value: want},
 			}},
 		}
 	}
@@ -365,12 +365,12 @@ func TestGraph_NestedEntityContext(t *testing.T) {
 				{
 					RuleName:     "employeeMissingHireDate",
 					ErrorMessage: "Hire date is required.",
-					Expression:   &model.Expression{Field: "employee.hireDate", Operator: model.OpIsNullOrEmpty},
+					Condition:   &model.Condition{Field: "employee.hireDate", Operator: model.OpIsNullOrEmpty},
 				},
 				{
 					RuleName:     "parentCompanyNotPrecision",
 					ErrorMessage: "Parent company must be Precision.",
-					Expression:   &model.Expression{Field: "company.productType", Operator: model.OpNeq, Value: "Precision"},
+					Condition:   &model.Condition{Field: "company.productType", Operator: model.OpNeq, Value: "Precision"},
 				},
 			},
 		}},

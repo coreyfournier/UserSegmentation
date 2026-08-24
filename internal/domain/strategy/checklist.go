@@ -11,7 +11,7 @@ import "github.com/segmentation-service/segmentation/internal/domain/model"
 //
 // It is the third link in an existing delegation chain:
 //
-//	ChecklistStrategy  ->  ExpressionStrategy  ->  RuleStrategy
+//	ChecklistStrategy  ->  ComputedStrategy  ->  RuleStrategy
 //	   sets                  enriches with           reports every match
 //	   CollectFailures        computed fields        instead of stopping at one
 //	   computes Status
@@ -19,19 +19,19 @@ import "github.com/segmentation-service/segmentation/internal/domain/model"
 // so it inherits expr-lang computed fields for free, and rule evaluation itself
 // stays in one place.
 type ChecklistStrategy struct {
-	expressions ExpressionStrategy
+	computed ComputedStrategy
 }
 
 func (s *ChecklistStrategy) Evaluate(seg *model.Segment, ctx *EvalContext) (Result, bool) {
 	collecting := *ctx
 	collecting.CollectFailures = true
 
-	res, ok := s.expressions.Evaluate(seg, &collecting)
+	res, ok := s.computed.Evaluate(seg, &collecting)
 	if !ok {
 		return res, false
 	}
 
-	// ExpressionStrategy already reports unevaluable when a computed field
+	// ComputedStrategy already reports unevaluable when a computed field
 	// failed at runtime; only the satisfied/violated distinction is left.
 	if res.Status == "" {
 		if len(res.Failures) > 0 {

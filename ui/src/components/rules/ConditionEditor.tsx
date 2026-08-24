@@ -1,18 +1,18 @@
-import type { Expression, InputSchema } from '../../api/types';
+import type { Condition, InputSchema } from '../../api/types';
 import { LOOKUP_OPERATORS, UNARY_OPERATORS } from '../../api/types';
 import { useLookups } from '../../api/lookups';
 import { parseNumericInput } from '../../utils/parse';
 import OperatorSelect from './OperatorSelect';
-import styles from './ExpressionEditor.module.css';
+import styles from './ConditionEditor.module.css';
 
 interface Props {
-  value: Expression;
-  onChange: (e: Expression) => void;
+  value: Condition;
+  onChange: (c: Condition) => void;
   schema?: InputSchema;
   layerNames?: string[];
 }
 
-export default function ExpressionEditor({ value, onChange, schema, layerNames }: Props) {
+export default function ConditionEditor({ value, onChange, schema, layerNames }: Props) {
   const { data: lookups } = useLookups();
   const suggestions: string[] = [
     ...Object.keys(schema ?? {}),

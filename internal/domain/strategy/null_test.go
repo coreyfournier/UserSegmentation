@@ -7,7 +7,7 @@ import (
 )
 
 func evalField(op model.Operator, field string, ctx map[string]interface{}) bool {
-	return EvalExpression(&model.Expression{Field: field, Operator: op}, ctx, nil)
+	return EvalCondition(&model.Condition{Field: field, Operator: op}, ctx, nil)
 }
 
 // A field that is not in the context at all is null. This is the case the
@@ -73,8 +73,8 @@ func TestIsNullOrEmpty(t *testing.T) {
 // Value is ignored, so a stale one left over from another operator cannot
 // change the outcome.
 func TestUnaryOperators_IgnoreValue(t *testing.T) {
-	expr := &model.Expression{Field: "f", Operator: model.OpIsNull, Value: "leftover"}
-	if !EvalExpression(expr, map[string]interface{}{}, nil) {
+	expr := &model.Condition{Field: "f", Operator: model.OpIsNull, Value: "leftover"}
+	if !EvalCondition(expr, map[string]interface{}{}, nil) {
 		t.Error("is_null should ignore a stale value")
 	}
 }
@@ -83,8 +83,8 @@ func TestUnaryOperators_IgnoreValue(t *testing.T) {
 // which is what makes "must be set" assertions like neq "" work.
 func TestComparisonOperators_StillFalseWhenAbsent(t *testing.T) {
 	for _, op := range []model.Operator{model.OpEq, model.OpNeq, model.OpGt, model.OpIn, model.OpContains} {
-		expr := &model.Expression{Field: "missing", Operator: op, Value: ""}
-		if EvalExpression(expr, map[string]interface{}{}, nil) {
+		expr := &model.Condition{Field: "missing", Operator: op, Value: ""}
+		if EvalCondition(expr, map[string]interface{}{}, nil) {
 			t.Errorf("%s should be false for an absent field", op)
 		}
 	}
@@ -131,7 +131,7 @@ func TestNullOperators_AsChecklistConditions(t *testing.T) {
 		Rules: []model.Rule{{
 			RuleName:     "contactEmailMissing",
 			ErrorMessage: "Contact email is required for deduction emails.",
-			Expression:   &model.Expression{Field: "EmailContact", Operator: model.OpIsNullOrEmpty},
+			Condition:   &model.Condition{Field: "EmailContact", Operator: model.OpIsNullOrEmpty},
 		}},
 	}
 

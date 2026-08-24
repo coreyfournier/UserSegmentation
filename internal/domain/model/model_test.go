@@ -90,17 +90,17 @@ func TestRule_IsEnabled_False(t *testing.T) {
 
 // --- Rule.IsLeaf ---
 
-func TestRule_IsLeaf_WithExpression(t *testing.T) {
+func TestRule_IsLeaf_WithCondition(t *testing.T) {
 	r := &Rule{
 		RuleName:   "leaf",
-		Expression: &Expression{Field: "x", Operator: OpEq, Value: "y"},
+		Condition: &Condition{Field: "x", Operator: OpEq, Value: "y"},
 	}
 	if !r.IsLeaf() {
 		t.Error("rule with expression should be leaf")
 	}
 }
 
-func TestRule_IsLeaf_WithoutExpression(t *testing.T) {
+func TestRule_IsLeaf_WithoutCondition(t *testing.T) {
 	r := &Rule{
 		RuleName: "composite",
 		Operator: CompositeAnd,

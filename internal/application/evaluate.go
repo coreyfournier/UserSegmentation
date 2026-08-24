@@ -48,7 +48,7 @@ func (uc *EvaluateUseCase) Execute(req EvaluateRequest) (*EvaluateResponse, erro
 			dto.Segment = a.Segment
 			dto.Strategy = a.Strategy
 			dto.Reason = a.Reason
-			dto.Expressions = a.Expressions
+			dto.Computed = a.Computed
 			dto.Messages = a.Messages
 		}
 		for _, f := range lr.Failures {

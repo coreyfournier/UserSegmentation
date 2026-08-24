@@ -11,7 +11,7 @@ func TestEvalOverrides_Match(t *testing.T) {
 		{
 			RuleName:     "vip-override",
 			SuccessEvent: "vip-segment",
-			Expression:   &model.Expression{Field: "plan", Operator: model.OpEq, Value: "enterprise"},
+			Condition:   &model.Condition{Field: "plan", Operator: model.OpEq, Value: "enterprise"},
 		},
 	}
 
@@ -27,7 +27,7 @@ func TestEvalOverrides_NoMatch(t *testing.T) {
 		{
 			RuleName:     "vip-override",
 			SuccessEvent: "vip-segment",
-			Expression:   &model.Expression{Field: "plan", Operator: model.OpEq, Value: "enterprise"},
+			Condition:   &model.Condition{Field: "plan", Operator: model.OpEq, Value: "enterprise"},
 		},
 	}
 
@@ -44,7 +44,7 @@ func TestEvalOverrides_Disabled(t *testing.T) {
 			RuleName:     "disabled",
 			Enabled:      boolPtr(false),
 			SuccessEvent: "should-skip",
-			Expression:   &model.Expression{Field: "plan", Operator: model.OpEq, Value: "enterprise"},
+			Condition:   &model.Condition{Field: "plan", Operator: model.OpEq, Value: "enterprise"},
 		},
 	}
 

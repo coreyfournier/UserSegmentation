@@ -188,7 +188,7 @@ func TestReload_ValidationError(t *testing.T) {
 				ID: "s", Strategy: "rule",
 				Rules: []model.Rule{{
 					RuleName:     "r",
-					Expression:   &model.Expression{Field: "f", Operator: "gt", Value: 1},
+					Condition:   &model.Condition{Field: "f", Operator: "gt", Value: 1},
 					SuccessEvent: "x",
 				}},
 				InputSchema: model.InputSchema{

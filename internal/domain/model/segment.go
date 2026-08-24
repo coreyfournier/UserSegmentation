@@ -29,7 +29,7 @@ type Segment struct {
 	Strategy    string            `json:"strategy"`
 	Static      *StaticConfig     `json:"static,omitempty"`
 	Percentage  *PercentageConfig `json:"percentage,omitempty"`
-	Expressions []ExpressionDef   `json:"expressions,omitempty"`
+	Computed    []ComputedField   `json:"computed,omitempty"`
 	Rules       []Rule            `json:"rules,omitempty"`
 	Overrides   []Rule            `json:"overrides,omitempty"`
 	Default     string            `json:"default,omitempty"`

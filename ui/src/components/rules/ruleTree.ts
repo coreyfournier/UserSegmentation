@@ -5,7 +5,7 @@ import type { Rule } from '../../api/types';
  * array down. `[0, 2]` is `rules[0].rules[2]`.
  *
  * Rule editing used to run through parent-owned closures, which can only ever
- * reorder siblings. Addressing nodes by path is what lets an expression move
+ * reorder siblings. Addressing nodes by path is what lets a rule move
  * into a group, out of one, or across to another.
  */
 export type RulePath = number[];
@@ -66,7 +66,7 @@ export function canDrop(rules: Rule[], from: RulePath, to: RulePath): boolean {
   const toParent = to.slice(0, -1);
   if (toParent.length > 0) {
     const parent = nodeAt(rules, toParent);
-    if (!parent || parent.expression) return false;
+    if (!parent || parent.condition) return false;
   }
 
   // Landing immediately before or after itself among the same siblings would
@@ -120,8 +120,8 @@ function stripMoved(rules: Rule[]): Rule[] {
 
 /** Human-readable description of a node, for drag feedback. */
 export function describeRule(rule: Rule): string {
-  if (rule.expression) {
-    const { field, operator } = rule.expression;
+  if (rule.condition) {
+    const { field, operator } = rule.condition;
     return rule.ruleName || `${field || 'field'} ${operator}`;
   }
   return rule.ruleName || `${rule.operator ?? 'And'} group`;

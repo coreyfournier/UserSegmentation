@@ -6,7 +6,7 @@ import type { Segment, StrategyType, InputSchema } from '../../api/types';
 import StrategyPicker from './StrategyPicker';
 import StaticConfig from './StaticConfig';
 import PercentageConfig from './PercentageConfig';
-import ExpressionConfig from './ExpressionConfig';
+import ComputedFieldsEditor from './ComputedFieldsEditor';
 import RuleConfig from './RuleConfig';
 import RuleTreeBuilder from '../rules/RuleTreeBuilder';
 import MessagesEditor from '../rules/MessagesEditor';
@@ -51,28 +51,28 @@ export default function SegmentEditor() {
         next.rules = prev.rules ?? [];
         next.default = prev.default ?? '';
       }
-      if (strategy === 'expression') {
-        next.expressions = prev.expressions ?? [];
+      if (strategy === 'computed') {
+        next.computed = prev.computed ?? [];
         next.rules = prev.rules ?? [];
         next.default = prev.default ?? '';
       }
       if (strategy === 'checklist') {
         // No default: every rule is a check that fires or does not, so there is no
         // "nothing matched" outcome to fall back to.
-        next.expressions = prev.expressions ?? [];
+        next.computed = prev.computed ?? [];
         next.rules = prev.rules ?? [];
       }
       return { ...prev, ...next };
     });
   };
 
-  // Expression and checklist both compute fields before rules run, so merge them
+  // Computed and checklist both compute fields before rules run, so merge them
   // into the schema used for the rule field autocomplete.
   const effectiveSchema = (s: Segment): InputSchema | undefined => {
-    const computes = s.strategy === 'expression' || s.strategy === 'checklist';
-    if (!computes || !s.expressions?.length) return s.inputSchema;
+    const computes = s.strategy === 'computed' || s.strategy === 'checklist';
+    if (!computes || !s.computed?.length) return s.inputSchema;
     const merged: InputSchema = { ...s.inputSchema };
-    for (const def of s.expressions) {
+    for (const def of s.computed) {
       if (def.name) merged[def.name] = { type: def.type, required: false };
     }
     return merged;
@@ -162,7 +162,7 @@ export default function SegmentEditor() {
             layerNames={layerNames}
           />
         )}
-        {seg.strategy === 'expression' && (
+        {seg.strategy === 'computed' && (
           <RuleConfig
             rules={seg.rules ?? []}
             overrides={seg.overrides ?? []}
@@ -175,12 +175,12 @@ export default function SegmentEditor() {
             ruleSchema={effectiveSchema(seg)}
             overrideSchema={seg.inputSchema}
             layerNames={layerNames}
-            expressionsSlot={
+            computedSlot={
               <div className="form-group">
-                <label>Expressions</label>
-                <ExpressionConfig
-                  value={seg.expressions ?? []}
-                  onChange={(e) => update({ expressions: e })}
+                <label>Computed Fields</label>
+                <ComputedFieldsEditor
+                  value={seg.computed ?? []}
+                  onChange={(c) => update({ computed: c })}
                 />
               </div>
             }
@@ -197,10 +197,10 @@ export default function SegmentEditor() {
             </p>
 
             <div className="form-group">
-              <label>Expressions</label>
-              <ExpressionConfig
-                value={seg.expressions ?? []}
-                onChange={(e) => update({ expressions: e })}
+              <label>Computed Fields</label>
+              <ComputedFieldsEditor
+                value={seg.computed ?? []}
+                onChange={(c) => update({ computed: c })}
               />
               <p style={{ fontSize: 11, color: 'var(--text-muted)', margin: '4px 0 0' }}>
                 Computed fields are available to the checks and to their messages.
@@ -233,7 +233,7 @@ export default function SegmentEditor() {
       </section>
 
       {/* Overrides for strategies whose config section does not already include them */}
-      {seg.strategy !== 'rule' && seg.strategy !== 'expression' && seg.strategy !== 'checklist' && (
+      {seg.strategy !== 'rule' && seg.strategy !== 'computed' && seg.strategy !== 'checklist' && (
         <section className={`card ${styles.section}`}>
           <h3>Overrides</h3>
           <RuleTreeBuilder

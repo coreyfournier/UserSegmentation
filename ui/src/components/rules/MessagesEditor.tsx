@@ -94,7 +94,7 @@ export default function MessagesEditor({ value, onChange, hint }: Props) {
                   className={styles.text}
                   value={text}
                   onChange={(e) => setText(i, e.target.value)}
-                  placeholder="Message with ${variables} and ${expressions}"
+                  placeholder="Message with ${variables} and ${formulas}"
                   aria-label="message text"
                 />
                 <button className="btn-danger btn-sm" onClick={() => remove(i)}>x</button>

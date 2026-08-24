@@ -1,6 +1,6 @@
 import { useRef } from 'react';
 import type { Rule, InputSchema, CompositeOperator } from '../../api/types';
-import ExpressionEditor from './ExpressionEditor';
+import ConditionEditor from './ConditionEditor';
 import MessagesEditor from './MessagesEditor';
 import RuleList from './RuleList';
 import { useRuleDrag } from './RuleDragContext';
@@ -27,7 +27,7 @@ interface Props {
 
 export default function RuleNode({ rule, path, onChange, onDelete, index, total, onMove, depth = 0, schema, layerNames, perRuleMessages = false }: Props) {
   const color = DEPTH_COLORS[depth % DEPTH_COLORS.length];
-  const isLeaf = !!rule.expression;
+  const isLeaf = !!rule.condition;
 
   const { dragPath, beginDrag, endDrag } = useRuleDrag();
   const nodeRef = useRef<HTMLDivElement>(null);
@@ -40,7 +40,7 @@ export default function RuleNode({ rule, path, onChange, onDelete, index, total,
         ...(rule.rules ?? []),
         {
           ruleName: '',
-          expression: { field: '', operator: 'eq', value: '' },
+          condition: { field: '', operator: 'eq', value: '' },
         },
       ],
     });
@@ -172,11 +172,11 @@ export default function RuleNode({ rule, path, onChange, onDelete, index, total,
         <button className="btn-danger btn-sm" onClick={onDelete}>x</button>
       </div>
 
-      {isLeaf && rule.expression && (
+      {isLeaf && rule.condition && (
         <div className={styles.exprWrap}>
-          <ExpressionEditor
-            value={rule.expression}
-            onChange={(expr) => onChange({ ...rule, expression: expr })}
+          <ConditionEditor
+            value={rule.condition}
+            onChange={(cond) => onChange({ ...rule, condition: cond })}
             schema={schema}
             layerNames={layerNames}
           />
@@ -192,8 +192,8 @@ export default function RuleNode({ rule, path, onChange, onDelete, index, total,
           onChange={(m) => onChange({ ...rule, messages: m })}
           hint={
             perRuleMessages
-              ? "Localized text reported when this check fires. Use ${field} for variables and expressions."
-              : "Rendered when this rule wins. Use ${field} for variables and expressions."
+              ? "Localized text reported when this check fires. Use ${field} for variables and formulas."
+              : "Rendered when this rule wins. Use ${field} for variables and formulas."
           }
         />
       )}
@@ -211,7 +211,7 @@ export default function RuleNode({ rule, path, onChange, onDelete, index, total,
             perRuleMessages={perRuleMessages}
           />
           <div className={styles.addButtons}>
-            <button className="btn-ghost btn-sm" onClick={addLeaf}>+ Add Expression</button>
+            <button className="btn-ghost btn-sm" onClick={addLeaf}>+ Add Check</button>
             <button className="btn-ghost btn-sm" onClick={addGroup}>+ Add Group</button>
           </div>
         </div>

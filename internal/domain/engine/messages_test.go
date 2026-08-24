@@ -13,7 +13,7 @@ func newMessageEvaluator() *Evaluator {
 	return NewEvaluator(map[string]strategy.Strategy{
 		"static":     &strategy.StaticStrategy{},
 		"rule":       &strategy.RuleStrategy{},
-		"expression": &strategy.ExpressionStrategy{},
+		"computed":   &strategy.ComputedStrategy{},
 	})
 }
 
@@ -25,7 +25,7 @@ func TestEvaluator_RuleMessageRendered(t *testing.T) {
 				ID: "s", Strategy: "rule",
 				Rules: []model.Rule{{
 					RuleName: "hit", SuccessEvent: "won",
-					Expression: &model.Expression{Field: "plan", Operator: model.OpEq, Value: "pro"},
+					Condition: &model.Condition{Field: "plan", Operator: model.OpEq, Value: "pro"},
 					Messages:   map[string]string{"en": "Hi ${Name}", "es": "Hola ${Name}"},
 				}},
 				Default: "none",
@@ -55,7 +55,7 @@ func TestEvaluator_OverrideMessageRendered(t *testing.T) {
 				Static: &model.StaticConfig{Default: "normal"},
 				Overrides: []model.Rule{{
 					RuleName: "ov", SuccessEvent: "override-val",
-					Expression: &model.Expression{Field: "plan", Operator: model.OpEq, Value: "ent"},
+					Condition: &model.Condition{Field: "plan", Operator: model.OpEq, Value: "ent"},
 					Messages:   map[string]string{"en": "Override for ${plan}"},
 				}},
 			}},
@@ -77,7 +77,7 @@ func TestEvaluator_DefaultMessageRendered(t *testing.T) {
 				ID: "s", Strategy: "rule",
 				Rules: []model.Rule{{
 					RuleName: "hit", SuccessEvent: "won",
-					Expression: &model.Expression{Field: "plan", Operator: model.OpEq, Value: "pro"},
+					Condition: &model.Condition{Field: "plan", Operator: model.OpEq, Value: "pro"},
 				}},
 				Default:         "none",
 				DefaultMessages: map[string]string{"en": "No match, sorry"},
@@ -92,18 +92,18 @@ func TestEvaluator_DefaultMessageRendered(t *testing.T) {
 	}
 }
 
-func TestEvaluator_MessageUsesComputedExpressionField(t *testing.T) {
+func TestEvaluator_MessageUsesComputedField(t *testing.T) {
 	snap := &model.Snapshot{
 		Layers: []model.Layer{{
 			Name: "l",
 			Segments: []model.Segment{{
-				ID: "s", Strategy: "expression",
-				Expressions: []model.ExpressionDef{
-					{Name: "TransferFee", Type: "number", Expression: "CTTotal > 30 ? 0 : 4"},
+				ID: "s", Strategy: model.StrategyComputed,
+				Computed: []model.ComputedField{
+					{Name: "TransferFee", Type: "number", Formula: "CTTotal > 30 ? 0 : 4"},
 				},
 				Rules: []model.Rule{{
 					RuleName: "partial", SuccessEvent: "fee-partial",
-					Expression: &model.Expression{Field: "CTTotal", Operator: model.OpLte, Value: 30},
+					Condition: &model.Condition{Field: "CTTotal", Operator: model.OpLte, Value: 30},
 					Messages:   map[string]string{"en": "You pay ${TransferFee}"},
 				}},
 				Default: "fee-standard",
@@ -126,7 +126,7 @@ func TestEvaluator_MessageFallbackToLayerDefaultLanguage(t *testing.T) {
 				ID: "s", Strategy: "rule",
 				Rules: []model.Rule{{
 					RuleName: "hit", SuccessEvent: "won",
-					Expression: &model.Expression{Field: "plan", Operator: model.OpEq, Value: "pro"},
+					Condition: &model.Condition{Field: "plan", Operator: model.OpEq, Value: "pro"},
 					Messages:   map[string]string{"en": "English only"},
 				}},
 				Default: "none",
@@ -149,7 +149,7 @@ func TestEvaluator_MessageRenderErrorProducesWarning(t *testing.T) {
 				ID: "s", Strategy: "rule",
 				Rules: []model.Rule{{
 					RuleName: "hit", SuccessEvent: "won",
-					Expression: &model.Expression{Field: "plan", Operator: model.OpEq, Value: "pro"},
+					Condition: &model.Condition{Field: "plan", Operator: model.OpEq, Value: "pro"},
 					Messages:   map[string]string{"en": "Bad ${1 +}"},
 				}},
 				Default: "none",
@@ -181,7 +181,7 @@ func TestEvaluator_NoMessagesWhenNoLanguagesRequested(t *testing.T) {
 				ID: "s", Strategy: "rule",
 				Rules: []model.Rule{{
 					RuleName: "hit", SuccessEvent: "won",
-					Expression: &model.Expression{Field: "plan", Operator: model.OpEq, Value: "pro"},
+					Condition: &model.Condition{Field: "plan", Operator: model.OpEq, Value: "pro"},
 					Messages:   map[string]string{"en": "Hi"},
 				}},
 				Default: "none",
@@ -203,7 +203,7 @@ func TestEvaluator_RenderAllReturnsAllLocales(t *testing.T) {
 				ID: "s", Strategy: "rule",
 				Rules: []model.Rule{{
 					RuleName: "hit", SuccessEvent: "won",
-					Expression: &model.Expression{Field: "plan", Operator: model.OpEq, Value: "pro"},
+					Condition: &model.Condition{Field: "plan", Operator: model.OpEq, Value: "pro"},
 					Messages:   map[string]string{"en": "Hi", "es": "Hola"},
 				}},
 				Default: "none",

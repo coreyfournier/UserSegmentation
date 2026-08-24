@@ -258,7 +258,7 @@ func TestAdminUseCase_ReplaceSnapshot_ValidationError(t *testing.T) {
 				ID: "s", Strategy: "rule",
 				Rules: []model.Rule{{
 					RuleName:     "r",
-					Expression:   &model.Expression{Field: "age", Operator: "gt", Value: 18},
+					Condition:   &model.Condition{Field: "age", Operator: "gt", Value: 18},
 					SuccessEvent: "x",
 				}},
 				InputSchema: model.InputSchema{
