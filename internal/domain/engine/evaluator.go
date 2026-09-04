@@ -160,13 +160,14 @@ func (e *Evaluator) evaluateLayer(layer *model.Layer, subjectKey string, ctx map
 
 		// Check overrides first
 		if len(seg.Overrides) > 0 {
-			if res, ok := strategy.EvalOverrides(seg.Overrides, evalCtx); ok {
+			if res, ok := strategy.EvalOverrides(seg, evalCtx); ok {
 				lr.Status = model.StatusResolved
 				lr.Assignment = &model.Assignment{
 					Segment:  res.Segment,
 					Strategy: "override",
 					Reason:   res.Reason,
 					Messages: res.Messages,
+					Outputs:  res.Outputs,
 				}
 				lr.Warnings = append(lr.Warnings, renderWarnings(seg.ID, res.RenderErrors)...)
 				lr.Warnings = append(lr.Warnings, validation.CheckRequiredOutputs(seg, lr.Assignment, nil)...)

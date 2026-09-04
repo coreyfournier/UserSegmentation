@@ -427,10 +427,12 @@ func validateOutputExpressionSyntax(seg *model.Segment, name string) []string {
 //
 // A segment-level value covers every path at once, which is the intended way to
 // satisfy a field that does not vary per item. Failing that, each enabled
-// top-level rule must set it — disabled rules are exempt so a work-in-progress
-// item cannot wedge an unrelated save. A declared Default has no rule to read
-// from at all (the default branch calls evaluateOutputs with nil item values),
-// so only a segment-level value can satisfy it.
+// top-level rule must set it, and so must each enabled override — an override
+// that fires replaces the strategy result entirely, so it carries the same
+// reporting obligation as a rule. Disabled rules and overrides are both exempt
+// so a work-in-progress item cannot wedge an unrelated save. A declared Default
+// has no rule to read from at all (the default branch calls evaluateOutputs
+// with nil item values), so only a segment-level value can satisfy it.
 func requiredOutputErrors(seg *model.Segment, name string) []string {
 	if _, ok := seg.Outputs[name]; ok {
 		return nil
@@ -457,6 +459,18 @@ func requiredOutputErrors(seg *model.Segment, name string) []string {
 			errs = append(errs, fmt.Sprintf(
 				"segment %q rule %q: required output %q has no value (set it on the rule, "+
 					"or once in the segment's outputs)",
+				seg.ID, r.RuleName, name))
+		}
+	}
+	for i := range seg.Overrides {
+		r := &seg.Overrides[i]
+		if !r.IsEnabled() {
+			continue
+		}
+		if _, ok := r.Outputs[name]; !ok {
+			errs = append(errs, fmt.Sprintf(
+				"segment %q override %q: required output %q has no value (set it on the "+
+					"override, or once in the segment's outputs)",
 				seg.ID, r.RuleName, name))
 		}
 	}

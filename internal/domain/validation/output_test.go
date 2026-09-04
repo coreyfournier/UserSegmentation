@@ -91,6 +91,66 @@ func TestValidate_RequiredOutputMustBeAuthored(t *testing.T) {
 	}
 }
 
+// An enabled override on a rule segment carries the same required-output
+// obligation as a top-level rule: it can fire and replace the strategy result
+// entirely, so an unauthored required field is a load-time error just as it
+// would be for a rule.
+func TestValidate_RequiredOutputMustBeAuthoredOnOverride(t *testing.T) {
+	required := model.OutputField{Type: model.FieldTypeString, Required: true}
+
+	snap := snapWithOutputField(required)
+	seg := &snap.Layers[0].Segments[0]
+	seg.Strategy = model.StrategyRule
+	seg.Rules[0].Outputs = map[string]string{"field": "x"}
+	seg.Overrides = []model.Rule{{
+		RuleName:  "vipBypass",
+		Condition: &model.Condition{Field: "x", Operator: model.OpIsNull},
+	}}
+
+	// The override authors nothing, so it is an error even though the rule
+	// itself satisfies the field.
+	err := ValidateSnapshot(snap)
+	if err == nil || !strings.Contains(err.Error(), "vipBypass") {
+		t.Fatalf("expected the unauthored override to be named, got %v", err)
+	}
+
+	// A value on the override satisfies it.
+	snap.Layers[0].Segments[0].Overrides[0].Outputs = map[string]string{"field": "x"}
+	if err := ValidateSnapshot(snap); err != nil {
+		t.Fatalf("override-level value should satisfy, got %v", err)
+	}
+
+	// A disabled override is exempt, exactly like a disabled rule.
+	snap = snapWithOutputField(required)
+	seg = &snap.Layers[0].Segments[0]
+	seg.Strategy = model.StrategyRule
+	seg.Rules[0].Outputs = map[string]string{"field": "x"}
+	disabled := false
+	seg.Overrides = []model.Rule{{
+		RuleName:  "vipBypass",
+		Enabled:   &disabled,
+		Condition: &model.Condition{Field: "x", Operator: model.OpIsNull},
+	}}
+	if err := ValidateSnapshot(snap); err != nil {
+		t.Fatalf("disabled override should be exempt, got %v", err)
+	}
+
+	// A segment-level value covers the override too, for the same reason it
+	// covers every rule at once.
+	snap = snapWithOutputField(required)
+	seg = &snap.Layers[0].Segments[0]
+	seg.Strategy = model.StrategyRule
+	seg.Rules[0].Outputs = map[string]string{"field": "x"}
+	seg.Outputs = map[string]string{"field": "x"}
+	seg.Overrides = []model.Rule{{
+		RuleName:  "vipBypass",
+		Condition: &model.Condition{Field: "x", Operator: model.OpIsNull},
+	}}
+	if err := ValidateSnapshot(snap); err != nil {
+		t.Fatalf("segment-level value should satisfy the override too, got %v", err)
+	}
+}
+
 func TestValidate_RequiredOutputWithDefaultNeedsSegmentValue(t *testing.T) {
 	// The default branch reads no rule values, so a rule-level value cannot
 	// cover it — only a segment-level one can.

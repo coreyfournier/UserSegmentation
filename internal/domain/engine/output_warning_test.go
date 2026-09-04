@@ -126,10 +126,12 @@ func TestRequiredOutput_PresentProducesNoWarning(t *testing.T) {
 	}
 }
 
-// An override winning produces a warning: EvalOverrides resolves no segment
-// and computes no outputs at all, so a required output field is absent from
-// the assignment regardless of anything the primary strategy would have set.
-func TestRequiredOutput_OverrideWinsWarns(t *testing.T) {
+// An override winning no longer means a bare required-field warning by
+// itself: overrides now resolve declared outputs too (Task 7), against the
+// computed-enriched context. The warning instead fires when the override's
+// own output *expression* fails at runtime and the field is dropped — here,
+// a deliberately unparseable expression authored on the override.
+func TestRequiredOutput_OverrideOutputExpressionFailsWarns(t *testing.T) {
 	snap := &model.Snapshot{
 		Layers: []model.Layer{
 			{
@@ -140,13 +142,14 @@ func TestRequiredOutput_OverrideWinsWarns(t *testing.T) {
 						Strategy: "static",
 						Static:   &model.StaticConfig{Default: "normal"},
 						OutputSchema: model.OutputSchema{
-							"category": model.OutputField{Type: model.FieldTypeString, Required: true},
+							"category": model.OutputField{Type: model.FieldTypeString, Required: true, Eval: model.EvalExpression},
 						},
 						Overrides: []model.Rule{
 							{
 								RuleName:     "vip-override",
 								SuccessEvent: "override-val",
 								Condition:    &model.Condition{Field: "plan", Operator: model.OpEq, Value: "enterprise"},
+								Outputs:      map[string]string{"category": "amount *"}, // unparseable
 							},
 						},
 					},
@@ -165,6 +168,9 @@ func TestRequiredOutput_OverrideWinsWarns(t *testing.T) {
 	if lr.Assignment == nil || lr.Assignment.Strategy != "override" {
 		t.Fatalf("expected the override to win, got %v", lr.Assignment)
 	}
+	if _, present := lr.Assignment.Outputs["category"]; present {
+		t.Fatalf("expected the failed expression to drop the field, got %v", lr.Assignment.Outputs)
+	}
 
 	w, found := findWarning(result.Warnings, "category")
 	if !found {
@@ -172,6 +178,55 @@ func TestRequiredOutput_OverrideWinsWarns(t *testing.T) {
 	}
 	if w.Segment != "seg" {
 		t.Errorf("expected warning segment %q, got %q", "seg", w.Segment)
+	}
+}
+
+// An override that *does* successfully author its required output produces
+// no warning — pinning the other side of the Task 7 change: overrides are no
+// longer a blanket source of missing-output warnings just for winning.
+func TestRequiredOutput_OverrideAuthoredOutputNoWarning(t *testing.T) {
+	snap := &model.Snapshot{
+		Layers: []model.Layer{
+			{
+				Name: "test",
+				Segments: []model.Segment{
+					{
+						ID:       "seg",
+						Strategy: "static",
+						Static:   &model.StaticConfig{Default: "normal"},
+						OutputSchema: model.OutputSchema{
+							"category": model.OutputField{Type: model.FieldTypeString, Required: true},
+						},
+						Overrides: []model.Rule{
+							{
+								RuleName:     "vip-override",
+								SuccessEvent: "override-val",
+								Condition:    &model.Condition{Field: "plan", Operator: model.OpEq, Value: "enterprise"},
+								Outputs:      map[string]string{"category": "vip"},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	e := requiredOutputEvaluator()
+	result := e.Evaluate(snap, "user", map[string]interface{}{"plan": "enterprise"}, nil, nil, false, time.Now())
+
+	lr, ok := result.Layers["test"]
+	if !ok {
+		t.Fatal("expected the layer to report a result")
+	}
+	if lr.Assignment == nil || lr.Assignment.Strategy != "override" {
+		t.Fatalf("expected the override to win, got %v", lr.Assignment)
+	}
+	if got := lr.Assignment.Outputs["category"]; got != "vip" {
+		t.Fatalf("expected category = %q, got %v", "vip", got)
+	}
+
+	if _, found := findWarning(result.Warnings, "category"); found {
+		t.Errorf("expected no warning when the override authored the required field, got %v", result.Warnings)
 	}
 }
 
