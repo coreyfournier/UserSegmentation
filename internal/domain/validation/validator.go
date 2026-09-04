@@ -335,6 +335,16 @@ func validateOutputExpressionSyntax(seg *model.Segment, name string) []string {
 	}
 	for i := range seg.Rules {
 		r := &seg.Rules[i]
+		// Once a check walks per-rule config, a parked rule holding a
+		// half-written expression would otherwise wedge every other
+		// segment's save through commitSnapshot — the exact failure the
+		// required-field gate (requiredOutputErrors) already avoids by
+		// skipping disabled rules. A disabled rule's broken expression
+		// becomes an error the moment it is re-enabled, which is the
+		// right time to report it.
+		if !r.IsEnabled() {
+			continue
+		}
 		if v, ok := r.Outputs[name]; ok && v != "" {
 			if _, err := expr.Compile(v); err != nil {
 				errs = append(errs, fmt.Sprintf("segment %q rule %q output %q: %v", seg.ID, r.RuleName, name, err))
@@ -359,7 +369,12 @@ func requiredOutputErrors(seg *model.Segment, name string) []string {
 	}
 
 	var errs []string
-	if seg.Default != "" {
+	// Only the rule strategy reads Segment.Default: a checklist delegates to
+	// RuleStrategy but returns from collectViolations before the default
+	// branch, and the static strategy uses its own Static.Default field. So a
+	// checklist (or static segment) carrying a stray, inert Default must not
+	// be gated here — it is never evaluated.
+	if seg.Default != "" && seg.Strategy == model.StrategyRule {
 		errs = append(errs, fmt.Sprintf(
 			"segment %q output %q: required, and a default is declared, so it must be set in "+
 				"the segment's outputs — the default path reads no rule values",

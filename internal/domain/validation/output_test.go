@@ -136,3 +136,72 @@ func TestExprCompile_AcceptsRegisteredMathFunctions(t *testing.T) {
 		t.Fatalf("bare Compile rejects a registered math function: %v", err)
 	}
 }
+
+func TestValidate_OutputExpressionSyntaxIsChecked(t *testing.T) {
+	exprField := model.OutputField{Type: model.FieldTypeString, Eval: model.EvalExpression}
+
+	// A broken expression authored on the rule is caught and the field is named.
+	snap := snapWithOutputField(exprField)
+	snap.Layers[0].Segments[0].Rules[0].Outputs = map[string]string{"field": "amount *"}
+	err := ValidateSnapshot(snap)
+	if err == nil || !strings.Contains(err.Error(), "field") {
+		t.Fatalf("expected a rule-level expression syntax error naming the field, got %v", err)
+	}
+
+	// The same broken expression authored on the segment is also caught.
+	snap = snapWithOutputField(exprField)
+	snap.Layers[0].Segments[0].Outputs = map[string]string{"field": "amount *"}
+	err = ValidateSnapshot(snap)
+	if err == nil || !strings.Contains(err.Error(), "field") {
+		t.Fatalf("expected a segment-level expression syntax error naming the field, got %v", err)
+	}
+
+	// A valid expression, in either place, produces no error.
+	snap = snapWithOutputField(exprField)
+	snap.Layers[0].Segments[0].Rules[0].Outputs = map[string]string{"field": "amount * 2"}
+	if err := ValidateSnapshot(snap); err != nil {
+		t.Fatalf("valid rule-level expression should not error, got %v", err)
+	}
+
+	snap = snapWithOutputField(exprField)
+	snap.Layers[0].Segments[0].Outputs = map[string]string{"field": "amount * 2"}
+	if err := ValidateSnapshot(snap); err != nil {
+		t.Fatalf("valid segment-level expression should not error, got %v", err)
+	}
+
+	// A literal-mode field (Eval left empty) is never compiled, so the same
+	// broken text is not a syntax error there.
+	literalField := model.OutputField{Type: model.FieldTypeString}
+	snap = snapWithOutputField(literalField)
+	snap.Layers[0].Segments[0].Rules[0].Outputs = map[string]string{"field": "amount *"}
+	if err := ValidateSnapshot(snap); err != nil {
+		t.Fatalf("literal-mode field should not be syntax-checked, got %v", err)
+	}
+}
+
+func TestValidate_DisabledRuleExpressionSyntaxIsExempt(t *testing.T) {
+	// A disabled rule's broken expression must not wedge the save — it is
+	// only reported once the rule is re-enabled, matching requiredOutputErrors.
+	snap := snapWithOutputField(model.OutputField{Type: model.FieldTypeString, Eval: model.EvalExpression})
+	snap.Layers[0].Segments[0].Rules[0].Outputs = map[string]string{"field": "amount *"}
+	disabled := false
+	snap.Layers[0].Segments[0].Rules[0].Enabled = &disabled
+
+	if err := ValidateSnapshot(snap); err != nil {
+		t.Fatalf("disabled rule's broken expression should be exempt, got %v", err)
+	}
+}
+
+func TestValidate_ChecklistDefaultIsNotGated(t *testing.T) {
+	// The fixture's strategy is checklist, which delegates to RuleStrategy but
+	// returns before the default branch runs — a stray Default is inert there,
+	// so it must not force a segment-level output value.
+	snap := snapWithOutputField(model.OutputField{Type: model.FieldTypeString, Required: true})
+	seg := &snap.Layers[0].Segments[0]
+	seg.Default = "fallback"
+	seg.Rules[0].Outputs = map[string]string{"field": "x"}
+
+	if err := ValidateSnapshot(snap); err != nil {
+		t.Fatalf("a checklist's stray default should not be gated, got %v", err)
+	}
+}
