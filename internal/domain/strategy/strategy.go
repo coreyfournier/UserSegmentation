@@ -25,6 +25,9 @@ type Result struct {
 	Computed     map[string]interface{}
 	Messages     map[string]string
 	RenderErrors []RenderError
+	// Outputs are the declared output fields resolved for the reported item —
+	// the winning rule under first-match, or the segment default.
+	Outputs map[string]interface{}
 	// Failures is populated only in collect mode.
 	Failures []model.Failure
 	// Status is set by ChecklistStrategy; other strategies leave it empty and the

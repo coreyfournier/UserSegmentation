@@ -193,11 +193,12 @@ func (e *Evaluator) evaluateLayer(layer *model.Layer, subjectKey string, ctx map
 			}
 			lr.Failures = res.Failures
 			lr.Assignment = &model.Assignment{
-				Segment:     res.Segment,
-				Strategy:    seg.Strategy,
-				Reason:      res.Reason,
+				Segment:  res.Segment,
+				Strategy: seg.Strategy,
+				Reason:   res.Reason,
 				Computed: res.Computed,
-				Messages:    res.Messages,
+				Messages: res.Messages,
+				Outputs:  res.Outputs,
 			}
 			lr.Warnings = append(lr.Warnings, renderWarnings(seg.ID, res.RenderErrors)...)
 			return lr

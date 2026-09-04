@@ -27,13 +27,14 @@ type EvaluateResponse struct {
 // satisfied/violated/unevaluable; every other strategy reports
 // resolved/unresolved/skipped.
 type LayerResultDTO struct {
-	Status      string                 `json:"status"`
-	Segment     string                 `json:"segment,omitempty"`
-	Strategy    string                 `json:"strategy,omitempty"`
-	Reason      string                 `json:"reason,omitempty"`
-	Computed    map[string]interface{} `json:"computed,omitempty"`
-	Messages    map[string]string      `json:"messages,omitempty"`
-	Failures    []FailureDTO           `json:"failures,omitempty"`
+	Status   string                 `json:"status"`
+	Segment  string                 `json:"segment,omitempty"`
+	Strategy string                 `json:"strategy,omitempty"`
+	Reason   string                 `json:"reason,omitempty"`
+	Computed map[string]interface{} `json:"computed,omitempty"`
+	Messages map[string]string      `json:"messages,omitempty"`
+	Outputs  map[string]interface{} `json:"outputs,omitempty"`
+	Failures []FailureDTO           `json:"failures,omitempty"`
 }
 
 // FailureDTO is one itemised problem from a checklist layer. The rule name is the

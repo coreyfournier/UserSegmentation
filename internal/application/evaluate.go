@@ -50,6 +50,7 @@ func (uc *EvaluateUseCase) Execute(req EvaluateRequest) (*EvaluateResponse, erro
 			dto.Reason = a.Reason
 			dto.Computed = a.Computed
 			dto.Messages = a.Messages
+			dto.Outputs = a.Outputs
 		}
 		for _, f := range lr.Failures {
 			dto.Failures = append(dto.Failures, FailureDTO{
