@@ -217,11 +217,24 @@ assert.match(validateOutputField('s', { type: 'string', lookup: 'nope' }, tables
 assert.match(validateOutputField('s', { type: 'number', lookup: 'sev' }, tables), /keyType|key type/);
 assert.equal(validateOutputField('s', { type: 'string', lookup: 'sev' }, tables), null);
 
-// A literal must parse as its declared type.
+// A literal must parse as its declared type, by Go's rules — not JS's.
 assert.equal(validateLiteralValue({ type: 'number' }, '3'), null);
+assert.equal(validateLiteralValue({ type: 'number' }, '-3.5'), null);
+assert.equal(validateLiteralValue({ type: 'number' }, '1e3'), null);
+assert.equal(validateLiteralValue({ type: 'number' }, '+7'), null);
 assert.match(validateLiteralValue({ type: 'number' }, 'high'), /number/);
-assert.equal(validateLiteralValue({ type: 'boolean' }, 'true'), null);
+// Number() would accept all four of these; strconv.ParseFloat rejects them,
+// so the editor must too or the save fails after the editor said it was fine.
+assert.match(validateLiteralValue({ type: 'number' }, ' 42'), /number/);
+assert.match(validateLiteralValue({ type: 'number' }, '42 '), /number/);
+assert.match(validateLiteralValue({ type: 'number' }, '0x10'), /number/);
+assert.match(validateLiteralValue({ type: 'number' }, '  '), /number/);
+// strconv.ParseBool accepts twelve spellings, not two.
+for (const ok of ['1', 't', 'T', 'TRUE', 'true', 'True', '0', 'f', 'F', 'FALSE', 'false', 'False']) {
+  assert.equal(validateLiteralValue({ type: 'boolean' }, ok), null, `boolean ${ok} should be accepted`);
+}
 assert.match(validateLiteralValue({ type: 'boolean' }, 'yes'), /boolean/);
+assert.match(validateLiteralValue({ type: 'boolean' }, 'TrUe'), /boolean/);
 assert.equal(validateLiteralValue({ type: 'string' }, 'anything'), null);
 // Only literal mode is checked — a template or expression is not a literal.
 assert.equal(validateLiteralValue({ type: 'number', eval: 'expression' }, 'a + b'), null);
@@ -350,17 +363,44 @@ export function validateOutputField(
 }
 
 /**
+ * Go's `strconv.ParseFloat` grammar, in its decimal forms.
+ *
+ * Deliberately NOT `Number()`. `Number()` is looser than ParseFloat in ways
+ * that matter here: it accepts `" 42"`, `"42 "`, `"0x10"` and whitespace-only
+ * strings (as 0), every one of which ParseFloat rejects. The engine calls
+ * ParseFloat, so using `Number()` would let the editor bless a literal the
+ * save then rejects — precisely the failure this module exists to prevent.
+ *
+ * It is marginally stricter than ParseFloat in one respect: Go accepts
+ * underscore separators (`1_0`) and the Inf/NaN spellings. Both are
+ * vanishingly rare in an authored constant, and stricter-in-the-editor is the
+ * safe direction — the author simply types an ordinary number.
+ */
+const DECIMAL_FLOAT = /^[+-]?(\d+(\.\d*)?|\.\d+)([eE][+-]?\d+)?$/;
+
+/**
+ * Exactly the set `strconv.ParseBool` accepts. Not just "true"/"false":
+ * accepting fewer spellings than the engine would reject a literal that loads
+ * perfectly well.
+ */
+const GO_BOOLS = new Set([
+  '1', 't', 'T', 'TRUE', 'true', 'True',
+  '0', 'f', 'F', 'FALSE', 'false', 'False',
+]);
+
+/**
  * Checks an authored literal against its declared type.
  *
- * Only literal mode is checked. An empty value means "not authored" — the
- * engine treats it that way too — so it is not an invalid literal.
+ * Only literal mode is checked — a template or expression is not a literal.
+ * An empty value means "not authored", which the engine also treats that way,
+ * so it is not an invalid literal.
  */
 export function validateLiteralValue(field: OutputField, raw: string): string | null {
   if (evalModeOf(field) !== 'literal' || raw === '') return null;
-  if (field.type === 'number' && Number.isNaN(Number(raw))) {
+  if (field.type === 'number' && !DECIMAL_FLOAT.test(raw)) {
     return `"${raw}" does not parse as a number`;
   }
-  if (field.type === 'boolean' && raw !== 'true' && raw !== 'false') {
+  if (field.type === 'boolean' && !GO_BOOLS.has(raw)) {
     return `"${raw}" does not parse as a boolean — use true or false`;
   }
   return null;
