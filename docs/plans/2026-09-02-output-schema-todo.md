@@ -277,10 +277,22 @@ relative order carries meaning.
   `Description`. A `deprecated` flag would let the editor hide them from dropdowns
   while keeping them resolvable for historical display.
 - `FieldType` has no object/map member, which `expression`-mode fields need.
-- Failed output expressions should degrade the way message tokens do — record the
-  error, drop the field, keep the finding — rather than failing the evaluation. When
-  the dropped field was `Required`, the evaluation warning above reports it, so
-  degradation stays silent only for optional fields.
+- A failed output value degrades — record the error, drop the field, keep the
+  finding — rather than failing the evaluation. When the dropped field was
+  `Required`, the evaluation warning above reports it, so degradation stays silent
+  only for optional fields.
+
+  **Not "the way message tokens do", which an earlier draft said and which is
+  wrong.** `renderTemplate` degrades *per token*: it writes the literal `${…}` back
+  into the string and reports the error, so the caller still gets a value. That is
+  right for a human-readable sentence, where half a rendered message beats none. It
+  is wrong for a structured field, for two reasons: a consumer receiving
+  `"1.5 hours over ${ daysElapsed } days"` cannot detect the failure without
+  string-scanning, and — decisively — the required-field warning tests *presence*,
+  so a half-rendered field would be present and the caller would never be told
+  anything failed. Output values are therefore all-or-nothing in every eval mode,
+  `template` included. This cost a review cycle during implementation, because the
+  plan's own example code followed the misleading phrase rather than the constraint.
 - Whether an override's *messages* should also render against the enriched context,
   the way its output values now do. Left as is because it would change the rendered
   output of existing config. See *Overrides* above.

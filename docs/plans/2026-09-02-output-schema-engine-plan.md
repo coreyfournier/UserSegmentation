@@ -16,7 +16,7 @@ A field may be marked `Required`, which is the caller's contract and is enforced
 - Values are authored on a **reporting rule** — a top-level entry in `Segment.Rules`, or, from Task 7, in `Segment.Overrides`. Never on inner And/Or branches: they do not report, so they carry no output values. Fields that do not vary per reporting rule are set once in `Segment.Outputs`.
 - **No guarding, with one exception.** Do not validate lookup membership at evaluation time, and do not check order uniqueness or contiguity. Unknown keys and gaps are intentional. The table `Description` is where authors record invariants. The one exception is `OutputField.Required`, which *is* enforced — at snapshot load as an error (Task 5) and at evaluation as a warning (Task 6). It was added deliberately after this constraint was first written, because an unpopulated required output field breaks a caller who cannot see the omission, unlike the other invariants which an author holds for themselves.
 - Order is **always persisted**, including when inferred from list position.
-- A failed output value degrades: record a `RenderError`, omit that field, keep the item.
+- A failed output value degrades: record a `RenderError`, **omit that field entirely**, keep the item. This is all-or-nothing in every eval mode, including `template` — a template whose token fails must NOT emit a half-rendered string, even though `renderTemplate` returns one. Omission is what keeps Task 6's required-field warning meaningful, since it tests presence.
 - Consumers must not persist an emitted order or compare it across snapshots. Only relative order carries meaning.
 - Run `go build ./...` and `go test ./...` before every commit. **Go is already on `PATH`** — verified `go version go1.26.5 windows/amd64` at `/c/Program Files/Go/bin/go`. Ignore the `export PATH="/c/Users/Corey/go/bin:$PATH"` line in `CLAUDE.md`: that directory does not exist on this machine, and it is why the session that wrote this plan could not run any of its verification steps. No export is needed.
 
@@ -555,13 +555,23 @@ func evaluateOutputs(seg *model.Segment, itemOutputs map[string]string, ctx *Eva
 			}
 			value = v
 		case model.EvalTemplate:
+			// renderTemplate degrades per token: it writes the literal ${...}
+			// back and reports the error. That is right for a human-readable
+			// message but wrong for a structured field, so a template output is
+			// all-or-nothing like an expression — any failed token omits the
+			// whole field. Emitting a half-rendered string would also blind
+			// Task 6's required-field warning, which tests presence: the field
+			// would be there, carrying template syntax, and nothing would say so.
 			rendered, bad := renderTemplate(raw, ctx.Context)
-			for _, te := range bad {
-				errs = append(errs, RenderError{
-					Language: ctx.DefaultLanguage,
-					Token:    te.token,
-					Err:      te.err,
-				})
+			if len(bad) > 0 {
+				for _, te := range bad {
+					errs = append(errs, RenderError{
+						Language: ctx.DefaultLanguage,
+						Token:    te.token,
+						Err:      te.err,
+					})
+				}
+				continue
 			}
 			value = rendered
 		default:
