@@ -1,6 +1,6 @@
 import { useState, useRef } from 'react';
 import type { EvalMode, FieldType, LookupTable, OutputField, OutputSchema } from '../../api/types';
-import { allowedTypesForMode, evalModeOf, validateLiteralValue, validateOutputField } from './outputSchemaRules';
+import { allowedTypesForMode, evalModeOf, validateLiteralValue, validateOutputField, type FieldCoverage } from './outputSchemaRules';
 import styles from './OutputSchemaEditor.module.css';
 
 interface Props {
@@ -10,7 +10,9 @@ interface Props {
   /** Values for fields that do not vary per item, and the segment's coverage. */
   segmentOutputs?: Record<string, string>;
   onSegmentOutputsChange?: (o?: Record<string, string>) => void;
-  coverage?: (name: string) => { authored: number; total: number; segmentLevel: boolean };
+  coverage?: (name: string) => FieldCoverage;
+  /** Called instead of the local delete, so the owner can also prune authored values. */
+  onRemoveField?: (name: string) => void;
 }
 
 const MODES: EvalMode[] = ['literal', 'template', 'expression'];
@@ -21,7 +23,7 @@ const MODE_HINT: Record<EvalMode, string> = {
   expression: 'one whole expression, returning a typed value',
 };
 
-export default function OutputSchemaEditor({ value, onChange, lookups, segmentOutputs, onSegmentOutputsChange, coverage }: Props) {
+export default function OutputSchemaEditor({ value, onChange, lookups, segmentOutputs, onSegmentOutputsChange, coverage, onRemoveField }: Props) {
   const schema = value ?? {};
   const entries = Object.entries(schema);
   const [newField, setNewField] = useState('');
@@ -32,6 +34,10 @@ export default function OutputSchemaEditor({ value, onChange, lookups, segmentOu
   const write = (next: OutputSchema) => onChange(Object.keys(next).length ? next : undefined);
 
   const remove = (field: string) => {
+    if (onRemoveField) {
+      onRemoveField(field);
+      return;
+    }
     const next = { ...schema };
     delete next[field];
     write(next);
@@ -100,16 +106,25 @@ export default function OutputSchemaEditor({ value, onChange, lookups, segmentOu
                 <td>
                   {name}
                   {err && (
-                    <div style={{ fontSize: 10, color: 'var(--danger, #ef4444)' }}>{err}</div>
+                    <div style={{ fontSize: 10, color: 'var(--danger)' }}>{err}</div>
                   )}
                 </td>
                 <td>
-                  <select value={mode} onChange={(e) => patch(name, { eval: e.target.value as EvalMode })} title={MODE_HINT[mode]}>
+                  <select
+                    value={mode}
+                    onChange={(e) => patch(name, { eval: e.target.value as EvalMode })}
+                    title={MODE_HINT[mode]}
+                    aria-label={`${name} eval mode`}
+                  >
                     {MODES.map((m) => <option key={m} value={m}>{m}</option>)}
                   </select>
                 </td>
                 <td>
-                  <select value={f.type} onChange={(e) => patch(name, { type: e.target.value as FieldType })}>
+                  <select
+                    value={f.type}
+                    onChange={(e) => patch(name, { type: e.target.value as FieldType })}
+                    aria-label={`${name} type`}
+                  >
                     {/*
                       Keep the current type in the list even when this mode
                       disallows it. A schema hand-written as JSON — the only way
@@ -136,6 +151,7 @@ export default function OutputSchemaEditor({ value, onChange, lookups, segmentOu
                     onChange={(e) => patch(name, { lookup: e.target.value || undefined })}
                     disabled={candidates.length === 0}
                     title={candidates.length === 0 ? `No lookup table has key type "${f.type}"` : undefined}
+                    aria-label={`${name} lookup`}
                   >
                     <option value="">—</option>
                     {candidates.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
@@ -162,6 +178,7 @@ export default function OutputSchemaEditor({ value, onChange, lookups, segmentOu
                       }}
                       placeholder="set once for the segment"
                       title="Satisfies this field for every reporting rule at once."
+                      aria-label={`${name} segment value`}
                       style={{ fontSize: 11 }}
                     />
                   )}
@@ -173,7 +190,7 @@ export default function OutputSchemaEditor({ value, onChange, lookups, segmentOu
                     const raw = segmentOutputs?.[name] ?? '';
                     const verr = raw ? validateLiteralValue(f, raw) : null;
                     return verr ? (
-                      <div style={{ fontSize: 10, color: 'var(--danger, #ef4444)' }}>{verr}</div>
+                      <div style={{ fontSize: 10, color: 'var(--danger)' }}>{verr}</div>
                     ) : null;
                   })()}
                   {coverage && (() => {
@@ -182,11 +199,28 @@ export default function OutputSchemaEditor({ value, onChange, lookups, segmentOu
                       return <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>set for the whole segment</div>;
                     }
                     const short = c.total - c.authored;
+                    const overridesShort = c.overridesTotal - c.overridesAuthored;
+                    const extra: string[] = [];
+                    if (f.required) {
+                      if (c.defaultNeedsSegmentValue) {
+                        extra.push('a default is declared, so this must be set for the segment');
+                      }
+                      if (overridesShort > 0) {
+                        extra.push(
+                          `${overridesShort} override(s) also need this — only a segment value can satisfy them here`,
+                        );
+                      }
+                    }
                     return (
-                      <div style={{ fontSize: 10, color: short && f.required ? 'var(--danger, #ef4444)' : 'var(--text-muted)' }}>
-                        authored on {c.authored} of {c.total} checks
-                        {short && f.required ? ` — ${short} will block saving` : ''}
-                      </div>
+                      <>
+                        <div style={{ fontSize: 10, color: short && f.required ? 'var(--danger)' : 'var(--text-muted)' }}>
+                          authored on {c.authored} of {c.total} checks
+                          {short && f.required ? ` — ${short} will block saving` : ''}
+                        </div>
+                        {extra.map((msg) => (
+                          <div key={msg} style={{ fontSize: 10, color: 'var(--danger)' }}>{msg}</div>
+                        ))}
+                      </>
                     );
                   })()}
                 </td>

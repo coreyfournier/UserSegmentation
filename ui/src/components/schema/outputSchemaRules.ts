@@ -131,12 +131,19 @@ export function supportsOutputSchema(strategy: StrategyType | string): boolean {
 }
 
 export interface FieldCoverage {
-  /** Enabled reporting rules that author this field. */
+  /** Enabled top-level rules that author this field. */
   authored: number;
-  /** Enabled reporting rules in total. */
+  /** Enabled top-level rules in total. */
   total: number;
   /** A non-empty segment-level value, which covers every path at once. */
   segmentLevel: boolean;
+  /** Enabled overrides, and how many author it. Values cannot be authored on
+   *  overrides in this UI, so any shortfall needs the segment-level value. */
+  overridesAuthored: number;
+  overridesTotal: number;
+  /** A rule segment with a default reads no rule values on that path, so only
+   *  a segment-level value can satisfy the field. */
+  defaultNeedsSegmentValue: boolean;
 }
 
 /**
@@ -145,13 +152,31 @@ export interface FieldCoverage {
  * Only top-level rules are counted, because only they report. Disabled rules
  * are excluded, matching the engine's gate, which exempts them so a
  * work-in-progress item cannot block an unrelated save.
+ *
+ * Enabled overrides are also counted, matching the engine's own
+ * requiredOutputErrors: an override that fires replaces the strategy result
+ * entirely, so it carries the same reporting obligation as a rule. But this
+ * editor never wires per-item values into the overrides tree, so an override
+ * cannot author the field itself — any shortfall there can only be closed by
+ * the segment-level value, which is why overridesAuthored/overridesTotal are
+ * reported separately rather than folded into authored/total.
+ *
+ * A rule-strategy segment with a non-empty default is a separate case: the
+ * default path calls evaluateOutputs with no rule values at all, so no number
+ * of authored rules can satisfy a required field on it — only the
+ * segment-level value can.
  */
 export function fieldCoverage(seg: Segment, name: string): FieldCoverage {
   const reporting = (seg.rules ?? []).filter((r: Rule) => r.enabled !== false);
   const authored = reporting.filter((r) => !!r.outputs?.[name]).length;
+  const overrides = (seg.overrides ?? []).filter((r: Rule) => r.enabled !== false);
+  const overridesAuthored = overrides.filter((r) => !!r.outputs?.[name]).length;
   return {
     authored,
     total: reporting.length,
     segmentLevel: !!seg.outputs?.[name],
+    overridesAuthored,
+    overridesTotal: overrides.length,
+    defaultNeedsSegmentValue: seg.strategy === 'rule' && !!seg.default,
   };
 }

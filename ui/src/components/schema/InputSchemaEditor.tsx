@@ -20,7 +20,7 @@ export default function InputSchemaEditor({ value, onChange }: Props) {
   const remove = (field: string) => {
     const s = { ...schema };
     delete s[field];
-    onChange(Object.keys(s).length ? s : {});
+    onChange(Object.keys(s).length ? s : undefined);
   };
 
   const add = () => {

@@ -49,6 +49,39 @@ export default function SegmentEditor() {
   const declareOutput = (name: string, field: OutputField) =>
     update({ outputSchema: { ...(seg.outputSchema ?? {}), [name]: field } });
 
+  // Deleting a declared field must also prune the values authored for it, or
+  // the engine rejects the save over values the author can no longer even
+  // see: OutputValuesEditor iterates Object.keys(schema), so once the
+  // declaration is gone the stale values become invisible. Only top-level
+  // rules are touched — only they can author output values in this UI.
+  const removeOutputField = (name: string) => {
+    const ruleClears = (seg.rules ?? []).filter((r) => r.outputs && name in r.outputs).length;
+    const segClears = seg.outputs && name in seg.outputs ? 1 : 0;
+    const total = ruleClears + segClears;
+    if (total > 0 && !window.confirm(`Delete "${name}"? This also clears ${total} authored value(s).`)) {
+      return;
+    }
+
+    const nextSchema = { ...(seg.outputSchema ?? {}) };
+    delete nextSchema[name];
+
+    const nextOutputs = seg.outputs ? { ...seg.outputs } : undefined;
+    if (nextOutputs) delete nextOutputs[name];
+
+    const nextRules = (seg.rules ?? []).map((r) => {
+      if (!r.outputs || !(name in r.outputs)) return r;
+      const outputs = { ...r.outputs };
+      delete outputs[name];
+      return { ...r, outputs: Object.keys(outputs).length ? outputs : undefined };
+    });
+
+    update({
+      outputSchema: Object.keys(nextSchema).length ? nextSchema : undefined,
+      outputs: nextOutputs && Object.keys(nextOutputs).length ? nextOutputs : undefined,
+      rules: nextRules,
+    });
+  };
+
   const switchStrategy = (strategy: StrategyType) => {
     setSeg((prev) => {
       if (!prev) return prev;
@@ -140,6 +173,7 @@ export default function SegmentEditor() {
               segmentOutputs={seg.outputs}
               onSegmentOutputsChange={(o) => update({ outputs: o })}
               coverage={(name) => fieldCoverage(seg, name)}
+              onRemoveField={removeOutputField}
             />
             <div style={{ marginTop: 12 }}>
               <EmittedFieldsReference />

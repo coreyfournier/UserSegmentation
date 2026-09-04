@@ -112,15 +112,18 @@ const seg = {
     { ruleName: 'c', enabled: false, condition: { field: 'f', operator: 'eq', value: 3 } },
   ],
 };
-assert.deepEqual(fieldCoverage(seg, 'cat'), { authored: 1, total: 2, segmentLevel: false });
+assert.deepEqual(
+  fieldCoverage(seg, 'cat'),
+  { authored: 1, total: 2, segmentLevel: false, overridesAuthored: 0, overridesTotal: 0, defaultNeedsSegmentValue: false },
+);
 assert.deepEqual(
   fieldCoverage({ ...seg, outputs: { cat: 'y' } }, 'cat'),
-  { authored: 1, total: 2, segmentLevel: true },
+  { authored: 1, total: 2, segmentLevel: true, overridesAuthored: 0, overridesTotal: 0, defaultNeedsSegmentValue: false },
 );
 // An empty segment-level value does not count — the engine treats it as unauthored.
 assert.deepEqual(
   fieldCoverage({ ...seg, outputs: { cat: '' } }, 'cat'),
-  { authored: 1, total: 2, segmentLevel: false },
+  { authored: 1, total: 2, segmentLevel: false, overridesAuthored: 0, overridesTotal: 0, defaultNeedsSegmentValue: false },
 );
 // Nor does an empty rule-level value — key presence alone must not count as authoring it.
 assert.deepEqual(
@@ -128,7 +131,50 @@ assert.deepEqual(
     { ...seg, rules: [...seg.rules, { ruleName: 'd', outputs: { cat: '' }, condition: { field: 'f', operator: 'eq', value: 4 } }] },
     'cat',
   ),
-  { authored: 1, total: 3, segmentLevel: false },
+  { authored: 1, total: 3, segmentLevel: false, overridesAuthored: 0, overridesTotal: 0, defaultNeedsSegmentValue: false },
 );
+
+// Overrides count toward coverage too — enabled ones only, and per-item values
+// cannot be authored on them in this UI, so a shortfall always needs the
+// segment-level value.
+const withOverrides = {
+  ...seg,
+  overrides: [
+    { ruleName: 'o1', outputs: { cat: 'x' }, condition: { field: 'f', operator: 'eq', value: 1 } },
+    { ruleName: 'o2', condition: { field: 'f', operator: 'eq', value: 2 } },
+    { ruleName: 'o3', enabled: false, condition: { field: 'f', operator: 'eq', value: 3 } },
+  ],
+};
+assert.deepEqual(
+  fieldCoverage(withOverrides, 'cat'),
+  { authored: 1, total: 2, segmentLevel: false, overridesAuthored: 1, overridesTotal: 2, defaultNeedsSegmentValue: false },
+);
+// A segment-level value still covers everything, overrides included.
+assert.deepEqual(
+  fieldCoverage({ ...withOverrides, outputs: { cat: 'y' } }, 'cat'),
+  { authored: 1, total: 2, segmentLevel: true, overridesAuthored: 1, overridesTotal: 2, defaultNeedsSegmentValue: false },
+);
+
+// A rule segment with a non-empty default reads no rule values on that path —
+// only a segment-level value can satisfy a required field there.
+const ruleSeg = {
+  id: 's2',
+  strategy: 'rule',
+  default: 'fallback',
+  outputSchema: { cat: { type: 'string' } },
+  rules: [
+    { ruleName: 'a', outputs: { cat: 'x' }, condition: { field: 'f', operator: 'eq', value: 1 } },
+  ],
+};
+assert.deepEqual(
+  fieldCoverage(ruleSeg, 'cat'),
+  { authored: 1, total: 1, segmentLevel: false, overridesAuthored: 0, overridesTotal: 0, defaultNeedsSegmentValue: true },
+);
+// No default declared: rule values alone are enough.
+assert.equal(fieldCoverage({ ...ruleSeg, default: '' }, 'cat').defaultNeedsSegmentValue, false);
+assert.equal(fieldCoverage({ ...ruleSeg, default: undefined }, 'cat').defaultNeedsSegmentValue, false);
+// A checklist never reads Default, so it never needs the segment-level value
+// on that account, even if a stray default is present.
+assert.equal(fieldCoverage({ ...seg, default: 'stray' }, 'cat').defaultNeedsSegmentValue, false);
 
 console.log('output schema rules OK');

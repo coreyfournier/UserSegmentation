@@ -196,10 +196,10 @@ export default function RuleNode({ rule, path, onChange, onDelete, index, total,
           test, not leafness — gating on (perRuleMessages || !isLeaf) would let
           a leaf inside a checklist's And/Or group author values the engine
           never reads, which is dead config nothing would flag. */}
-      {outputSchema && onDeclareOutput && depth === 0 && (
+      {onDeclareOutput && depth === 0 && (
         <OutputValuesEditor
           outputs={rule.outputs}
-          schema={outputSchema}
+          schema={outputSchema ?? {}}
           onChange={(o) => onChange({ ...rule, outputs: o })}
           onDeclare={onDeclareOutput}
         />

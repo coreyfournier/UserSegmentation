@@ -59,6 +59,7 @@ export default function OutputValuesEditor({ outputs, schema, onChange, onDeclar
                     value={raw}
                     onChange={(e) => set(name, e.target.value)}
                     placeholder={PLACEHOLDER[evalModeOf(field)]}
+                    aria-label={name}
                   />
                   {err && <div className={styles.err}>{err}</div>}
                 </div>
