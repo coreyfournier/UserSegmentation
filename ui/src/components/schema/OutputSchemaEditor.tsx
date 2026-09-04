@@ -1,6 +1,6 @@
 import { useState, useRef } from 'react';
 import type { EvalMode, FieldType, LookupTable, OutputField, OutputSchema } from '../../api/types';
-import { allowedTypesForMode, evalModeOf, validateOutputField } from './outputSchemaRules';
+import { allowedTypesForMode, evalModeOf, validateLiteralValue, validateOutputField } from './outputSchemaRules';
 import styles from './OutputSchemaEditor.module.css';
 
 interface Props {
@@ -161,9 +161,21 @@ export default function OutputSchemaEditor({ value, onChange, lookups, segmentOu
                         onSegmentOutputsChange(Object.keys(next).length ? next : undefined);
                       }}
                       placeholder="set once for the segment"
+                      title="Satisfies this field for every reporting rule at once."
                       style={{ fontSize: 11 }}
                     />
                   )}
+                  {/* Same inline parse check the per-check inputs get. Without
+                      it a segment-level "high" on a number field looks fine
+                      until the save is rejected — the exact round trip this
+                      editor exists to avoid. */}
+                  {(() => {
+                    const raw = segmentOutputs?.[name] ?? '';
+                    const verr = raw ? validateLiteralValue(f, raw) : null;
+                    return verr ? (
+                      <div style={{ fontSize: 10, color: 'var(--danger, #ef4444)' }}>{verr}</div>
+                    ) : null;
+                  })()}
                   {coverage && (() => {
                     const c = coverage(name);
                     if (c.segmentLevel) {

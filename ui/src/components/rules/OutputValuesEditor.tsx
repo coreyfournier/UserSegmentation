@@ -28,9 +28,14 @@ export default function OutputValuesEditor({ outputs, schema, onChange, onDeclar
   };
 
   const declareAndFocus = () => {
-    if (!newName || schema[newName]) return;
+    // Trim to match OutputSchemaEditor's add path. Without it " severity" and
+    // "severity" slip past the duplicate check as two visually identical
+    // fields, and the engine rejects the padded one as an undeclared output
+    // key on the first save.
+    const name = newName.trim();
+    if (!name || schema[name]) return;
     // Required stays false so declaring a field mid-edit invalidates nothing.
-    onDeclare(newName, { type: 'string' });
+    onDeclare(name, { type: 'string' });
     setNewName('');
   };
 
@@ -75,7 +80,11 @@ export default function OutputValuesEditor({ outputs, schema, onChange, onDeclar
           placeholder="new output field"
           style={{ fontSize: 11 }}
         />
-        <button className="btn-secondary btn-sm" onClick={declareAndFocus} disabled={!newName || !!schema[newName]}>
+        <button
+          className="btn-secondary btn-sm"
+          onClick={declareAndFocus}
+          disabled={!newName.trim() || !!schema[newName.trim()]}
+        >
           + add to schema
         </button>
       </div>
