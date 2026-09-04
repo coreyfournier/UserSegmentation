@@ -3,6 +3,7 @@ package validation
 import (
 	"fmt"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/expr-lang/expr"
@@ -375,30 +376,160 @@ func CheckRequiredOutputs(seg *model.Segment, a *model.Assignment, failures []mo
 	return warnings
 }
 
-// validateOutputSchema checks a referenced lookup table exists, the object type
-// is confined to expression mode, and every Required field is actually authored.
-// Lookup membership and order uniqueness remain the author's invariants and are
-// deliberately not checked.
+// outputEnforcementExempt reports whether seg's own strategy exempts it from
+// output-schema binding beyond the lookup-existence and eval/type-shape
+// checks: static and percentage never populate Result.Outputs (only the rule
+// and checklist paths do), so nothing they declare on the segment itself is
+// binding — the same reasoning requiredOutputErrors already applies to
+// Required. An override firing on one of these segments is the deliberate
+// exception (EvalOverrides calls evaluateOutputs regardless of the segment's
+// own strategy), but that distinction lives at runtime (CheckRequiredOutputs);
+// at load time there is no fired-or-not to key off of, so — matching
+// requiredOutputErrors' own unconditional early return — the exemption here
+// is unconditional too.
+func outputEnforcementExempt(seg *model.Segment) bool {
+	return seg.Strategy == model.StrategyStatic || seg.Strategy == model.StrategyPercentage
+}
+
+// validateOutputSchema checks a referenced lookup table exists, the object and
+// array types are confined to expression mode, a template-mode field can only
+// declare string, every authored key is actually declared, a literal-mode
+// field's authored value parses as its declared type, a lookup-bound field's
+// declared type matches the table's key type, and every Required field is
+// actually authored. Lookup membership and order uniqueness remain the
+// author's invariants and are deliberately not checked.
 func validateOutputSchema(seg *model.Segment, lookups map[string]model.LookupTable) []string {
 	var errs []string
+
+	// Name-checking is not per-field — it is what tells us an authored key has
+	// no field to check against in the first place — so it runs once up front
+	// rather than inside the per-field loop below.
+	errs = append(errs, unknownOutputNameErrors(seg)...)
+
 	for name, f := range seg.OutputSchema {
 		if f.Lookup != "" {
-			if _, ok := lookups[f.Lookup]; !ok {
+			tbl, ok := lookups[f.Lookup]
+			if !ok {
 				errs = append(errs, fmt.Sprintf(
 					"segment %q output %q: lookup %q does not exist",
 					seg.ID, name, f.Lookup))
+			} else if !outputEnforcementExempt(seg) && f.Type != tbl.KeyType {
+				// Mirrors validateLookupRef's own condition-side check: a
+				// declared type that cannot agree with the table it is bound
+				// to is caught at load rather than emitting a bare key with
+				// no value or order at runtime (enrichLookupValue).
+				errs = append(errs, fmt.Sprintf(
+					"segment %q output %q: field type %q does not match lookup %q key type %q",
+					seg.ID, name, f.Type, f.Lookup, tbl.KeyType))
 			}
 		}
-		if f.Type == model.FieldTypeObject && f.EvalMode() != model.EvalExpression {
+		if (f.Type == model.FieldTypeObject || f.Type == model.FieldTypeArray) && f.EvalMode() != model.EvalExpression {
 			errs = append(errs, fmt.Sprintf(
-				"segment %q output %q: the object type requires eval \"expression\"",
-				seg.ID, name))
+				"segment %q output %q: the %q type requires eval \"expression\"",
+				seg.ID, name, f.Type))
+		}
+		if !outputEnforcementExempt(seg) && f.EvalMode() == model.EvalTemplate && f.Type != model.FieldTypeString {
+			errs = append(errs, fmt.Sprintf(
+				"segment %q output %q: eval \"template\" always produces a string, so type must be %q, not %q",
+				seg.ID, name, model.FieldTypeString, f.Type))
 		}
 		if f.EvalMode() == model.EvalExpression {
 			errs = append(errs, validateOutputExpressionSyntax(seg, name)...)
 		}
+		if !outputEnforcementExempt(seg) && f.EvalMode() == model.EvalLiteral {
+			errs = append(errs, literalTypeErrors(seg, name, f.Type)...)
+		}
 		if f.Required {
 			errs = append(errs, requiredOutputErrors(seg, name)...)
+		}
+	}
+	return errs
+}
+
+// literalTypeErrors rejects a literal-mode authored value that does not parse
+// as its field's declared type, at every authoring site (segment, enabled
+// rules, enabled overrides). A literal is emitted verbatim as text unless it
+// is coerced, so this is the load-time half of the type binding — the runtime
+// half (strategy/output.go's evaluateOutputs) does the same parse and emits
+// the parsed value; a value this check accepts is a value that parse will
+// also accept. string is unconstrained (any text is a valid string); array and
+// object are not reachable in literal mode at all, and are reported instead by
+// the eval-mode/type-shape check above, so they are skipped here rather than
+// double-reported.
+func literalTypeErrors(seg *model.Segment, name string, ft model.FieldType) []string {
+	var errs []string
+	for _, s := range outputAuthoringSites(seg, name) {
+		if !s.ok {
+			continue
+		}
+		var err error
+		switch ft {
+		case model.FieldTypeNumber:
+			_, err = strconv.ParseFloat(s.value, 64)
+		case model.FieldTypeBoolean:
+			_, err = strconv.ParseBool(s.value)
+		default:
+			continue
+		}
+		if err == nil {
+			continue
+		}
+		switch s.kind {
+		case siteSegment:
+			errs = append(errs, fmt.Sprintf(
+				"segment %q output %q: literal %q does not parse as %q: %v",
+				seg.ID, name, s.value, ft, err))
+		case siteRule:
+			errs = append(errs, fmt.Sprintf(
+				"segment %q rule %q output %q: literal %q does not parse as %q: %v",
+				seg.ID, s.name, name, s.value, ft, err))
+		case siteOverride:
+			errs = append(errs, fmt.Sprintf(
+				"segment %q override %q output %q: literal %q does not parse as %q: %v",
+				seg.ID, s.name, name, s.value, ft, err))
+		}
+	}
+	return errs
+}
+
+// unknownOutputNameErrors rejects an authored output key that the segment's
+// outputSchema does not declare, at every authoring site. This is the same
+// class as the unknown-strategy rejection at the top of this file: config
+// that can never do anything, because evaluateOutputs iterates the schema —
+// not what was authored — so an undeclared key is silently dropped with no
+// diagnostic at runtime. Lookup-membership-style checks these are not: a
+// declared field with an unlisted value is the author's invariant and stays
+// unchecked; this is about a key that has no field to check against at all.
+func unknownOutputNameErrors(seg *model.Segment) []string {
+	if outputEnforcementExempt(seg) {
+		return nil
+	}
+	var errs []string
+	for _, m := range outputAuthoringMaps(seg) {
+		names := make([]string, 0, len(m.values))
+		for name := range m.values {
+			names = append(names, name)
+		}
+		sort.Strings(names) // stable output; map iteration is not ordered
+
+		for _, name := range names {
+			if _, declared := seg.OutputSchema[name]; declared {
+				continue
+			}
+			switch m.kind {
+			case siteSegment:
+				errs = append(errs, fmt.Sprintf(
+					"segment %q: output %q is not declared in outputSchema",
+					seg.ID, name))
+			case siteRule:
+				errs = append(errs, fmt.Sprintf(
+					"segment %q rule %q: output %q is not declared in outputSchema",
+					seg.ID, m.name, name))
+			case siteOverride:
+				errs = append(errs, fmt.Sprintf(
+					"segment %q override %q: output %q is not declared in outputSchema",
+					seg.ID, m.name, name))
+			}
 		}
 	}
 	return errs
@@ -432,25 +563,34 @@ type outputAuthoringSite struct {
 	ok    bool
 }
 
-// outputAuthoringSites enumerates every place field could be authored on seg,
-// in a fixed order: the segment-level site first, then each enabled top-level
-// rule, then each enabled override. Disabled rules and overrides are omitted
-// entirely so a work-in-progress item cannot wedge an unrelated save — the
-// same exemption requiredOutputErrors and validateOutputExpressionSyntax have
-// always applied, now enforced in one place instead of twice.
-func outputAuthoringSites(seg *model.Segment, field string) []outputAuthoringSite {
-	sites := make([]outputAuthoringSite, 0, 1+len(seg.Rules)+len(seg.Overrides))
+// outputAuthoringMap is one place output values are authored on a segment:
+// the segment-level fallback every rule and override shares, or one enabled
+// top-level rule's or override's own values. name is the rule's/override's
+// RuleName; it is empty for the segment-level site.
+type outputAuthoringMap struct {
+	kind   outputAuthoringSiteKind
+	name   string
+	values map[string]string
+}
 
-	v, ok := seg.Outputs[field]
-	sites = append(sites, outputAuthoringSite{kind: siteSegment, value: v, ok: ok && v != ""})
+// outputAuthoringMaps enumerates every place values are authored on seg, in a
+// fixed order: the segment-level fallback every rule shares, then each
+// enabled top-level rule, then each enabled override. Disabled rules and
+// overrides are omitted entirely so a work-in-progress item cannot wedge an
+// unrelated save — the same exemption requiredOutputErrors and
+// validateOutputExpressionSyntax have always applied, now enforced in one
+// place instead of twice, and shared by the name check as well.
+func outputAuthoringMaps(seg *model.Segment) []outputAuthoringMap {
+	maps := make([]outputAuthoringMap, 0, 1+len(seg.Rules)+len(seg.Overrides))
+
+	maps = append(maps, outputAuthoringMap{kind: siteSegment, values: seg.Outputs})
 
 	for i := range seg.Rules {
 		r := &seg.Rules[i]
 		if !r.IsEnabled() {
 			continue
 		}
-		v, ok := r.Outputs[field]
-		sites = append(sites, outputAuthoringSite{kind: siteRule, name: r.RuleName, value: v, ok: ok && v != ""})
+		maps = append(maps, outputAuthoringMap{kind: siteRule, name: r.RuleName, values: r.Outputs})
 	}
 
 	for i := range seg.Overrides {
@@ -458,10 +598,29 @@ func outputAuthoringSites(seg *model.Segment, field string) []outputAuthoringSit
 		if !r.IsEnabled() {
 			continue
 		}
-		v, ok := r.Outputs[field]
-		sites = append(sites, outputAuthoringSite{kind: siteOverride, name: r.RuleName, value: v, ok: ok && v != ""})
+		maps = append(maps, outputAuthoringMap{kind: siteOverride, name: r.RuleName, values: r.Outputs})
 	}
 
+	return maps
+}
+
+// outputAuthoringSites enumerates every place field could be authored on seg,
+// in the same fixed order as outputAuthoringMaps, reading each map for just
+// this one field.
+//
+// ok mirrors evaluateOutputs' own presence check exactly (strategy/output.go):
+// a value only counts as authored when the key is present *and* non-empty. A
+// gate that tested key presence alone could be satisfied by a bare empty
+// string, which the runtime treats as unauthored — silently exempting every
+// rule and override in the segment from a required-field check that looks
+// like it passed.
+func outputAuthoringSites(seg *model.Segment, field string) []outputAuthoringSite {
+	maps := outputAuthoringMaps(seg)
+	sites := make([]outputAuthoringSite, 0, len(maps))
+	for _, m := range maps {
+		v, ok := m.values[field]
+		sites = append(sites, outputAuthoringSite{kind: m.kind, name: m.name, value: v, ok: ok && v != ""})
+	}
 	return sites
 }
 
@@ -509,7 +668,7 @@ func validateOutputExpressionSyntax(seg *model.Segment, name string) []string {
 // change able to silence it. Rather than reject config that can never be
 // satisfied, these strategies are simply exempted from enforcement.
 func requiredOutputErrors(seg *model.Segment, name string) []string {
-	if seg.Strategy == model.StrategyStatic || seg.Strategy == model.StrategyPercentage {
+	if outputEnforcementExempt(seg) {
 		return nil
 	}
 

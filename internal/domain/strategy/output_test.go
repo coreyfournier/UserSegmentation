@@ -157,3 +157,124 @@ func TestEnrichLookupValue_UnknownKeyPassesThrough(t *testing.T) {
 		t.Fatalf("expected the bare key, got %v", got)
 	}
 }
+
+// A literal declared number is coerced and emitted as a JSON number, not the
+// authored string — Type is binding on emission, not just on syntax.
+func TestEvaluateOutputs_LiteralNumberEmitsNumber(t *testing.T) {
+	seg := &model.Segment{
+		ID:           "seg",
+		Strategy:     model.StrategyRule,
+		OutputSchema: model.OutputSchema{"rank": {Type: model.FieldTypeNumber}},
+		Outputs:      map[string]string{"rank": "3"},
+	}
+	out, errs := evaluateOutputs(seg, nil, &EvalContext{})
+	if len(errs) != 0 {
+		t.Fatalf("expected no render errors, got %v", errs)
+	}
+	got, isFloat := out["rank"].(float64)
+	if !isFloat {
+		t.Fatalf("expected rank to be a float64 (JSON number), got %T (%v)", out["rank"], out["rank"])
+	}
+	if got != 3 {
+		t.Errorf("rank = %v, want 3", got)
+	}
+}
+
+// Same for boolean.
+func TestEvaluateOutputs_LiteralBooleanEmitsBoolean(t *testing.T) {
+	seg := &model.Segment{
+		ID:           "seg",
+		Strategy:     model.StrategyRule,
+		OutputSchema: model.OutputSchema{"active": {Type: model.FieldTypeBoolean}},
+		Outputs:      map[string]string{"active": "true"},
+	}
+	out, errs := evaluateOutputs(seg, nil, &EvalContext{})
+	if len(errs) != 0 {
+		t.Fatalf("expected no render errors, got %v", errs)
+	}
+	got, isBool := out["active"].(bool)
+	if !isBool {
+		t.Fatalf("expected active to be a bool, got %T (%v)", out["active"], out["active"])
+	}
+	if got != true {
+		t.Errorf("active = %v, want true", got)
+	}
+}
+
+// A literal string is unaffected: it stays a plain Go string, not wrapped or
+// re-typed.
+func TestEvaluateOutputs_LiteralStringEmitsString(t *testing.T) {
+	seg := &model.Segment{
+		ID:           "seg",
+		Strategy:     model.StrategyRule,
+		OutputSchema: model.OutputSchema{"category": {Type: model.FieldTypeString}},
+		Outputs:      map[string]string{"category": "EmployeeAccountStatus"},
+	}
+	out, errs := evaluateOutputs(seg, nil, &EvalContext{})
+	if len(errs) != 0 {
+		t.Fatalf("expected no render errors, got %v", errs)
+	}
+	if got, isString := out["category"].(string); !isString || got != "EmployeeAccountStatus" {
+		t.Errorf("category = %v (%T), want the string EmployeeAccountStatus", out["category"], out["category"])
+	}
+}
+
+// A runtime coercion failure degrades exactly like a failed template or
+// expression: the field is omitted, a RenderError is recorded naming it, and
+// the rest of the record still reports. Config validation should already
+// reject an uncoercible literal at load, so reaching this means something
+// slipped through — it must never panic or fail the evaluation.
+func TestEvaluateOutputs_UncoercibleLiteralDegrades(t *testing.T) {
+	seg := &model.Segment{
+		ID:       "seg",
+		Strategy: model.StrategyRule,
+		OutputSchema: model.OutputSchema{
+			"rank":     {Type: model.FieldTypeNumber},
+			"category": {Type: model.FieldTypeString},
+		},
+		Outputs: map[string]string{"rank": "high", "category": "ok"},
+	}
+	out, errs := evaluateOutputs(seg, nil, &EvalContext{})
+	if _, present := out["rank"]; present {
+		t.Error("uncoercible literal should not emit a value")
+	}
+	if out["category"] != "ok" {
+		t.Error("other fields should still be emitted")
+	}
+	if len(errs) != 1 || errs[0].Field != "rank" {
+		t.Fatalf("expected one render error naming rank, got %v", errs)
+	}
+}
+
+// A lookup-bound field with a numeric KeyType now compares against the
+// coerced numeric value instead of the raw authored string, so a match that
+// used to fall through as a bare key now enriches correctly.
+func TestEvaluateOutputs_NumericLookupKeyNowMatches(t *testing.T) {
+	seg := &model.Segment{
+		ID:       "seg",
+		Strategy: model.StrategyRule,
+		OutputSchema: model.OutputSchema{
+			"tier": {Type: model.FieldTypeNumber, Lookup: "vip-tiers"},
+		},
+		Outputs: map[string]string{"tier": "1"},
+	}
+	ctx := &EvalContext{
+		Lookups: map[string]model.LookupTable{
+			"vip-tiers": {
+				ID: "vip-tiers", KeyType: model.FieldTypeNumber,
+				Entries: []model.LookupEntry{{Key: 1.0, Value: "Gold", Order: 1}},
+			},
+		},
+	}
+	out, errs := evaluateOutputs(seg, nil, ctx)
+	if len(errs) != 0 {
+		t.Fatalf("expected no render errors, got %v", errs)
+	}
+	enriched, isMap := out["tier"].(map[string]interface{})
+	if !isMap {
+		t.Fatalf("expected the numeric key to now match and enrich, got %T (%v)", out["tier"], out["tier"])
+	}
+	if enriched["value"] != "Gold" {
+		t.Errorf("enriched value = %v, want Gold", enriched["value"])
+	}
+}

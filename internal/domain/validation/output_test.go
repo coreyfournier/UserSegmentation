@@ -52,6 +52,196 @@ func TestValidate_ObjectTypeRequiresExpressionMode(t *testing.T) {
 	}
 }
 
+// array is not expressible as a literal or a template either, so it carries
+// the same expression-mode requirement as object.
+func TestValidate_ArrayTypeRequiresExpressionMode(t *testing.T) {
+	err := ValidateSnapshot(snapWithOutputField(model.OutputField{
+		Type: model.FieldTypeArray,
+	}))
+	if err == nil || !strings.Contains(err.Error(), "array") {
+		t.Fatalf("expected an array-type error, got %v", err)
+	}
+
+	if err := ValidateSnapshot(snapWithOutputField(model.OutputField{
+		Type: model.FieldTypeArray,
+		Eval: model.EvalExpression,
+	})); err != nil {
+		t.Fatalf("array with expression mode should be valid, got %v", err)
+	}
+}
+
+// A template always produces a string, so any other declared type is rejected
+// at load — a template cannot produce it.
+func TestValidate_TemplateModeRequiresStringType(t *testing.T) {
+	err := ValidateSnapshot(snapWithOutputField(model.OutputField{
+		Type: model.FieldTypeNumber,
+		Eval: model.EvalTemplate,
+	}))
+	if err == nil || !strings.Contains(err.Error(), "template") {
+		t.Fatalf("expected a template-type error, got %v", err)
+	}
+
+	if err := ValidateSnapshot(snapWithOutputField(model.OutputField{
+		Type: model.FieldTypeString,
+		Eval: model.EvalTemplate,
+	})); err != nil {
+		t.Fatalf("template with string type should be valid, got %v", err)
+	}
+}
+
+// A literal-mode number field's authored value must actually parse as a
+// number at every authoring site, mirroring what evaluateOutputs will do at
+// runtime — a value validation accepts is a value coercion will also accept.
+func TestValidate_LiteralNumberMustParse(t *testing.T) {
+	numField := model.OutputField{Type: model.FieldTypeNumber}
+
+	snap := snapWithOutputField(numField)
+	snap.Layers[0].Segments[0].Rules[0].Outputs = map[string]string{"field": "high"}
+	err := ValidateSnapshot(snap)
+	if err == nil || !strings.Contains(err.Error(), "field") {
+		t.Fatalf("expected a literal-parse error naming the field, got %v", err)
+	}
+
+	snap = snapWithOutputField(numField)
+	snap.Layers[0].Segments[0].Rules[0].Outputs = map[string]string{"field": "3"}
+	if err := ValidateSnapshot(snap); err != nil {
+		t.Fatalf("a numeric literal should validate, got %v", err)
+	}
+}
+
+// Same check for boolean.
+func TestValidate_LiteralBooleanMustParse(t *testing.T) {
+	boolField := model.OutputField{Type: model.FieldTypeBoolean}
+
+	snap := snapWithOutputField(boolField)
+	snap.Layers[0].Segments[0].Rules[0].Outputs = map[string]string{"field": "yesish"}
+	err := ValidateSnapshot(snap)
+	if err == nil || !strings.Contains(err.Error(), "field") {
+		t.Fatalf("expected a literal-parse error naming the field, got %v", err)
+	}
+
+	snap = snapWithOutputField(boolField)
+	snap.Layers[0].Segments[0].Rules[0].Outputs = map[string]string{"field": "true"}
+	if err := ValidateSnapshot(snap); err != nil {
+		t.Fatalf("a boolean literal should validate, got %v", err)
+	}
+}
+
+// A lookup-bound field's declared type must match the table's key type,
+// mirroring validateLookupRef's own check for a rule condition.
+func TestValidate_OutputLookupTypeMismatch(t *testing.T) {
+	snap := snapWithOutputField(model.OutputField{
+		Type:   model.FieldTypeString,
+		Lookup: "vip-tiers",
+	})
+	snap.Lookups = []model.LookupTable{{
+		ID: "vip-tiers", Name: "VIP Tiers", KeyType: model.FieldTypeNumber,
+		Entries: []model.LookupEntry{{Key: 1.0}},
+	}}
+	err := ValidateSnapshot(snap)
+	if err == nil || !strings.Contains(err.Error(), "does not match lookup") {
+		t.Fatalf("expected a lookup type-mismatch error, got %v", err)
+	}
+
+	// Matching KeyType validates.
+	snap = snapWithOutputField(model.OutputField{
+		Type:   model.FieldTypeNumber,
+		Lookup: "vip-tiers",
+	})
+	snap.Lookups = []model.LookupTable{{
+		ID: "vip-tiers", Name: "VIP Tiers", KeyType: model.FieldTypeNumber,
+		Entries: []model.LookupEntry{{Key: 1.0}},
+	}}
+	snap.Layers[0].Segments[0].Rules[0].Outputs = map[string]string{"field": "1"}
+	if err := ValidateSnapshot(snap); err != nil {
+		t.Fatalf("matching lookup key type should validate, got %v", err)
+	}
+}
+
+// An authored key absent from the schema can never do anything —
+// evaluateOutputs iterates the schema, not what was authored — so it is
+// rejected at load, naming both the key and the segment, at every authoring
+// tier.
+func TestValidate_UnknownOutputKeyIsRejected(t *testing.T) {
+	// Segment-level typo.
+	snap := snapWithOutputField(model.OutputField{Type: model.FieldTypeString})
+	snap.Layers[0].Segments[0].Outputs = map[string]string{"catgeory": "x"}
+	err := ValidateSnapshot(snap)
+	if err == nil || !strings.Contains(err.Error(), "catgeory") || !strings.Contains(err.Error(), "employee") {
+		t.Fatalf("expected the unknown key and segment to be named, got %v", err)
+	}
+
+	// Rule-level typo.
+	snap = snapWithOutputField(model.OutputField{Type: model.FieldTypeString})
+	snap.Layers[0].Segments[0].Rules[0].Outputs = map[string]string{"catgeory": "x"}
+	err = ValidateSnapshot(snap)
+	if err == nil || !strings.Contains(err.Error(), "catgeory") {
+		t.Fatalf("expected the unknown rule-level key to be named, got %v", err)
+	}
+
+	// Override-level typo.
+	snap = snapWithOutputField(model.OutputField{Type: model.FieldTypeString})
+	seg := &snap.Layers[0].Segments[0]
+	seg.Strategy = model.StrategyRule
+	seg.Overrides = []model.Rule{{
+		RuleName:  "vipBypass",
+		Condition: &model.Condition{Field: "x", Operator: model.OpIsNull},
+		Outputs:   map[string]string{"catgeory": "x"},
+	}}
+	err = ValidateSnapshot(snap)
+	if err == nil || !strings.Contains(err.Error(), "catgeory") || !strings.Contains(err.Error(), "vipBypass") {
+		t.Fatalf("expected the unknown override-level key and override name, got %v", err)
+	}
+
+	// A disabled rule's typo is exempt, matching every other authoring check.
+	snap = snapWithOutputField(model.OutputField{Type: model.FieldTypeString})
+	disabled := false
+	snap.Layers[0].Segments[0].Rules[0].Outputs = map[string]string{"catgeory": "x"}
+	snap.Layers[0].Segments[0].Rules[0].Enabled = &disabled
+	if err := ValidateSnapshot(snap); err != nil {
+		t.Fatalf("disabled rule's unknown key should be exempt, got %v", err)
+	}
+
+	// A correctly-named key never errors.
+	snap = snapWithOutputField(model.OutputField{Type: model.FieldTypeString})
+	snap.Layers[0].Segments[0].Outputs = map[string]string{"field": "x"}
+	if err := ValidateSnapshot(snap); err != nil {
+		t.Fatalf("a declared key should not error, got %v", err)
+	}
+}
+
+// static and percentage are exempt from every check this task adds — name,
+// literal-type, and lookup-type — for the same reason they are exempt from
+// Required: neither strategy ever populates Result.Outputs, so nothing they
+// declare is binding.
+func TestValidate_OutputSchemaExemptOnStaticAndPercentage(t *testing.T) {
+	for _, strat := range []string{model.StrategyStatic, model.StrategyPercentage} {
+		snap := &model.Snapshot{
+			Layers: []model.Layer{{
+				Name: "tier",
+				Segments: []model.Segment{{
+					ID:       "seg",
+					Strategy: strat,
+					OutputSchema: model.OutputSchema{
+						"field": model.OutputField{Type: model.FieldTypeNumber, Lookup: "vip-tiers"},
+					},
+					// An unknown key, an unparseable literal, and a lookup
+					// type mismatch (field declared number, table is string) —
+					// none of it is enforced for these strategies.
+					Outputs: map[string]string{"field": "not-a-number", "extraneous": "x"},
+				}},
+			}},
+			Lookups: []model.LookupTable{{
+				ID: "vip-tiers", Name: "VIP Tiers", KeyType: model.FieldTypeString,
+				Entries: []model.LookupEntry{{Key: "gold"}},
+			}},
+		}
+		if err := ValidateSnapshot(snap); err != nil {
+			t.Fatalf("strategy %q: expected no error, got %v", strat, err)
+		}
+	}
+}
+
 func TestValidate_RequiredOutputMustBeAuthored(t *testing.T) {
 	required := model.OutputField{Type: model.FieldTypeString, Required: true}
 
