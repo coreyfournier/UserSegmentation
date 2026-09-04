@@ -71,6 +71,32 @@ export function validateOutputField(
 }
 
 /**
+ * Go's `strconv.ParseFloat` grammar, in its decimal forms.
+ *
+ * Deliberately NOT `Number()`. `Number()` is looser than ParseFloat in ways
+ * that matter here: it accepts `" 42"`, `"42 "`, `"0x10"` and whitespace-only
+ * strings (as 0), every one of which ParseFloat rejects. The engine calls
+ * ParseFloat, so using `Number()` would let the editor bless a literal the
+ * save then rejects — precisely the failure this module exists to prevent.
+ *
+ * It is marginally stricter than ParseFloat in one respect: Go accepts
+ * underscore separators (`1_0`) and the Inf/NaN spellings. Both are
+ * vanishingly rare in an authored constant, and stricter-in-the-editor is the
+ * safe direction — the author simply types an ordinary number.
+ */
+const DECIMAL_FLOAT = /^[+-]?(\d+(\.\d*)?|\.\d+)([eE][+-]?\d+)?$/;
+
+/**
+ * Exactly the set `strconv.ParseBool` accepts. Not just "true"/"false":
+ * accepting fewer spellings than the engine would reject a literal that loads
+ * perfectly well.
+ */
+const GO_BOOLS = new Set([
+  '1', 't', 'T', 'TRUE', 'true', 'True',
+  '0', 'f', 'F', 'FALSE', 'false', 'False',
+]);
+
+/**
  * Checks an authored literal against its declared type.
  *
  * Only literal mode is checked. An empty value means "not authored" — the
@@ -78,10 +104,10 @@ export function validateOutputField(
  */
 export function validateLiteralValue(field: OutputField, raw: string): string | null {
   if (evalModeOf(field) !== 'literal' || raw === '') return null;
-  if (field.type === 'number' && Number.isNaN(Number(raw))) {
+  if (field.type === 'number' && !DECIMAL_FLOAT.test(raw)) {
     return `"${raw}" does not parse as a number`;
   }
-  if (field.type === 'boolean' && raw !== 'true' && raw !== 'false') {
+  if (field.type === 'boolean' && !GO_BOOLS.has(raw)) {
     return `"${raw}" does not parse as a boolean — use true or false`;
   }
   return null;

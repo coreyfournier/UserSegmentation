@@ -61,11 +61,24 @@ assert.match(validateOutputField('s', { type: 'string', lookup: 'nope' }, tables
 assert.match(validateOutputField('s', { type: 'number', lookup: 'sev' }, tables), /keyType|key type/);
 assert.equal(validateOutputField('s', { type: 'string', lookup: 'sev' }, tables), null);
 
-// A literal must parse as its declared type.
+// A literal must parse as its declared type, by Go's rules — not JS's.
 assert.equal(validateLiteralValue({ type: 'number' }, '3'), null);
+assert.equal(validateLiteralValue({ type: 'number' }, '-3.5'), null);
+assert.equal(validateLiteralValue({ type: 'number' }, '1e3'), null);
+assert.equal(validateLiteralValue({ type: 'number' }, '+7'), null);
 assert.match(validateLiteralValue({ type: 'number' }, 'high'), /number/);
-assert.equal(validateLiteralValue({ type: 'boolean' }, 'true'), null);
+// Number() would accept all four of these; strconv.ParseFloat rejects them,
+// so the editor must too or the save fails after the editor said it was fine.
+assert.match(validateLiteralValue({ type: 'number' }, ' 42'), /number/);
+assert.match(validateLiteralValue({ type: 'number' }, '42 '), /number/);
+assert.match(validateLiteralValue({ type: 'number' }, '0x10'), /number/);
+assert.match(validateLiteralValue({ type: 'number' }, '  '), /number/);
+// strconv.ParseBool accepts twelve spellings, not two.
+for (const ok of ['1', 't', 'T', 'TRUE', 'true', 'True', '0', 'f', 'F', 'FALSE', 'false', 'False']) {
+  assert.equal(validateLiteralValue({ type: 'boolean' }, ok), null, `boolean ${ok} should be accepted`);
+}
 assert.match(validateLiteralValue({ type: 'boolean' }, 'yes'), /boolean/);
+assert.match(validateLiteralValue({ type: 'boolean' }, 'TrUe'), /boolean/);
 assert.equal(validateLiteralValue({ type: 'string' }, 'anything'), null);
 // Only literal mode is checked — a template or expression is not a literal.
 assert.equal(validateLiteralValue({ type: 'number', eval: 'expression' }, 'a + b'), null);
@@ -100,6 +113,14 @@ assert.deepEqual(
 assert.deepEqual(
   fieldCoverage({ ...seg, outputs: { cat: '' } }, 'cat'),
   { authored: 1, total: 2, segmentLevel: false },
+);
+// Nor does an empty rule-level value — key presence alone must not count as authoring it.
+assert.deepEqual(
+  fieldCoverage(
+    { ...seg, rules: [...seg.rules, { ruleName: 'd', outputs: { cat: '' }, condition: { field: 'f', operator: 'eq', value: 4 } }] },
+    'cat',
+  ),
+  { authored: 1, total: 3, segmentLevel: false },
 );
 
 console.log('output schema rules OK');
