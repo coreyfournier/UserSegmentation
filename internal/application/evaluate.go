@@ -56,6 +56,7 @@ func (uc *EvaluateUseCase) Execute(req EvaluateRequest) (*EvaluateResponse, erro
 				Rule:     f.Rule,
 				Message:  f.Message,
 				Messages: f.Messages,
+				Outputs:  f.Outputs,
 			})
 		}
 		resp.Layers[name] = dto

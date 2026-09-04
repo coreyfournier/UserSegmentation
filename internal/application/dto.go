@@ -39,9 +39,10 @@ type LayerResultDTO struct {
 // FailureDTO is one itemised problem from a checklist layer. The rule name is the
 // stable identifier; the message states the problem.
 type FailureDTO struct {
-	Rule     string            `json:"rule"`
-	Message  string            `json:"message,omitempty"`
-	Messages map[string]string `json:"messages,omitempty"`
+	Rule     string                 `json:"rule"`
+	Message  string                 `json:"message,omitempty"`
+	Messages map[string]string      `json:"messages,omitempty"`
+	Outputs  map[string]interface{} `json:"outputs,omitempty"`
 }
 
 // WarningDTO represents a validation warning.

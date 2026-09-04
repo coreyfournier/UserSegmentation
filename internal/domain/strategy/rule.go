@@ -102,14 +102,14 @@ func collectViolations(seg *model.Segment, ctx *EvalContext) Result {
 			continue
 		}
 		if evaluateRule(r, ctx.Context, ctx.Lookups) {
-			appendFailure(&res, r, ctx)
+			appendFailure(&res, seg, r, ctx)
 		}
 	}
 	return res
 }
 
 // appendFailure renders the rule's message templates and records the failure.
-func appendFailure(res *Result, r *model.Rule, ctx *EvalContext) {
+func appendFailure(res *Result, seg *model.Segment, r *model.Rule, ctx *EvalContext) {
 	f := model.Failure{Rule: r.RuleName}
 
 	// The message is the payload of a failure, so it is always populated. When
@@ -141,6 +141,10 @@ func appendFailure(res *Result, r *model.Rule, ctx *EvalContext) {
 		}
 		res.RenderErrors = append(res.RenderErrors, rr.Errors...)
 	}
+
+	outputs, outErrs := evaluateOutputs(seg, r.Outputs, ctx)
+	f.Outputs = outputs
+	res.RenderErrors = append(res.RenderErrors, outErrs...)
 
 	res.Failures = append(res.Failures, f)
 }
