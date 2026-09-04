@@ -1233,9 +1233,17 @@ func CheckRequiredOutputs(seg *model.Segment, a *model.Assignment, failures []mo
 		})
 	}
 
-	// A checklist reports per item, so each finding is checked separately —
-	// one item's expression can fail while its siblings resolve.
-	if len(failures) > 0 {
+	// Branch on the strategy, NOT on len(failures). A checklist attaches a
+	// record to each Failure and never to the Assignment, so zero findings
+	// means nothing was reported — not that a record came back short. Testing
+	// len(failures) instead falls through to the Assignment path, where
+	// a.Outputs is structurally always empty for a checklist, and every clean
+	// pass then warns. ChecklistStrategy always succeeds, so lr.Assignment is
+	// never nil here and the a == nil guard below cannot catch it.
+	//
+	// Each finding is checked separately, because one item's expression can
+	// fail while its siblings resolve.
+	if seg.Strategy == model.StrategyChecklist {
 		for _, f := range failures {
 			for _, name := range required {
 				if _, ok := f.Outputs[name]; !ok {
