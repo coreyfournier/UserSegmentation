@@ -54,7 +54,14 @@ export default function LookupList() {
         <LookupForm
           onSubmit={(table) =>
             createLookup.mutate(
-              { name: table.name, keyType: table.keyType, entries: table.entries },
+              {
+                name: table.name,
+                keyType: table.keyType,
+                description: table.description,
+                emitOrder: table.emitOrder,
+                customOrder: table.customOrder,
+                entries: table.entries,
+              },
               { onSuccess: () => setShowCreate(false) }
             )
           }
@@ -69,7 +76,17 @@ export default function LookupList() {
             submitLabel="Save"
             onSubmit={(table) =>
               updateLookup.mutate(
-                { id: editing.id, table: { ...editing, name: table.name, entries: table.entries } },
+                {
+                  id: editing.id,
+                  table: {
+                    ...editing,
+                    name: table.name,
+                    description: table.description,
+                    emitOrder: table.emitOrder,
+                    customOrder: table.customOrder,
+                    entries: table.entries,
+                  },
+                },
                 { onSuccess: () => setEditing(null) }
               )
             }
