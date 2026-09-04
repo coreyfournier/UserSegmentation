@@ -8,6 +8,7 @@ The design detail is in the sibling documents:
 | --- | --- |
 | `2026-09-02-output-schema-todo.md` | the design, the ordering model, open questions |
 | `2026-09-02-output-schema-engine-plan.md` | the TDD implementation plan, 8 tasks |
+| `2026-09-04-balance-diagnostics-port.md` | how the source service becomes layers, segments and rules |
 | `2026-09-04-output-schema-ui-plan.md` | the UI plan, 6 tasks |
 | `.superpowers/sdd/balance-diagnostics-survey.md` | what the source service actually does, surveyed |
 | `README.md` § Production readiness | why this is a POC and what production needs |
@@ -24,14 +25,22 @@ a type key, severity, category, title, description, a user-facing message, a
 technical explanation, a resolution (type + detail), and a list of name/value
 evidence pairs called *signals*.
 
-**Corrected counts.** Earlier drafts of this document said "seven diagnosers" and
-"52 possible diagnoses". A survey of the source (recorded in
-`.superpowers/sdd/balance-diagnostics-survey.md`) found **three** registered
-`IDiagnoser` implementations, one of which fans out into five internal static
-sub-diagnosers — so **eight distinct rule groups** over **46** `DiagnosisType`
-values. The numbers appear throughout the reasoning below; the shape of the
-argument does not change, but do not trust "seven" or "52" if you see them
-anywhere.
+**Corrected counts, and the count is the part people keep getting wrong.** Earlier
+drafts of this document said "seven diagnosers" and "52 possible diagnoses". A
+survey of the source (`.superpowers/sdd/balance-diagnostics-survey.md`) found
+**three** registered `IDiagnoser` implementations, one of which fans out into five
+internal static sub-diagnosers — so **eight distinct rule groups**.
+
+The diagnosis count has been wrong three times: 52 originally, 46 in the survey,
+49 from a naive grep. It is **50**. `DiagnosisType` has fifty members, and its last
+one carries no trailing comma, which is exactly what makes a line-counting regex
+report 49. Verified two ways — counting members directly, and summing each group's
+owned types against its diagnoser's source (13+4+11+12+9+1 = 50, with none left
+over). If you need the number, count it again rather than trusting any prose,
+including this sentence.
+
+The shape of the reasoning below does not depend on the number, but do not trust
+"seven", "52", "46" or "49" if you see them anywhere.
 
 The engine turned out to be a close structural match. `ChecklistStrategy` exists to
 "run a list of checks and report every one that fires," which is what a diagnoser
@@ -96,7 +105,7 @@ Two unrelated diagnoses in that segment reported nothing, because one formula
 referenced a value an upstream fetch did not return. The behaviour is deliberate —
 a rule consuming a field that could not be computed must not fire and be read as a
 real problem — but it means every formula added to the scratchpad widens the blast
-radius of the first absent value. All 46 diagnoses in one segment would be one
+radius of the first absent value. All 50 diagnoses in one segment would be one
 empty fetch away from returning nothing at all.
 
 So the eight rule groups want to be eight layers. `LayerResultDTO` reports
