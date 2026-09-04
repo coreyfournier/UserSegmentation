@@ -1,7 +1,9 @@
 # TODO — output schema: where is it declared?
 
-**Status:** placement **resolved — segment level**. Nothing built yet; the engine
-plan stands as written and needs no change from this decision.
+**Status:** placement **resolved — segment level**, and **built**. The engine plan's
+eight tasks and the UI plan's six are all implemented, reviewed and on
+`feature/output-schema-engine`. This document is now the design record rather than
+a proposal; where it and the code disagree, the code is right and this is stale.
 
 ## What the output schema is for
 
