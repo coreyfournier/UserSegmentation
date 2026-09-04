@@ -48,12 +48,16 @@ export default function OutputSchemaEditor({ value, onChange, lookups }: Props) 
   };
 
   const add = () => {
-    if (!newField || schema[newField]) return;
+    // Trim before comparing: " severity" and "severity" would otherwise be two
+    // distinct fields that look identical in the table, and the engine would
+    // reject the padded one as an undeclared output key on the first save.
+    const name = newField.trim();
+    if (!name || schema[name]) return;
     const field: OutputField = { type: newType };
     if (newMode !== 'literal') field.eval = newMode;
     // Required deliberately defaults to false: declaring a field must never
     // block a save, or the fast authoring flow stops being usable.
-    write({ ...schema, [newField]: field });
+    write({ ...schema, [name]: field });
     setNewField('');
     setNewMode('literal');
     setNewType('string');
@@ -102,7 +106,24 @@ export default function OutputSchemaEditor({ value, onChange, lookups }: Props) 
                 </td>
                 <td>
                   <select value={f.type} onChange={(e) => patch(name, { type: e.target.value as FieldType })}>
-                    {allowedTypesForMode(mode).map((t) => <option key={t} value={t}>{t}</option>)}
+                    {/*
+                      Keep the current type in the list even when this mode
+                      disallows it. A schema hand-written as JSON — the only way
+                      to author one before this editor existed — can arrive with
+                      an illegal pairing, and a select whose value matches no
+                      option silently displays the first one instead. That would
+                      show "string" for a field that is really an object. The
+                      row's inline error says why it is invalid; the select
+                      should still tell the truth about what is stored.
+                    */}
+                    {(allowedTypesForMode(mode).includes(f.type)
+                      ? allowedTypesForMode(mode)
+                      : [f.type, ...allowedTypesForMode(mode)]
+                    ).map((t) => (
+                      <option key={t} value={t}>
+                        {allowedTypesForMode(mode).includes(t) ? t : `${t} — invalid for ${mode}`}
+                      </option>
+                    ))}
                   </select>
                 </td>
                 <td>
