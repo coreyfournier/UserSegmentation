@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useLayers } from '../../api/layers';
+import { useLookups } from '../../api/lookups';
 import { useUpdateSegment } from '../../api/segments';
 import type { Segment, StrategyType, InputSchema } from '../../api/types';
 import StrategyPicker from './StrategyPicker';
@@ -13,6 +14,9 @@ import MessagesEditor from '../rules/MessagesEditor';
 import PredicateEditor from '../rules/PredicateEditor';
 import PromotionEditor from '../promotion/PromotionEditor';
 import InputSchemaEditor from '../schema/InputSchemaEditor';
+import OutputSchemaEditor from '../schema/OutputSchemaEditor';
+import EmittedFieldsReference from '../schema/EmittedFieldsReference';
+import { supportsOutputSchema } from '../schema/outputSchemaRules';
 import ErrorBanner from '../common/ErrorBanner';
 import styles from './SegmentEditor.module.css';
 
@@ -20,6 +24,7 @@ export default function SegmentEditor() {
   const { name: layerName, id: segId } = useParams<{ name: string; id: string }>();
   const navigate = useNavigate();
   const { data: layers } = useLayers();
+  const { data: lookups } = useLookups();
   const updateSegment = useUpdateSegment();
 
   const layer = layers?.find((l) => l.name === layerName);
@@ -107,12 +112,63 @@ export default function SegmentEditor() {
       </section>
 
       {/* Input Schema */}
-      <section className={`card ${styles.section}`}>
+      <section id="input-schema" className={`card ${styles.section}`}>
         <h3>Input Schema</h3>
         <InputSchemaEditor
           value={seg.inputSchema}
           onChange={(s) => update({ inputSchema: s })}
         />
+      </section>
+
+      {/* Output Schema — after the input schema, because an output value
+          interpolates the fields declared there. */}
+      <section className={`card ${styles.section}`}>
+        <h3>Output Schema</h3>
+        {supportsOutputSchema(seg.strategy) ? (
+          <>
+            <p style={{ fontSize: 12, color: 'var(--text-muted)', margin: '0 0 12px' }}>
+              Declares the record emitted with each reported item, so a consumer receives a
+              populated object instead of mapping one by hand.
+            </p>
+            <OutputSchemaEditor
+              value={seg.outputSchema}
+              onChange={(s) => update({ outputSchema: s })}
+              lookups={lookups ?? []}
+            />
+            <div style={{ marginTop: 12 }}>
+              <EmittedFieldsReference />
+            </div>
+            <details style={{ marginTop: 8 }}>
+              <summary style={{ cursor: 'pointer', fontSize: 12, color: 'var(--text-muted)' }}>
+                Fields available to output values
+              </summary>
+              <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 8 }}>
+                {Object.keys(effectiveSchema(seg) ?? {}).length === 0 ? (
+                  <p style={{ margin: 0 }}>
+                    None declared yet — <a href="#input-schema">add input fields</a>.
+                  </p>
+                ) : (
+                  <>
+                    <p style={{ margin: '0 0 6px' }}>
+                      From the <a href="#input-schema">input schema</a> and computed fields:
+                    </p>
+                    <ul style={{ margin: 0, paddingLeft: 18 }}>
+                      {Object.entries(effectiveSchema(seg) ?? {}).map(([f, sf]) => (
+                        <li key={f}><code>{f}</code> — {sf.type}</li>
+                      ))}
+                    </ul>
+                  </>
+                )}
+              </div>
+            </details>
+          </>
+        ) : (
+          <p style={{ fontSize: 12, color: 'var(--text-muted)', margin: 0 }}>
+            A <code>{seg.strategy}</code> segment resolves a segment value rather than reporting
+            an item, so it emits no record and an output schema would do nothing. Output schemas
+            apply to <code>checklist</code> and <code>rule</code> segments.
+          </p>
+        )}
       </section>
 
       {/* Applicability — after the schema, because the condition picks its
