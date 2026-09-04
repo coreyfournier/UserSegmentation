@@ -7,6 +7,17 @@ import (
 	"github.com/segmentation-service/segmentation/internal/domain/model"
 )
 
+// normalizeOrder stamps list position onto each entry unless the table authors
+// its own numbers. The result is always persisted, so no store has to infer it.
+func normalizeOrder(t *model.LookupTable) {
+	if t.CustomOrder {
+		return
+	}
+	for i := range t.Entries {
+		t.Entries[i].Order = i
+	}
+}
+
 // LookupReferencedError indicates a lookup table cannot be deleted because rules
 // still reference it.
 type LookupReferencedError struct {
@@ -48,6 +59,7 @@ func (uc *AdminUseCase) CreateLookup(table model.LookupTable) (*model.Snapshot, 
 	if table.Entries == nil {
 		table.Entries = []model.LookupEntry{}
 	}
+	normalizeOrder(&table)
 	snap.Lookups = append(snap.Lookups, table)
 	return uc.commitSnapshot(snap)
 }
@@ -78,7 +90,11 @@ func (uc *AdminUseCase) UpdateLookup(id string, updated model.LookupTable) (*mod
 	}
 	// Preserve immutable id and keyType.
 	snap.Lookups[idx].Name = updated.Name
+	snap.Lookups[idx].Description = updated.Description
+	snap.Lookups[idx].EmitOrder = updated.EmitOrder
+	snap.Lookups[idx].CustomOrder = updated.CustomOrder
 	snap.Lookups[idx].Entries = entries
+	normalizeOrder(&snap.Lookups[idx])
 	return uc.commitSnapshot(snap)
 }
 
