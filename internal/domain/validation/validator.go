@@ -297,11 +297,12 @@ func CheckRequiredFields(seg *model.Segment, ctx map[string]interface{}) []model
 // CheckRequiredOutputs returns warnings for required output fields absent from
 // what a segment actually emitted.
 //
-// Config validation already rejects a required field no authoring path supplies,
-// so reaching here means something ran and the value still did not arrive: an
-// expression failed and the field was dropped, or an override resolved the
-// segment and overrides compute no outputs. Neither is recoverable at load, so
-// the caller is told and decides.
+// Config validation already rejects a required field that no authoring path
+// supplies — including on an override rule — so reaching here means something
+// ran, a value was authored for it, and it still did not arrive. In practice
+// that means the value's expression or template failed and the field was
+// dropped, which is deliberate degradation and not recoverable at load. So the
+// caller is told and decides.
 func CheckRequiredOutputs(seg *model.Segment, a *model.Assignment, failures []model.Failure) []model.Warning {
 	var required []string
 	for name, f := range seg.OutputSchema {
@@ -353,7 +354,8 @@ func CheckRequiredOutputs(seg *model.Segment, a *model.Assignment, failures []mo
 		if _, ok := a.Outputs[name]; !ok {
 			detail := "the segment did not emit it"
 			if a.Strategy == "override" {
-				detail = "an override resolved this segment, and overrides compute no outputs"
+				detail = "the override that resolved this segment did not emit it, " +
+					"most likely because its value failed to resolve"
 			}
 			missing(name, detail)
 		}
