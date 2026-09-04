@@ -98,7 +98,7 @@ export default function LookupList() {
       <ConfirmDialog
         open={!!deleting}
         title="Delete Lookup Table"
-        message={`Delete lookup "${deleting}"? This is blocked if any rule references it.`}
+        message={`Delete lookup "${deleting}"? This is blocked if any rule or output schema field references it.`}
         onConfirm={() => {
           if (deleting) deleteLookup.mutate(deleting);
           setDeleting(null);

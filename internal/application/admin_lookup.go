@@ -64,8 +64,9 @@ func (uc *AdminUseCase) CreateLookup(table model.LookupTable) (*model.Snapshot, 
 	return uc.commitSnapshot(snap)
 }
 
-// UpdateLookup updates a lookup table's display name and entries. The id and
-// keyType are immutable and preserved from the existing table.
+// UpdateLookup updates a lookup table's display name, description, ordering
+// flags (emitOrder, customOrder), and entries. The id and keyType are
+// immutable and preserved from the existing table.
 func (uc *AdminUseCase) UpdateLookup(id string, updated model.LookupTable) (*model.Snapshot, error) {
 	uc.mu.Lock()
 	defer uc.mu.Unlock()

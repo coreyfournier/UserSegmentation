@@ -20,8 +20,11 @@ Working shape, per declared field: a name, a data type, and an evaluation mode.
 | `expression` | one whole expr | typed |
 
 Fields whose domain is enumerated bind to a lookup table, so the authoring UI shows
-a dropdown and the validator checks membership at snapshot load. The lookup entry's
-`Key` is the stable identifier a consumer may reference in code; `Value` is the
+a dropdown. The validator checks at snapshot load that the referenced table exists
+and that the field's declared type matches its `keyType` — it does **not** check
+that an emitted value is one of the table's keys; membership stays the author's
+invariant, same as everywhere else lookups are used. The lookup entry's `Key` is
+the stable identifier a consumer may reference in code; `Value` is the
 human-readable label, free to change without a deploy.
 
 Values are authored on the **top-level rule** — the checklist item, or the winning
