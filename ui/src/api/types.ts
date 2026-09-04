@@ -1,4 +1,4 @@
-export type FieldType = 'string' | 'number' | 'boolean' | 'array';
+export type FieldType = 'string' | 'number' | 'boolean' | 'array' | 'object';
 export type Operator =
   | 'eq'
   | 'neq'
@@ -36,6 +36,29 @@ export interface SchemaField {
 
 export type InputSchema = Record<string, SchemaField>;
 
+/**
+ * How an output field's authored value is turned into the emitted value.
+ * `literal` is the default when absent, matching the Go `EvalMode()` accessor.
+ */
+export type EvalMode = 'literal' | 'template' | 'expression';
+
+export interface OutputField {
+  type: FieldType;
+  /** Absent means `literal`. */
+  eval?: EvalMode;
+  /** Id of a lookup table whose keys are this field's permitted values. */
+  lookup?: string;
+  /**
+   * The caller's contract. Enforced twice by the engine: an error at snapshot
+   * load if no authoring path supplies it, and a warning at evaluation if it
+   * is absent anyway. Defaults to false so declaring a field never blocks a
+   * save.
+   */
+  required?: boolean;
+}
+
+export type OutputSchema = Record<string, OutputField>;
+
 export interface Condition {
   field: string;
   operator: Operator;
@@ -53,6 +76,12 @@ export interface Rule {
   rules?: Rule[];
   /** Optional localized message templates keyed by language code (e.g. "en"). */
   messages?: Record<string, string>;
+  /**
+   * This item's authored values for the segment's output schema, keyed by
+   * field name. Only a reporting rule's outputs are read — never an inner
+   * And/Or branch's.
+   */
+  outputs?: Record<string, string>;
 }
 
 export interface Promotion {
@@ -100,6 +129,10 @@ export interface Segment {
   defaultMessages?: Record<string, string>;
   promotion?: Promotion;
   inputSchema?: InputSchema;
+  /** Declares the fields this segment emits with each reported item. */
+  outputSchema?: OutputSchema;
+  /** Values for output fields that do not vary per reported item. */
+  outputs?: Record<string, string>;
 }
 
 export interface Layer {
@@ -127,6 +160,8 @@ export interface Failure {
   rule: string;
   message?: string;
   messages?: Record<string, string>;
+  /** The resolved output record for this finding. */
+  outputs?: Record<string, unknown>;
 }
 
 export interface LayerResult {
@@ -137,6 +172,8 @@ export interface LayerResult {
   computed?: Record<string, unknown>;
   messages?: Record<string, string>;
   failures?: Failure[];
+  /** The resolved output record, when a single-value strategy reported one. */
+  outputs?: Record<string, unknown>;
 }
 
 export interface Warning {
@@ -191,11 +228,23 @@ export const UNARY_OPERATORS: Operator[] = ['is_null', 'is_null_or_empty'];
 export interface LookupEntry {
   key: unknown;
   value?: string;
+  /**
+   * Position in the table's ordering. Always persisted, even when inferred
+   * from list position, because a relational store cannot reorder rows
+   * cheaply.
+   */
+  order?: number;
 }
 
 export interface LookupTable {
   id: string;
   name: string;
   keyType: FieldType;
+  /** The author's note on how the table is meant to be used, including any cross-table ordering scheme. */
+  description?: string;
+  /** Include each entry's `order` in the evaluation response. */
+  emitOrder?: boolean;
+  /** Numbers are hand-authored rather than inferred from list position. */
+  customOrder?: boolean;
   entries: LookupEntry[];
 }
