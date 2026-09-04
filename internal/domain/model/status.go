@@ -52,8 +52,8 @@ const (
 // together, so a field path would be present only sometimes, which consumers
 // could not predict or explain.
 type Failure struct {
-	Rule     string            `json:"rule"`
-	Message  string            `json:"message"`
-	Messages map[string]string `json:"messages,omitempty"`
+	Rule     string                 `json:"rule"`
+	Message  string                 `json:"message"`
+	Messages map[string]string      `json:"messages,omitempty"`
 	Outputs  map[string]interface{} `json:"outputs,omitempty"`
 }
