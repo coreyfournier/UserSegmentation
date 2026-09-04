@@ -7,7 +7,9 @@ The design detail is in the sibling documents:
 | Document | Holds |
 | --- | --- |
 | `2026-09-02-output-schema-todo.md` | the design, the ordering model, open questions |
-| `2026-09-02-output-schema-engine-plan.md` | the TDD implementation plan, 7 tasks |
+| `2026-09-02-output-schema-engine-plan.md` | the TDD implementation plan, 8 tasks |
+| `2026-09-04-output-schema-ui-plan.md` | the UI plan, 6 tasks |
+| `.superpowers/sdd/balance-diagnostics-survey.md` | what the source service actually does, surveyed |
 | `README.md` § Production readiness | why this is a POC and what production needs |
 
 ## Where this came from
@@ -16,11 +18,20 @@ The question was not "segmentation needs an output schema." It was: **can this
 engine do the diagnostic work that a different service does in hand-written C#?**
 
 That service is `balance-diagnostics` (`C:\repos\balance-diagnostics`). It answers
-"why can this employee not take a wage advance?" by running seven *diagnosers*
-over data it fetches, each producing zero or more `Diagnosis` records. There are 52
-possible diagnoses. A `Diagnosis` carries: a type key, severity, category, title,
-description, a user-facing message, a technical explanation, a resolution
-(type + detail), and a list of name/value evidence pairs called *signals*.
+"why can this employee not take a wage advance?" by running *diagnosers* over data
+it fetches, each producing zero or more `Diagnosis` records. A `Diagnosis` carries:
+a type key, severity, category, title, description, a user-facing message, a
+technical explanation, a resolution (type + detail), and a list of name/value
+evidence pairs called *signals*.
+
+**Corrected counts.** Earlier drafts of this document said "seven diagnosers" and
+"52 possible diagnoses". A survey of the source (recorded in
+`.superpowers/sdd/balance-diagnostics-survey.md`) found **three** registered
+`IDiagnoser` implementations, one of which fans out into five internal static
+sub-diagnosers — so **eight distinct rule groups** over **46** `DiagnosisType`
+values. The numbers appear throughout the reasoning below; the shape of the
+argument does not change, but do not trust "seven" or "52" if you see them
+anywhere.
 
 The engine turned out to be a close structural match. `ChecklistStrategy` exists to
 "run a list of checks and report every one that fires," which is what a diagnoser
@@ -85,11 +96,11 @@ Two unrelated diagnoses in that segment reported nothing, because one formula
 referenced a value an upstream fetch did not return. The behaviour is deliberate —
 a rule consuming a field that could not be computed must not fire and be read as a
 real problem — but it means every formula added to the scratchpad widens the blast
-radius of the first absent value. All 52 diagnoses in one segment would be one
+radius of the first absent value. All 46 diagnoses in one segment would be one
 empty fetch away from returning nothing at all.
 
-So the seven diagnosers want to be seven layers. `LayerResultDTO` reports
-`unevaluable` per layer, so one diagnoser going dark leaves the other six
+So the eight rule groups want to be eight layers. `LayerResultDTO` reports
+`unevaluable` per layer, so one group going dark leaves the others
 reporting — which is the partial-failure behaviour three upstreams demand. The
 shipped config is already shaped this way: `company-identity`,
 `company-payroll-setup`, `employee-readiness`, `CompanyValidation` and `T&A Gates`
@@ -167,7 +178,7 @@ re-derived:
   response carries `"reason": "checklist:precision"` or `"checklist:express"`.
   Only `Assignment.Segment` is cleared for checklists (`checklist.go:46`), and
   `Reason` survives into `LayerResultDTO`.
-- *"The seven diagnosers all emit one shared `Diagnosis` shape, so declare it once
+- *"Every rule group emits one shared `Diagnosis` shape, so declare it once
   at snapshot level and reference it by id, the way lookups already work."* Note
   first that this is an argument against layer level too — the duplication would be
   *across* layers, which neither placement reaches. But it assumes a duplication no
