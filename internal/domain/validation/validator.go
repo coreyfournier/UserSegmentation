@@ -33,6 +33,25 @@ func ValidateSnapshot(snap *model.Snapshot) error {
 					seg.ID, seg.Strategy, strings.Join(model.KnownStrategies, ", ")))
 			}
 
+			// A checklist has no "nothing matched" outcome, so an override has
+			// nothing to override. Worse, EvalOverrides resolves a segment value
+			// and the evaluator reports StatusResolved — both outside the
+			// checklist vocabulary, so a consumer switching on status meets a
+			// case it was told could not happen. The segment editor already tells
+			// authors a checklist has no overrides and renders no editor for them
+			// (SegmentEditor.tsx); this makes the engine agree, closing the raw
+			// JSON, admin API and hand-edited config paths that bypass the UI.
+			if seg.Strategy == model.StrategyChecklist && len(seg.Overrides) > 0 {
+				errs = append(errs, fmt.Sprintf(
+					"segment %q: a checklist cannot declare overrides — an override resolves a "+
+						"segment value and reports %q, which is not part of the checklist "+
+						"vocabulary (%q, %q, %q)",
+					seg.ID, model.StatusResolved,
+					model.StatusSatisfied, model.StatusViolated, model.StatusUnevaluable))
+			}
+
+			errs = append(errs, validateOutputSchema(&seg, lookups)...)
+
 			// Formulas are syntax-checked wherever they are declared. Gating
 			// this on the strategy used to mean a typo on a segment that never
 			// ran it was accepted, and a genuine typo on one that did became a
@@ -272,4 +291,91 @@ func CheckRequiredFields(seg *model.Segment, ctx map[string]interface{}) []model
 		}
 	}
 	return warnings
+}
+
+// validateOutputSchema checks a referenced lookup table exists, the object type
+// is confined to expression mode, and every Required field is actually authored.
+// Lookup membership and order uniqueness remain the author's invariants and are
+// deliberately not checked.
+func validateOutputSchema(seg *model.Segment, lookups map[string]model.LookupTable) []string {
+	var errs []string
+	for name, f := range seg.OutputSchema {
+		if f.Lookup != "" {
+			if _, ok := lookups[f.Lookup]; !ok {
+				errs = append(errs, fmt.Sprintf(
+					"segment %q output %q: lookup %q does not exist",
+					seg.ID, name, f.Lookup))
+			}
+		}
+		if f.Type == model.FieldTypeObject && f.EvalMode() != model.EvalExpression {
+			errs = append(errs, fmt.Sprintf(
+				"segment %q output %q: the object type requires eval \"expression\"",
+				seg.ID, name))
+		}
+		if f.EvalMode() == model.EvalExpression {
+			errs = append(errs, validateOutputExpressionSyntax(seg, name)...)
+		}
+		if f.Required {
+			errs = append(errs, requiredOutputErrors(seg, name)...)
+		}
+	}
+	return errs
+}
+
+// validateOutputExpressionSyntax syntax-checks every authored value for an
+// expression-mode output field, mirroring the existing formula check: a
+// segment-level value (the fallback every rule shares) and each top-level
+// rule's own value, wherever one is authored.
+func validateOutputExpressionSyntax(seg *model.Segment, name string) []string {
+	var errs []string
+	if v, ok := seg.Outputs[name]; ok && v != "" {
+		if _, err := expr.Compile(v); err != nil {
+			errs = append(errs, fmt.Sprintf("segment %q output %q: %v", seg.ID, name, err))
+		}
+	}
+	for i := range seg.Rules {
+		r := &seg.Rules[i]
+		if v, ok := r.Outputs[name]; ok && v != "" {
+			if _, err := expr.Compile(v); err != nil {
+				errs = append(errs, fmt.Sprintf("segment %q rule %q output %q: %v", seg.ID, r.RuleName, name, err))
+			}
+		}
+	}
+	return errs
+}
+
+// requiredOutputErrors reports every authoring path that would leave a required
+// output field unset.
+//
+// A segment-level value covers every path at once, which is the intended way to
+// satisfy a field that does not vary per item. Failing that, each enabled
+// top-level rule must set it — disabled rules are exempt so a work-in-progress
+// item cannot wedge an unrelated save. A declared Default has no rule to read
+// from at all (the default branch calls evaluateOutputs with nil item values),
+// so only a segment-level value can satisfy it.
+func requiredOutputErrors(seg *model.Segment, name string) []string {
+	if _, ok := seg.Outputs[name]; ok {
+		return nil
+	}
+
+	var errs []string
+	if seg.Default != "" {
+		errs = append(errs, fmt.Sprintf(
+			"segment %q output %q: required, and a default is declared, so it must be set in "+
+				"the segment's outputs — the default path reads no rule values",
+			seg.ID, name))
+	}
+	for i := range seg.Rules {
+		r := &seg.Rules[i]
+		if !r.IsEnabled() {
+			continue
+		}
+		if _, ok := r.Outputs[name]; !ok {
+			errs = append(errs, fmt.Sprintf(
+				"segment %q rule %q: required output %q has no value (set it on the rule, "+
+					"or once in the segment's outputs)",
+				seg.ID, r.RuleName, name))
+		}
+	}
+	return errs
 }
