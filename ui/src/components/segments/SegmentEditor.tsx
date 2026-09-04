@@ -3,7 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { useLayers } from '../../api/layers';
 import { useLookups } from '../../api/lookups';
 import { useUpdateSegment } from '../../api/segments';
-import type { Segment, StrategyType, InputSchema } from '../../api/types';
+import type { Segment, StrategyType, InputSchema, OutputField } from '../../api/types';
 import StrategyPicker from './StrategyPicker';
 import StaticConfig from './StaticConfig';
 import PercentageConfig from './PercentageConfig';
@@ -16,7 +16,7 @@ import PromotionEditor from '../promotion/PromotionEditor';
 import InputSchemaEditor from '../schema/InputSchemaEditor';
 import OutputSchemaEditor from '../schema/OutputSchemaEditor';
 import EmittedFieldsReference from '../schema/EmittedFieldsReference';
-import { supportsOutputSchema } from '../schema/outputSchemaRules';
+import { fieldCoverage, supportsOutputSchema } from '../schema/outputSchemaRules';
 import ErrorBanner from '../common/ErrorBanner';
 import styles from './SegmentEditor.module.css';
 
@@ -45,6 +45,9 @@ export default function SegmentEditor() {
 
   const update = (partial: Partial<Segment>) =>
     setSeg((prev) => (prev ? { ...prev, ...partial } : prev));
+
+  const declareOutput = (name: string, field: OutputField) =>
+    update({ outputSchema: { ...(seg.outputSchema ?? {}), [name]: field } });
 
   const switchStrategy = (strategy: StrategyType) => {
     setSeg((prev) => {
@@ -134,6 +137,9 @@ export default function SegmentEditor() {
               value={seg.outputSchema}
               onChange={(s) => update({ outputSchema: s })}
               lookups={lookups ?? []}
+              segmentOutputs={seg.outputs}
+              onSegmentOutputsChange={(o) => update({ outputs: o })}
+              coverage={(name) => fieldCoverage(seg, name)}
             />
             <div style={{ marginTop: 12 }}>
               <EmittedFieldsReference />
@@ -210,6 +216,8 @@ export default function SegmentEditor() {
             ruleSchema={effectiveSchema(seg)}
             overrideSchema={seg.inputSchema}
             layerNames={layerNames}
+            outputSchema={seg.outputSchema}
+            onDeclareOutput={declareOutput}
             computedSlot={
               <div className="form-group">
                 <label>Computed Fields</label>
@@ -256,6 +264,8 @@ export default function SegmentEditor() {
                 layerNames={layerNames}
                 label="Checks"
                 perRuleMessages
+                outputSchema={seg.outputSchema}
+                onDeclareOutput={declareOutput}
                 hint={
                   'Each check states a condition that describes a problem; when it holds, its ' +
                   'message is reported. Drag the handle to reorder or regroup. And/Or build ' +

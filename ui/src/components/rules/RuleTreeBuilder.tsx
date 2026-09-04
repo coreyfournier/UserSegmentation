@@ -1,5 +1,5 @@
 import { useMemo, useRef, useState } from 'react';
-import type { Rule, InputSchema } from '../../api/types';
+import type { Rule, InputSchema, OutputField, OutputSchema } from '../../api/types';
 import RuleList from './RuleList';
 import { RuleDragContext, type RuleDragValue } from './RuleDragContext';
 import { moveRule, type RulePath } from './ruleTree';
@@ -17,6 +17,9 @@ interface Props {
   maxRules?: number;
   /** True when every rule reports its own message (checklist), not just the winner. */
   perRuleMessages?: boolean;
+  /** The segment's output schema. Present only when the segment declares one. */
+  outputSchema?: OutputSchema;
+  onDeclareOutput?: (name: string, field: OutputField) => void;
 }
 
 export default function RuleTreeBuilder({
@@ -28,6 +31,8 @@ export default function RuleTreeBuilder({
   hint,
   maxRules,
   perRuleMessages = false,
+  outputSchema,
+  onDeclareOutput,
 }: Props) {
   const [dragPath, setDragPath] = useState<RulePath | null>(null);
   // The source is also held in a ref because a drop can arrive before React
@@ -85,6 +90,8 @@ export default function RuleTreeBuilder({
           schema={schema}
           layerNames={layerNames}
           perRuleMessages={perRuleMessages}
+          outputSchema={outputSchema}
+          onDeclareOutput={onDeclareOutput}
         />
       </RuleDragContext.Provider>
       {!atCapacity && (

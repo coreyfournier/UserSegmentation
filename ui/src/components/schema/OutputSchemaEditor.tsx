@@ -7,6 +7,10 @@ interface Props {
   value?: OutputSchema;
   onChange: (s?: OutputSchema) => void;
   lookups: LookupTable[];
+  /** Values for fields that do not vary per item, and the segment's coverage. */
+  segmentOutputs?: Record<string, string>;
+  onSegmentOutputsChange?: (o?: Record<string, string>) => void;
+  coverage?: (name: string) => { authored: number; total: number; segmentLevel: boolean };
 }
 
 const MODES: EvalMode[] = ['literal', 'template', 'expression'];
@@ -17,7 +21,7 @@ const MODE_HINT: Record<EvalMode, string> = {
   expression: 'one whole expression, returning a typed value',
 };
 
-export default function OutputSchemaEditor({ value, onChange, lookups }: Props) {
+export default function OutputSchemaEditor({ value, onChange, lookups, segmentOutputs, onSegmentOutputsChange, coverage }: Props) {
   const schema = value ?? {};
   const entries = Object.entries(schema);
   const [newField, setNewField] = useState('');
@@ -83,7 +87,7 @@ export default function OutputSchemaEditor({ value, onChange, lookups }: Props) 
       <table className={styles.table}>
         <thead>
           <tr>
-            <th>Field</th><th>Eval</th><th>Type</th><th>Lookup</th><th>Required</th><th></th>
+            <th>Field</th><th>Eval</th><th>Type</th><th>Lookup</th><th>Required</th><th>Segment value</th><th></th>
           </tr>
         </thead>
         <tbody>
@@ -146,6 +150,34 @@ export default function OutputSchemaEditor({ value, onChange, lookups }: Props) 
                     title="Every reporting rule must author this field, or the segment must set it once. Enforced on save."
                   />
                 </td>
+                <td>
+                  {onSegmentOutputsChange && (
+                    <input
+                      value={segmentOutputs?.[name] ?? ''}
+                      onChange={(e) => {
+                        const next = { ...(segmentOutputs ?? {}) };
+                        if (e.target.value === '') delete next[name];
+                        else next[name] = e.target.value;
+                        onSegmentOutputsChange(Object.keys(next).length ? next : undefined);
+                      }}
+                      placeholder="set once for the segment"
+                      style={{ fontSize: 11 }}
+                    />
+                  )}
+                  {coverage && (() => {
+                    const c = coverage(name);
+                    if (c.segmentLevel) {
+                      return <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>set for the whole segment</div>;
+                    }
+                    const short = c.total - c.authored;
+                    return (
+                      <div style={{ fontSize: 10, color: short && f.required ? 'var(--danger, #ef4444)' : 'var(--text-muted)' }}>
+                        authored on {c.authored} of {c.total} checks
+                        {short && f.required ? ` — ${short} will block saving` : ''}
+                      </div>
+                    );
+                  })()}
+                </td>
                 <td><button className="btn-danger btn-sm" onClick={() => remove(name)}>x</button></td>
               </tr>
             );
@@ -172,7 +204,7 @@ export default function OutputSchemaEditor({ value, onChange, lookups }: Props) 
                 {newAllowed.map((t) => <option key={t} value={t}>{t}</option>)}
               </select>
             </td>
-            <td colSpan={2} style={{ fontSize: 10, color: 'var(--text-muted)' }}>{MODE_HINT[newMode]}</td>
+            <td colSpan={3} style={{ fontSize: 10, color: 'var(--text-muted)' }}>{MODE_HINT[newMode]}</td>
             <td><button className="btn-primary btn-sm" onClick={add}>+</button></td>
           </tr>
         </tbody>

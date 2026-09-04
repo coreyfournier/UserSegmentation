@@ -1,7 +1,8 @@
 import { useRef } from 'react';
-import type { Rule, InputSchema, CompositeOperator } from '../../api/types';
+import type { Rule, InputSchema, CompositeOperator, OutputField, OutputSchema } from '../../api/types';
 import ConditionEditor from './ConditionEditor';
 import MessagesEditor from './MessagesEditor';
+import OutputValuesEditor from './OutputValuesEditor';
 import RuleList from './RuleList';
 import { useRuleDrag } from './RuleDragContext';
 import { describeRule, samePath, type RulePath } from './ruleTree';
@@ -23,9 +24,12 @@ interface Props {
   layerNames?: string[];
   /** True when every rule reports its own message (checklist), not just the winner. */
   perRuleMessages?: boolean;
+  /** The segment's output schema. Present only when the segment declares one. */
+  outputSchema?: OutputSchema;
+  onDeclareOutput?: (name: string, field: OutputField) => void;
 }
 
-export default function RuleNode({ rule, path, onChange, onDelete, index, total, onMove, depth = 0, schema, layerNames, perRuleMessages = false }: Props) {
+export default function RuleNode({ rule, path, onChange, onDelete, index, total, onMove, depth = 0, schema, layerNames, perRuleMessages = false, outputSchema, onDeclareOutput }: Props) {
   const color = DEPTH_COLORS[depth % DEPTH_COLORS.length];
   const isLeaf = !!rule.condition;
 
@@ -183,6 +187,17 @@ export default function RuleNode({ rule, path, onChange, onDelete, index, total,
         </div>
       )}
 
+      {/* Only a reporting rule emits a record, so only a reporting rule gets
+          output values. An inner And/Or branch never reports. */}
+      {outputSchema && onDeclareOutput && (perRuleMessages || !isLeaf) && (
+        <OutputValuesEditor
+          outputs={rule.outputs}
+          schema={outputSchema}
+          onChange={(o) => onChange({ ...rule, outputs: o })}
+          onDeclare={onDeclareOutput}
+        />
+      )}
+
       {/* Under first-match strategies only the winning top-level rule's message
           is ever rendered, so nested editors would be dead config. A checklist
           is the opposite: every check that fires carries its own message. */}
@@ -209,6 +224,8 @@ export default function RuleNode({ rule, path, onChange, onDelete, index, total,
             schema={schema}
             layerNames={layerNames}
             perRuleMessages={perRuleMessages}
+            outputSchema={outputSchema}
+            onDeclareOutput={onDeclareOutput}
           />
           <div className={styles.addButtons}>
             <button className="btn-ghost btn-sm" onClick={addLeaf}>+ Add Check</button>

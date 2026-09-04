@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import type { Rule, InputSchema } from '../../api/types';
+import type { Rule, InputSchema, OutputField, OutputSchema } from '../../api/types';
 import RuleTreeBuilder from '../rules/RuleTreeBuilder';
 import MessagesEditor from '../rules/MessagesEditor';
 
@@ -19,6 +19,9 @@ interface Props {
   layerNames?: string[];
   /** Computed-fields editor, rendered between overrides and rules. */
   computedSlot?: ReactNode;
+  /** The segment's output schema. Present only when the segment declares one. Applies to rules only — not overrides. */
+  outputSchema?: OutputSchema;
+  onDeclareOutput?: (name: string, field: OutputField) => void;
 }
 
 // Sections are laid out top-to-bottom in evaluation order:
@@ -36,6 +39,8 @@ export default function RuleConfig({
   overrideSchema,
   layerNames,
   computedSlot,
+  outputSchema,
+  onDeclareOutput,
 }: Props) {
   return (
     <div>
@@ -62,6 +67,8 @@ export default function RuleConfig({
           schema={ruleSchema}
           layerNames={layerNames}
           label="Rules"
+          outputSchema={outputSchema}
+          onDeclareOutput={onDeclareOutput}
         />
       </div>
 

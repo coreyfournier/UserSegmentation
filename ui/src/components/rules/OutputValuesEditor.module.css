@@ -1,0 +1,22 @@
+.grid {
+  display: grid;
+  grid-template-columns: minmax(90px, auto) 1fr;
+  gap: 4px 8px;
+  align-items: start;
+  margin-top: 6px;
+}
+.name {
+  font-size: 11px;
+  color: var(--text-muted);
+  padding-top: 5px;
+}
+.err {
+  font-size: 10px;
+  color: var(--danger, #ef4444);
+}
+.addRow {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  margin-top: 6px;
+}
