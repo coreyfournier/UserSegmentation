@@ -91,6 +91,16 @@ export default function ResultDisplay({ result }: Props) {
                       ))}
                     </div>
                   )}
+                  {f.outputs && Object.keys(f.outputs).length > 0 && (
+                    <div className={styles.outputs}>
+                      {Object.entries(f.outputs).map(([k, v]) => (
+                        <div key={k} className={styles.output}>
+                          <code>{k}</code>
+                          <span>{typeof v === 'object' && v !== null ? JSON.stringify(v) : String(v)}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </li>
               ))}
             </ul>
@@ -110,6 +120,16 @@ export default function ResultDisplay({ result }: Props) {
                 <div key={lang} className={styles.message}>
                   <span className={styles.lang}>{lang}</span>
                   <span>{text}</span>
+                </div>
+              ))}
+            </div>
+          )}
+          {lr.outputs && Object.keys(lr.outputs).length > 0 && (
+            <div className={styles.outputs}>
+              {Object.entries(lr.outputs).map(([k, v]) => (
+                <div key={k} className={styles.output}>
+                  <code>{k}</code>
+                  <span>{typeof v === 'object' && v !== null ? JSON.stringify(v) : String(v)}</span>
                 </div>
               ))}
             </div>
