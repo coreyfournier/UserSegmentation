@@ -1448,6 +1448,56 @@ git commit -m "feat: resolve declared outputs on the override path"
 
 ---
 
+### Task 8: Enforce declared output names and types
+
+**Why.** The output schema exists so an implementer knows what to expect, which only works if the declaration is binding. Two ways it currently is not:
+
+- **Names are advisory.** `evaluateOutputs` iterates the *schema*, so an authored key that is not declared is silently dropped. `outputs: {"catgeory": "x"}` against a `category` field vanishes with no diagnostic at load or runtime. This is the same class as the unknown-strategy rejection at `validator.go:31` — config that can never do anything — not the lookup-membership class the no-guarding decision deliberately leaves alone.
+- **`Type` is decorative outside `object`.** Literal mode assigns the authored string verbatim and template mode always produces a string, so `{"rank": {"type": "number"}}` with `outputs: {"rank": "3"}` emits the JSON *string* `"3"`. A consumer generating types from `GET /v1/segments` mis-types every non-string field — which undercuts using the config as the catalog.
+
+**The rule.** What is enforceable depends on the eval mode, so state it per mode:
+
+| Mode | Declared type | Enforcement |
+| --- | --- | --- |
+| `literal` | any scalar | the authored value must parse as that type at load, **and is emitted as that type** |
+| `template` | must be `string` | rejected at load otherwise — a template cannot produce anything else |
+| `expression` | any, incl. `object` | not statically checkable; the expression's runtime value is trusted |
+
+`array` and `object` are not expressible as a literal or a template, so they require `expression` mode — `object` already did.
+
+**Files:**
+- Modify: `internal/domain/validation/validator.go` (`validateOutputSchema`, and the shared authoring-site walk)
+- Modify: `internal/domain/strategy/output.go` (`evaluateOutputs`, literal branch)
+- Test: `internal/domain/validation/output_test.go`, `internal/domain/strategy/output_test.go`
+
+**Interfaces:**
+- Consumes: `model.OutputField{Type, Eval, Lookup, Required}`, `model.FieldType*` constants, the authoring-site helper added when the final-review fixes de-duplicated `requiredOutputErrors` and `validateOutputExpressionSyntax`.
+- Produces: no new exported names.
+
+- [ ] **Step 1: Write the failing tests**
+
+Validation: an authored key absent from the schema is rejected, naming the key and the segment; a literal `"3"` declared `number` validates; a literal `"high"` declared `number` is rejected; a non-`string` type in `template` mode is rejected; `array`/`object` outside `expression` mode is rejected; a lookup-bound field whose declared type differs from the table's `KeyType` is rejected, mirroring the existing `validateLookupRef` check for conditions.
+
+Emission: a literal declared `number` emits a JSON number, not a string; likewise `boolean`. Assert on the concrete Go type, not just the rendered text.
+
+- [ ] **Step 2: Confirm they fail**
+
+- [ ] **Step 3: Add the checks and the coercion**
+
+Reuse the authoring-site walk so name checking covers the segment tier, enabled top-level rules and enabled overrides in one place. Coerce with `strconv.ParseFloat` / `ParseBool` in the literal branch of `evaluateOutputs`; a parse failure there degrades like any other failed value — record a `RenderError` naming the field, omit it, keep the result — because config validation should already have caught it and a runtime surprise must not fail the evaluation.
+
+Skip all of this for `static` and `percentage`, consistent with their exemption from `Required`: those strategies emit no record, so nothing they declare is binding.
+
+**One thing this fixes as a side effect.** A lookup-bound field with a numeric `KeyType` currently compares an authored string against numeric entry keys and never matches, so it emits a bare key with no `value` or `order`. Coercing the literal first makes the comparison work.
+
+- [ ] **Step 4: Run the full suite and build**
+
+`go build ./... && go vet ./... && go test ./...`, including `TestShippedConfig_LoadsAndValidates`.
+
+- [ ] **Step 5: Commit**
+
+---
+
 ## Out of scope for this plan
 
 - **UI editors.** The output schema editor, per-item value editors, lookup order authoring, the two table flags and the drag-disable behaviour are a separate plan against `ui/`. This plan makes the fields exist and be exercisable through `POST /v1/evaluate` and the admin lookup endpoints.
