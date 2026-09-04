@@ -35,12 +35,12 @@ func evaluateOutputs(seg *model.Segment, itemOutputs map[string]string, ctx *Eva
 		case model.EvalExpression:
 			fn, err := compileFormula(raw)
 			if err != nil {
-				errs = append(errs, RenderError{Token: raw, Err: err.Error()})
+				errs = append(errs, RenderError{Field: name, Token: raw, Err: err.Error()})
 				continue
 			}
 			v, err := fn(ctx.Context)
 			if err != nil {
-				errs = append(errs, RenderError{Token: raw, Err: err.Error()})
+				errs = append(errs, RenderError{Field: name, Token: raw, Err: err.Error()})
 				continue
 			}
 			value = v
@@ -49,6 +49,7 @@ func evaluateOutputs(seg *model.Segment, itemOutputs map[string]string, ctx *Eva
 			if len(bad) > 0 {
 				for _, te := range bad {
 					errs = append(errs, RenderError{
+						Field:    name,
 						Language: ctx.DefaultLanguage,
 						Token:    te.token,
 						Err:      te.err,

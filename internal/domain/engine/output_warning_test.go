@@ -1,6 +1,7 @@
 package engine
 
 import (
+	"strings"
 	"testing"
 	"time"
 
@@ -131,6 +132,12 @@ func TestRequiredOutput_PresentProducesNoWarning(t *testing.T) {
 // computed-enriched context. The warning instead fires when the override's
 // own output *expression* fails at runtime and the field is dropped — here,
 // a deliberately unparseable expression authored on the override.
+//
+// The underlying segment is a rule segment, not static: Finding 3 exempts
+// static/percentage segments from required-output enforcement entirely
+// (neither ever populates Result.Outputs), so this must be a strategy the
+// exemption does not reach — otherwise the test would pass by accident,
+// exercising the exemption instead of the override path it names.
 func TestRequiredOutput_OverrideOutputExpressionFailsWarns(t *testing.T) {
 	snap := &model.Snapshot{
 		Layers: []model.Layer{
@@ -139,8 +146,8 @@ func TestRequiredOutput_OverrideOutputExpressionFailsWarns(t *testing.T) {
 				Segments: []model.Segment{
 					{
 						ID:       "seg",
-						Strategy: "static",
-						Static:   &model.StaticConfig{Default: "normal"},
+						Strategy: model.StrategyRule,
+						Default:  "normal",
 						OutputSchema: model.OutputSchema{
 							"category": model.OutputField{Type: model.FieldTypeString, Required: true, Eval: model.EvalExpression},
 						},
@@ -184,6 +191,11 @@ func TestRequiredOutput_OverrideOutputExpressionFailsWarns(t *testing.T) {
 // An override that *does* successfully author its required output produces
 // no warning — pinning the other side of the Task 7 change: overrides are no
 // longer a blanket source of missing-output warnings just for winning.
+//
+// The underlying segment is a rule segment, not static, for the same reason
+// as TestRequiredOutput_OverrideOutputExpressionFailsWarns above: a static
+// segment is now exempt from required-output enforcement (Finding 3), so
+// this must exercise a strategy the exemption does not reach.
 func TestRequiredOutput_OverrideAuthoredOutputNoWarning(t *testing.T) {
 	snap := &model.Snapshot{
 		Layers: []model.Layer{
@@ -192,8 +204,8 @@ func TestRequiredOutput_OverrideAuthoredOutputNoWarning(t *testing.T) {
 				Segments: []model.Segment{
 					{
 						ID:       "seg",
-						Strategy: "static",
-						Static:   &model.StaticConfig{Default: "normal"},
+						Strategy: model.StrategyRule,
+						Default:  "normal",
 						OutputSchema: model.OutputSchema{
 							"category": model.OutputField{Type: model.FieldTypeString, Required: true},
 						},
@@ -328,6 +340,60 @@ func TestRequiredOutput_ChecklistUnevaluableNoWarning(t *testing.T) {
 
 	if _, found := findWarning(result.Warnings, "category"); found {
 		t.Errorf("expected no warning for an unevaluable checklist, got %v", result.Warnings)
+	}
+}
+
+// Finding 4: an output field that fails to resolve must name itself in the
+// warning, distinct from a message-template render error. Before the fix,
+// every RenderError — output or message alike — was formatted as "message
+// render error in %q", pointing a caller at message templates that were
+// never involved when it was actually an output field that vanished.
+func TestRequiredOutput_FailedExpressionNamesTheField(t *testing.T) {
+	snap := &model.Snapshot{
+		Layers: []model.Layer{
+			{
+				Name: "test",
+				Segments: []model.Segment{
+					{
+						ID:       "seg",
+						Strategy: model.StrategyRule,
+						OutputSchema: model.OutputSchema{
+							"diagnosis": model.OutputField{Type: model.FieldTypeString, Eval: model.EvalExpression},
+						},
+						Rules: []model.Rule{
+							{
+								RuleName:     "matches",
+								SuccessEvent: "matched",
+								Condition:    &model.Condition{Field: "plan", Operator: model.OpEq, Value: "enterprise"},
+								Outputs:      map[string]string{"diagnosis": "amount *"}, // unparseable at runtime
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	e := requiredOutputEvaluator()
+	result := e.Evaluate(snap, "user", map[string]interface{}{"plan": "enterprise"}, nil, nil, false, time.Now())
+
+	lr, ok := result.Layers["test"]
+	if !ok {
+		t.Fatal("expected the layer to report a result")
+	}
+	if _, present := lr.Assignment.Outputs["diagnosis"]; present {
+		t.Fatalf("expected the failed expression to drop the field, got %v", lr.Assignment.Outputs)
+	}
+
+	w, found := findWarning(result.Warnings, "diagnosis")
+	if !found {
+		t.Fatalf("expected a warning naming the failed output field %q, got %v", "diagnosis", result.Warnings)
+	}
+	if !strings.Contains(w.Message, `output "diagnosis" failed to resolve`) {
+		t.Fatalf("expected the warning to name the output field distinctly from a message render error, got %q", w.Message)
+	}
+	if strings.Contains(w.Message, "message render error") {
+		t.Fatalf("an output failure must not be reported as a message render error, got %q", w.Message)
 	}
 }
 

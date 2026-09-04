@@ -304,6 +304,18 @@ func CheckRequiredFields(seg *model.Segment, ctx map[string]interface{}) []model
 // dropped, which is deliberate degradation and not recoverable at load. So the
 // caller is told and decides.
 func CheckRequiredOutputs(seg *model.Segment, a *model.Assignment, failures []model.Failure) []model.Warning {
+	// Output-schema enforcement does not apply to the static or percentage
+	// strategies: neither ever populates Result.Outputs, so a required field
+	// on one of them would warn on every evaluation with no config change
+	// able to silence it (see requiredOutputErrors). The exception is an
+	// override that fired — identified by a.Strategy == "override" — because
+	// an override does resolve outputs even on a static/percentage segment,
+	// and should still be checked like any other override.
+	if (seg.Strategy == model.StrategyStatic || seg.Strategy == model.StrategyPercentage) &&
+		(a == nil || a.Strategy != "override") {
+		return nil
+	}
+
 	var required []string
 	for name, f := range seg.OutputSchema {
 		if f.Required {
@@ -392,32 +404,86 @@ func validateOutputSchema(seg *model.Segment, lookups map[string]model.LookupTab
 	return errs
 }
 
-// validateOutputExpressionSyntax syntax-checks every authored value for an
-// expression-mode output field, mirroring the existing formula check: a
-// segment-level value (the fallback every rule shares) and each top-level
-// rule's own value, wherever one is authored.
-func validateOutputExpressionSyntax(seg *model.Segment, name string) []string {
-	var errs []string
-	if v, ok := seg.Outputs[name]; ok && v != "" {
-		if _, err := expr.Compile(v); err != nil {
-			errs = append(errs, fmt.Sprintf("segment %q output %q: %v", seg.ID, name, err))
-		}
-	}
+// outputAuthoringSiteKind identifies where an output field's value was (or
+// could have been) authored.
+type outputAuthoringSiteKind int
+
+const (
+	siteSegment outputAuthoringSiteKind = iota
+	siteRule
+	siteOverride
+)
+
+// outputAuthoringSite is one place a field's value can be authored: the
+// segment-level fallback every rule shares, or one enabled top-level rule's
+// or override's own value. name is the rule's/override's RuleName; it is
+// empty for the segment-level site.
+//
+// ok mirrors evaluateOutputs' own presence check exactly (strategy/output.go):
+// a value only counts as authored when the key is present *and* non-empty. A
+// gate that tested key presence alone could be satisfied by a bare empty
+// string, which the runtime treats as unauthored — silently exempting every
+// rule and override in the segment from a required-field check that looks
+// like it passed.
+type outputAuthoringSite struct {
+	kind  outputAuthoringSiteKind
+	name  string
+	value string
+	ok    bool
+}
+
+// outputAuthoringSites enumerates every place field could be authored on seg,
+// in a fixed order: the segment-level site first, then each enabled top-level
+// rule, then each enabled override. Disabled rules and overrides are omitted
+// entirely so a work-in-progress item cannot wedge an unrelated save — the
+// same exemption requiredOutputErrors and validateOutputExpressionSyntax have
+// always applied, now enforced in one place instead of twice.
+func outputAuthoringSites(seg *model.Segment, field string) []outputAuthoringSite {
+	sites := make([]outputAuthoringSite, 0, 1+len(seg.Rules)+len(seg.Overrides))
+
+	v, ok := seg.Outputs[field]
+	sites = append(sites, outputAuthoringSite{kind: siteSegment, value: v, ok: ok && v != ""})
+
 	for i := range seg.Rules {
 		r := &seg.Rules[i]
-		// Once a check walks per-rule config, a parked rule holding a
-		// half-written expression would otherwise wedge every other
-		// segment's save through commitSnapshot — the exact failure the
-		// required-field gate (requiredOutputErrors) already avoids by
-		// skipping disabled rules. A disabled rule's broken expression
-		// becomes an error the moment it is re-enabled, which is the
-		// right time to report it.
 		if !r.IsEnabled() {
 			continue
 		}
-		if v, ok := r.Outputs[name]; ok && v != "" {
-			if _, err := expr.Compile(v); err != nil {
-				errs = append(errs, fmt.Sprintf("segment %q rule %q output %q: %v", seg.ID, r.RuleName, name, err))
+		v, ok := r.Outputs[field]
+		sites = append(sites, outputAuthoringSite{kind: siteRule, name: r.RuleName, value: v, ok: ok && v != ""})
+	}
+
+	for i := range seg.Overrides {
+		r := &seg.Overrides[i]
+		if !r.IsEnabled() {
+			continue
+		}
+		v, ok := r.Outputs[field]
+		sites = append(sites, outputAuthoringSite{kind: siteOverride, name: r.RuleName, value: v, ok: ok && v != ""})
+	}
+
+	return sites
+}
+
+// validateOutputExpressionSyntax syntax-checks every authored value for an
+// expression-mode output field, mirroring the existing formula check: a
+// segment-level value (the fallback every rule shares), each enabled
+// top-level rule's own value, and each enabled override's own value, wherever
+// one is authored.
+func validateOutputExpressionSyntax(seg *model.Segment, name string) []string {
+	var errs []string
+	for _, s := range outputAuthoringSites(seg, name) {
+		if !s.ok {
+			continue
+		}
+		if _, err := expr.Compile(s.value); err != nil {
+			switch s.kind {
+			case siteSegment:
+				errs = append(errs, fmt.Sprintf("segment %q output %q: %v", seg.ID, name, err))
+			case siteRule:
+				errs = append(errs, fmt.Sprintf("segment %q rule %q output %q: %v", seg.ID, s.name, name, err))
+			case siteOverride:
+				errs = append(errs, fmt.Sprintf("segment %q override %q output %q: %v", seg.ID, s.name, name, err))
 			}
 		}
 	}
@@ -435,45 +501,52 @@ func validateOutputExpressionSyntax(seg *model.Segment, name string) []string {
 // so a work-in-progress item cannot wedge an unrelated save. A declared Default
 // has no rule to read from at all (the default branch calls evaluateOutputs
 // with nil item values), so only a segment-level value can satisfy it.
+//
+// Output-schema enforcement does not apply to the static or percentage
+// strategies: neither ever populates Result.Outputs (only the rule and
+// checklist paths do), so a required field on one of them is unsatisfiable no
+// matter what is authored, and would warn on every evaluation with no config
+// change able to silence it. Rather than reject config that can never be
+// satisfied, these strategies are simply exempted from enforcement.
 func requiredOutputErrors(seg *model.Segment, name string) []string {
-	if _, ok := seg.Outputs[name]; ok {
+	if seg.Strategy == model.StrategyStatic || seg.Strategy == model.StrategyPercentage {
+		return nil
+	}
+
+	sites := outputAuthoringSites(seg, name)
+
+	// sites[0] is always the segment-level site: a value there satisfies
+	// every rule and override at once.
+	if sites[0].ok {
 		return nil
 	}
 
 	var errs []string
 	// Only the rule strategy reads Segment.Default: a checklist delegates to
 	// RuleStrategy but returns from collectViolations before the default
-	// branch, and the static strategy uses its own Static.Default field. So a
-	// checklist (or static segment) carrying a stray, inert Default must not
-	// be gated here — it is never evaluated.
+	// branch. So a checklist carrying a stray, inert Default must not be
+	// gated here — it is never evaluated.
 	if seg.Default != "" && seg.Strategy == model.StrategyRule {
 		errs = append(errs, fmt.Sprintf(
 			"segment %q output %q: required, and a default is declared, so it must be set in "+
 				"the segment's outputs — the default path reads no rule values",
 			seg.ID, name))
 	}
-	for i := range seg.Rules {
-		r := &seg.Rules[i]
-		if !r.IsEnabled() {
+	for _, s := range sites[1:] {
+		if s.ok {
 			continue
 		}
-		if _, ok := r.Outputs[name]; !ok {
+		switch s.kind {
+		case siteRule:
 			errs = append(errs, fmt.Sprintf(
 				"segment %q rule %q: required output %q has no value (set it on the rule, "+
 					"or once in the segment's outputs)",
-				seg.ID, r.RuleName, name))
-		}
-	}
-	for i := range seg.Overrides {
-		r := &seg.Overrides[i]
-		if !r.IsEnabled() {
-			continue
-		}
-		if _, ok := r.Outputs[name]; !ok {
+				seg.ID, s.name, name))
+		case siteOverride:
 			errs = append(errs, fmt.Sprintf(
 				"segment %q override %q: required output %q has no value (set it on the "+
 					"override, or once in the segment's outputs)",
-				seg.ID, r.RuleName, name))
+				seg.ID, s.name, name))
 		}
 	}
 	return errs

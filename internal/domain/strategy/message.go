@@ -8,11 +8,16 @@ import (
 	"github.com/expr-lang/expr"
 )
 
-// RenderError describes a failed ${ ... } token interpolation in a message.
+// RenderError describes a failed ${ ... } token interpolation in a message, or
+// a failed output field resolution. Field is set only for the latter: it
+// names the output field whose value could not be resolved, so a caller
+// debugging a diagnostics segment learns which field vanished instead of
+// being pointed at message templates that were never involved.
 type RenderError struct {
 	Language string `json:"language"`
 	Token    string `json:"token"`
 	Err      string `json:"err"`
+	Field    string `json:"field,omitempty"`
 }
 
 // RenderResult holds rendered messages keyed by language and any interpolation errors.

@@ -359,12 +359,26 @@ func unresolvedStatus(layer *model.Layer) model.LayerStatus {
 }
 
 // renderWarnings converts message render errors into layer warnings.
+//
+// An error with Field set came from resolving an output field (evaluateOutputs
+// in strategy/output.go), not from rendering a message template — it gets a
+// distinct message naming the field, so a caller debugging a diagnostics
+// segment learns which output field vanished instead of being pointed at
+// message templates that were never involved.
 func renderWarnings(segmentID string, errs []strategy.RenderError) []model.Warning {
 	if len(errs) == 0 {
 		return nil
 	}
 	warnings := make([]model.Warning, 0, len(errs))
 	for _, re := range errs {
+		if re.Field != "" {
+			warnings = append(warnings, model.Warning{
+				Segment: segmentID,
+				Field:   re.Field,
+				Message: fmt.Sprintf("output %q failed to resolve: %s", re.Field, re.Err),
+			})
+			continue
+		}
 		warnings = append(warnings, model.Warning{
 			Segment: segmentID,
 			Field:   re.Language,
