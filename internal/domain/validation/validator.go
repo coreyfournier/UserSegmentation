@@ -323,9 +323,19 @@ func CheckRequiredOutputs(seg *model.Segment, a *model.Assignment, failures []mo
 		})
 	}
 
-	// A checklist reports per item, so each finding is checked separately —
-	// one item's expression can fail while its siblings resolve.
-	if len(failures) > 0 {
+	// Where outputs live depends on the strategy, not on whether anything
+	// happened to be reported. A checklist's ChecklistStrategy never populates
+	// Result.Outputs — and so never populates Assignment.Outputs — because its
+	// outputs live per-Failure instead; every other strategy sets them on the
+	// Assignment. Branching on len(failures) > 0 got this backwards: a
+	// satisfied checklist (nothing violated) or an unevaluable one (a computed
+	// field's formula failed, so collectViolations never ran) both report zero
+	// failures and would fall through to the a.Outputs[name] check below, which
+	// is structurally always empty for a checklist — spuriously warning on
+	// every healthy evaluation. And the "a == nil" guard below cannot catch
+	// this: ChecklistStrategy.Evaluate always succeeds, so evaluateLayer always
+	// builds a non-nil lr.Assignment for it, checklist or not.
+	if seg.Strategy == model.StrategyChecklist {
 		for _, f := range failures {
 			for _, name := range required {
 				if _, ok := f.Outputs[name]; !ok {

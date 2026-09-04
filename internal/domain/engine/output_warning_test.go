@@ -174,3 +174,166 @@ func TestRequiredOutput_OverrideWinsWarns(t *testing.T) {
 		t.Errorf("expected warning segment %q, got %q", "seg", w.Segment)
 	}
 }
+
+// A satisfied checklist — the rule's condition never holds, so nothing fires —
+// must not warn. Outputs for a checklist live per-Failure; with zero findings
+// the per-finding loop simply never runs. Before the fix, CheckRequiredOutputs
+// branched on len(failures) > 0 and fell through to checking a.Outputs[name]
+// on the Assignment, which is structurally always empty for a checklist —
+// producing a spurious warning on every healthy, satisfied evaluation.
+func TestRequiredOutput_ChecklistSatisfiedNoWarning(t *testing.T) {
+	snap := &model.Snapshot{
+		Layers: []model.Layer{
+			{
+				Name: "checks",
+				Segments: []model.Segment{
+					{
+						ID:       "gates",
+						Strategy: model.StrategyChecklist,
+						OutputSchema: model.OutputSchema{
+							"category": model.OutputField{Type: model.FieldTypeString, Required: true},
+						},
+						Rules: []model.Rule{
+							{
+								RuleName:     "no-days-worked",
+								ErrorMessage: "no days worked",
+								Condition:    &model.Condition{Field: "totalHours", Operator: model.OpEq, Value: 0},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	e := requiredOutputEvaluator()
+	result := e.Evaluate(snap, "user", map[string]interface{}{"totalHours": 40}, nil, nil, false, time.Now())
+
+	lr, ok := result.Layers["checks"]
+	if !ok {
+		t.Fatal("expected the layer to report a result")
+	}
+	if lr.Status != model.StatusSatisfied {
+		t.Fatalf("expected status %q, got %q", model.StatusSatisfied, lr.Status)
+	}
+	if len(lr.Failures) != 0 {
+		t.Fatalf("expected zero failures, got %d", len(lr.Failures))
+	}
+
+	if _, found := findWarning(result.Warnings, "category"); found {
+		t.Errorf("expected no warning for a satisfied checklist, got %v", result.Warnings)
+	}
+}
+
+// An unevaluable checklist — a computed field's formula fails at runtime, so
+// collectViolations never runs and reports zero findings — must not warn
+// either, for the same reason: no record came back short because nothing was
+// reported at all.
+func TestRequiredOutput_ChecklistUnevaluableNoWarning(t *testing.T) {
+	snap := &model.Snapshot{
+		Layers: []model.Layer{
+			{
+				Name: "checks",
+				Segments: []model.Segment{
+					{
+						ID:       "gates",
+						Strategy: model.StrategyChecklist,
+						OutputSchema: model.OutputSchema{
+							"category": model.OutputField{Type: model.FieldTypeString, Required: true},
+						},
+						Computed: []model.ComputedField{
+							{Name: "utilization", Type: model.FieldTypeNumber, Formula: "advanceTaken / advanceLimit"},
+						},
+						Rules: []model.Rule{
+							{
+								RuleName:     "over-limit",
+								ErrorMessage: "over limit",
+								Condition:    &model.Condition{Field: "utilization", Operator: model.OpGt, Value: 1},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	e := requiredOutputEvaluator()
+	result := e.Evaluate(snap, "user", map[string]interface{}{}, nil, nil, false, time.Now())
+
+	lr, ok := result.Layers["checks"]
+	if !ok {
+		t.Fatal("expected the layer to report a result")
+	}
+	if lr.Status != model.StatusUnevaluable {
+		t.Fatalf("expected status %q, got %q", model.StatusUnevaluable, lr.Status)
+	}
+	if len(lr.Failures) != 0 {
+		t.Fatalf("expected zero failures, got %d", len(lr.Failures))
+	}
+
+	if _, found := findWarning(result.Warnings, "category"); found {
+		t.Errorf("expected no warning for an unevaluable checklist, got %v", result.Warnings)
+	}
+}
+
+// Three or more required output fields absent from a reported finding must
+// produce warnings in deterministic, alphabetical order — not whatever order
+// Go's randomized map iteration happens to yield. The field names are chosen
+// so their alphabetical order ("alpha", "mike", "zulu") differs from their
+// declaration order below; without sort.Strings in CheckRequiredOutputs this
+// test would be flaky, failing whenever map iteration did not land on
+// alphabetical order by chance.
+func TestRequiredOutput_MultipleMissingFieldsAreSortedDeterministically(t *testing.T) {
+	snap := &model.Snapshot{
+		Layers: []model.Layer{
+			{
+				Name: "checks",
+				Segments: []model.Segment{
+					{
+						ID:       "gates",
+						Strategy: model.StrategyChecklist,
+						OutputSchema: model.OutputSchema{
+							"zulu":  model.OutputField{Type: model.FieldTypeString, Required: true},
+							"alpha": model.OutputField{Type: model.FieldTypeString, Required: true},
+							"mike":  model.OutputField{Type: model.FieldTypeString, Required: true},
+						},
+						Rules: []model.Rule{
+							{
+								RuleName:     "no-days-worked",
+								ErrorMessage: "no days worked",
+								Condition:    &model.Condition{Field: "totalHours", Operator: model.OpEq, Value: 0},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	e := requiredOutputEvaluator()
+	result := e.Evaluate(snap, "user", map[string]interface{}{"totalHours": 0}, nil, nil, false, time.Now())
+
+	lr, ok := result.Layers["checks"]
+	if !ok {
+		t.Fatal("expected the layer to report a result")
+	}
+	if len(lr.Failures) != 1 {
+		t.Fatalf("expected one failure, got %d", len(lr.Failures))
+	}
+
+	var gotFields []string
+	for _, w := range result.Warnings {
+		if w.Segment == "gates" {
+			gotFields = append(gotFields, w.Field)
+		}
+	}
+	want := []string{"alpha", "mike", "zulu"}
+	if len(gotFields) != len(want) {
+		t.Fatalf("expected %d warnings, got %d: %v", len(want), len(gotFields), gotFields)
+	}
+	for i := range want {
+		if gotFields[i] != want[i] {
+			t.Fatalf("expected warnings in alphabetical order %v, got %v", want, gotFields)
+		}
+	}
+}
