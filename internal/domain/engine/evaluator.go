@@ -169,6 +169,7 @@ func (e *Evaluator) evaluateLayer(layer *model.Layer, subjectKey string, ctx map
 					Messages: res.Messages,
 				}
 				lr.Warnings = append(lr.Warnings, renderWarnings(seg.ID, res.RenderErrors)...)
+				lr.Warnings = append(lr.Warnings, validation.CheckRequiredOutputs(seg, lr.Assignment, nil)...)
 				return lr
 			}
 		}
@@ -201,6 +202,7 @@ func (e *Evaluator) evaluateLayer(layer *model.Layer, subjectKey string, ctx map
 				Outputs:  res.Outputs,
 			}
 			lr.Warnings = append(lr.Warnings, renderWarnings(seg.ID, res.RenderErrors)...)
+			lr.Warnings = append(lr.Warnings, validation.CheckRequiredOutputs(seg, lr.Assignment, lr.Failures)...)
 			return lr
 		}
 	}

@@ -2,6 +2,7 @@ package validation
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 
 	"github.com/expr-lang/expr"
@@ -288,6 +289,63 @@ func CheckRequiredFields(seg *model.Segment, ctx map[string]interface{}) []model
 					Message: "required field missing from context",
 				})
 			}
+		}
+	}
+	return warnings
+}
+
+// CheckRequiredOutputs returns warnings for required output fields absent from
+// what a segment actually emitted.
+//
+// Config validation already rejects a required field no authoring path supplies,
+// so reaching here means something ran and the value still did not arrive: an
+// expression failed and the field was dropped, or an override resolved the
+// segment and overrides compute no outputs. Neither is recoverable at load, so
+// the caller is told and decides.
+func CheckRequiredOutputs(seg *model.Segment, a *model.Assignment, failures []model.Failure) []model.Warning {
+	var required []string
+	for name, f := range seg.OutputSchema {
+		if f.Required {
+			required = append(required, name)
+		}
+	}
+	if len(required) == 0 {
+		return nil
+	}
+	sort.Strings(required) // stable output; map iteration is not ordered
+
+	var warnings []model.Warning
+	missing := func(field, detail string) {
+		warnings = append(warnings, model.Warning{
+			Segment: seg.ID,
+			Field:   field,
+			Message: "required output field absent from emitted record: " + detail,
+		})
+	}
+
+	// A checklist reports per item, so each finding is checked separately —
+	// one item's expression can fail while its siblings resolve.
+	if len(failures) > 0 {
+		for _, f := range failures {
+			for _, name := range required {
+				if _, ok := f.Outputs[name]; !ok {
+					missing(name, fmt.Sprintf("finding %q did not emit it", f.Rule))
+				}
+			}
+		}
+		return warnings
+	}
+
+	if a == nil {
+		return nil // nothing reported, so no record is missing anything
+	}
+	for _, name := range required {
+		if _, ok := a.Outputs[name]; !ok {
+			detail := "the segment did not emit it"
+			if a.Strategy == "override" {
+				detail = "an override resolved this segment, and overrides compute no outputs"
+			}
+			missing(name, detail)
 		}
 	}
 	return warnings
