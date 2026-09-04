@@ -188,8 +188,15 @@ export default function RuleNode({ rule, path, onChange, onDelete, index, total,
       )}
 
       {/* Only a reporting rule emits a record, so only a reporting rule gets
-          output values. An inner And/Or branch never reports. */}
-      {outputSchema && onDeclareOutput && (perRuleMessages || !isLeaf) && (
+          output values — and "reporting" means top-level, in both strategies.
+          A checklist reports every top-level rule, leaf or And/Or group alike;
+          a rule segment reports whichever top-level rule wins. Nothing nested
+          reports in either: an And/Or group reports once, under its own name,
+          and its branches only contribute to that one condition. Depth is the
+          test, not leafness — gating on (perRuleMessages || !isLeaf) would let
+          a leaf inside a checklist's And/Or group author values the engine
+          never reads, which is dead config nothing would flag. */}
+      {outputSchema && onDeclareOutput && depth === 0 && (
         <OutputValuesEditor
           outputs={rule.outputs}
           schema={outputSchema}

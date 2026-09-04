@@ -975,9 +975,11 @@ In `ui/src/components/rules/RuleNode.tsx`, add to `Props`:
 Add both to the destructured parameter list, import the types and the editor, and render it inside the leaf/reporting branch — immediately after the `errorMessage` input, guarded so inner And/Or branches never get one:
 
 ```tsx
-        {/* Only a reporting rule emits a record, so only a reporting rule gets
-            output values. An inner And/Or branch never reports. */}
-        {outputSchema && onDeclareOutput && (perRuleMessages || !isLeaf) && (
+        {/* Only a reporting rule emits a record, and "reporting" means
+            top-level in both strategies. Depth is the test, not leafness:
+            (perRuleMessages || !isLeaf) would let a leaf inside a checklist's
+            And/Or group author values the engine never reads. */}
+        {outputSchema && onDeclareOutput && depth === 0 && (
           <OutputValuesEditor
             outputs={rule.outputs}
             schema={outputSchema}
