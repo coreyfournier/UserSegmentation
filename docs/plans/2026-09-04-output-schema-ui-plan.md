@@ -229,6 +229,12 @@ assert.match(validateLiteralValue({ type: 'number' }, ' 42'), /number/);
 assert.match(validateLiteralValue({ type: 'number' }, '42 '), /number/);
 assert.match(validateLiteralValue({ type: 'number' }, '0x10'), /number/);
 assert.match(validateLiteralValue({ type: 'number' }, '  '), /number/);
+// Range matters too: ParseFloat errors with ErrRange on overflow. Underflow is
+// NOT an error, so 1e-999 must still be accepted.
+assert.match(validateLiteralValue({ type: 'number' }, '1e999'), /number/);
+assert.match(validateLiteralValue({ type: 'number' }, '1e309'), /number/);
+assert.equal(validateLiteralValue({ type: 'number' }, '1e-999'), null);
+assert.equal(validateLiteralValue({ type: 'number' }, '1e308'), null);
 // strconv.ParseBool accepts twelve spellings, not two.
 for (const ok of ['1', 't', 'T', 'TRUE', 'true', 'True', '0', 'f', 'F', 'FALSE', 'false', 'False']) {
   assert.equal(validateLiteralValue({ type: 'boolean' }, ok), null, `boolean ${ok} should be accepted`);
@@ -397,7 +403,12 @@ const GO_BOOLS = new Set([
  */
 export function validateLiteralValue(field: OutputField, raw: string): string | null {
   if (evalModeOf(field) !== 'literal' || raw === '') return null;
-  if (field.type === 'number' && !DECIMAL_FLOAT.test(raw)) {
+  // The regex settles syntax; isFinite settles magnitude. ParseFloat(_, 64)
+  // returns ErrRange for a syntactically valid literal that overflows a
+  // float64 — "1e999" parses to +Inf and errors — and the engine treats any
+  // non-nil error as a rejection. Underflow is not an error there ("1e-999"
+  // yields 0 with err nil), and Number() agrees on both.
+  if (field.type === 'number' && (!DECIMAL_FLOAT.test(raw) || !Number.isFinite(Number(raw)))) {
     return `"${raw}" does not parse as a number`;
   }
   if (field.type === 'boolean' && !GO_BOOLS.has(raw)) {

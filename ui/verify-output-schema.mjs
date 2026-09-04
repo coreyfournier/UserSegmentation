@@ -73,6 +73,14 @@ assert.match(validateLiteralValue({ type: 'number' }, ' 42'), /number/);
 assert.match(validateLiteralValue({ type: 'number' }, '42 '), /number/);
 assert.match(validateLiteralValue({ type: 'number' }, '0x10'), /number/);
 assert.match(validateLiteralValue({ type: 'number' }, '  '), /number/);
+// Range matters too: ParseFloat(_, 64) errors with ErrRange on overflow, and
+// the engine treats any non-nil error as a rejection. Underflow is NOT an
+// error there, so 1e-999 must still be accepted.
+assert.match(validateLiteralValue({ type: 'number' }, '1e999'), /number/);
+assert.match(validateLiteralValue({ type: 'number' }, '-1e999'), /number/);
+assert.match(validateLiteralValue({ type: 'number' }, '1e309'), /number/);
+assert.equal(validateLiteralValue({ type: 'number' }, '1e-999'), null);
+assert.equal(validateLiteralValue({ type: 'number' }, '1e308'), null);
 // strconv.ParseBool accepts twelve spellings, not two.
 for (const ok of ['1', 't', 'T', 'TRUE', 'true', 'True', '0', 'f', 'F', 'FALSE', 'false', 'False']) {
   assert.equal(validateLiteralValue({ type: 'boolean' }, ok), null, `boolean ${ok} should be accepted`);

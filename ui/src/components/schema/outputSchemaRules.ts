@@ -104,7 +104,13 @@ const GO_BOOLS = new Set([
  */
 export function validateLiteralValue(field: OutputField, raw: string): string | null {
   if (evalModeOf(field) !== 'literal' || raw === '') return null;
-  if (field.type === 'number' && !DECIMAL_FLOAT.test(raw)) {
+  // The regex settles syntax; isFinite settles magnitude. ParseFloat(_, 64)
+  // returns ErrRange for a syntactically valid literal that overflows a
+  // float64 — "1e999" parses to +Inf and errors — and the engine treats any
+  // non-nil error as a rejection. Underflow is not an error there ("1e-999"
+  // yields 0 with err nil), and Number() agrees on both, so this one extra
+  // condition matches Go exactly at the range boundary.
+  if (field.type === 'number' && (!DECIMAL_FLOAT.test(raw) || !Number.isFinite(Number(raw)))) {
     return `"${raw}" does not parse as a number`;
   }
   if (field.type === 'boolean' && !GO_BOOLS.has(raw)) {
