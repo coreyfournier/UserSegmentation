@@ -5,8 +5,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Build & Run Commands
 
 ```bash
-# Go is installed at C:\Users\Corey\go (zip install)
-export PATH="/c/Users/Corey/go/bin:$PATH"
+# Go is on PATH already — no export needed.
+# Verified: go1.26.5 windows/amd64 at /c/Program Files/Go/bin/go
+go version
 
 # Build
 go build ./...
