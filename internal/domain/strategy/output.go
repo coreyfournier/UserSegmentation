@@ -46,12 +46,15 @@ func evaluateOutputs(seg *model.Segment, itemOutputs map[string]string, ctx *Eva
 			value = v
 		case model.EvalTemplate:
 			rendered, bad := renderTemplate(raw, ctx.Context)
-			for _, te := range bad {
-				errs = append(errs, RenderError{
-					Language: ctx.DefaultLanguage,
-					Token:    te.token,
-					Err:      te.err,
-				})
+			if len(bad) > 0 {
+				for _, te := range bad {
+					errs = append(errs, RenderError{
+						Language: ctx.DefaultLanguage,
+						Token:    te.token,
+						Err:      te.err,
+					})
+				}
+				continue
 			}
 			value = rendered
 		default:

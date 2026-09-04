@@ -110,6 +110,45 @@ func TestChecklist_BadOutputExpressionDegrades(t *testing.T) {
 	}
 }
 
+// A broken template token drops its own field and records an error, even
+// though renderTemplate itself returns a partially-rendered string with the
+// bad token left in literally. The finding still reports.
+func TestChecklist_BadOutputTemplateDegrades(t *testing.T) {
+	seg := outputSeg()
+	seg.Rules[0].Outputs["description"] = "${ totalHours } hours over ${ daysElapsed + }"
+
+	var s ChecklistStrategy
+	res, _ := s.Evaluate(seg, outputCtx())
+	if len(res.Failures) != 1 {
+		t.Fatalf("expected the failure to survive, got %d", len(res.Failures))
+	}
+	if _, present := res.Failures[0].Outputs["description"]; present {
+		t.Error("broken template should not emit a value")
+	}
+	if len(res.RenderErrors) == 0 {
+		t.Error("expected a render error to be recorded")
+	}
+	if res.Failures[0].Outputs["category"] != "EmployeeAccountStatus" {
+		t.Error("other fields should still be emitted")
+	}
+}
+
+// When a rule and its segment both declare the same output field, the rule's
+// value wins: item-level authorship is more specific than the segment default.
+func TestChecklist_ItemOutputOverridesSegmentOutput(t *testing.T) {
+	seg := outputSeg()
+	seg.Rules[0].Outputs["category"] = "OverriddenByRule"
+
+	var s ChecklistStrategy
+	res, ok := s.Evaluate(seg, outputCtx())
+	if !ok || len(res.Failures) != 1 {
+		t.Fatalf("expected one failure, got ok=%v n=%d", ok, len(res.Failures))
+	}
+	if got := res.Failures[0].Outputs["category"]; got != "OverriddenByRule" {
+		t.Errorf("category = %v, want rule value to win over segment value", got)
+	}
+}
+
 // An unknown key passes through bare. Lookup membership is documented, not
 // enforced at evaluation time.
 func TestEnrichLookupValue_UnknownKeyPassesThrough(t *testing.T) {
