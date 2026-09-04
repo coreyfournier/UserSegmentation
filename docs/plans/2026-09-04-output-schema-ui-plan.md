@@ -11,7 +11,7 @@
 ## Global Constraints
 
 - **There is no JS test runner in this project.** `ui/verify-rule-tree.mjs` says so in its own header and asserts with `node:assert/strict` against a `tsc`-compiled module. Follow that pattern exactly for pure logic; do NOT add vitest, jest, or `@testing-library`. Adding a test framework is out of scope and will be rejected.
-- Verification for React components is `npm run build` (which runs `tsc -b` first, so type errors fail the build) plus `npm run lint`, plus the manual check each task names.
+- Verification for React components is `npm run build` (which runs `tsc -b` first, so type errors fail the build) plus `npm run lint`, plus the manual check each task names. **`npm run lint` has a red baseline of exactly 2 pre-existing errors** (`SegmentEditor.tsx:33` refs-during-render, `StrategyPicker.tsx:9` react-refresh) — leave both alone and gate on the count not rising above 2.
 - `npm install` in `ui/` first — `ui/node_modules` is not present. Node v22.20.0 and npm 10.9.3 are on PATH. `ui/Dockerfile` and the `ui` service in `docker-compose.yml` remain available as an alternative.
 - **`static` and `percentage` segments are exempt from output-schema enforcement** in the engine, because those strategies never populate a record. The UI must not offer an output schema for them; show the one-line note specified in Task 3 instead.
 - **`Required` must default to `false`** on every path that creates a field. This is what makes the fast authoring flow work: declaring a field mid-edit must never block a save.
@@ -413,8 +413,8 @@ Expected: `output schema rules OK`
 
 - [ ] **Step 5: Build and lint**
 
-Run from `ui/`: `npm run build && npm run lint`
-Expected: both PASS.
+Run from `ui/`: `npm run build`, then `npm run lint`
+Expected: build PASSES. **Lint has a red baseline of exactly 2 pre-existing errors** — `Cannot access refs during render` in `SegmentEditor.tsx:33` and `react-refresh/only-export-components` in `StrategyPicker.tsx:9`. Neither is yours; do not fix them as a drive-by. The gate is that lint still reports **2 problems and no more**, and that neither new error names a file you touched.
 
 - [ ] **Step 6: Commit**
 
@@ -751,8 +751,8 @@ Then add a new section immediately **after** the Input Schema section and **befo
 
 - [ ] **Step 4: Build and lint**
 
-Run from `ui/`: `npm run build && npm run lint`
-Expected: both PASS.
+Run from `ui/`: `npm run build`, then `npm run lint`
+Expected: build PASSES. **Lint has a red baseline of exactly 2 pre-existing errors** — `Cannot access refs during render` in `SegmentEditor.tsx:33` and `react-refresh/only-export-components` in `StrategyPicker.tsx:9`. Neither is yours; do not fix them as a drive-by. The gate is that lint still reports **2 problems and no more**, and that neither new error names a file you touched.
 
 - [ ] **Step 5: Verify by hand**
 
@@ -1014,8 +1014,8 @@ Import `fieldCoverage` from `../schema/outputSchemaRules`.
 
 - [ ] **Step 4: Build and lint**
 
-Run from `ui/`: `npm run build && npm run lint`
-Expected: both PASS.
+Run from `ui/`: `npm run build`, then `npm run lint`
+Expected: build PASSES. **Lint has a red baseline of exactly 2 pre-existing errors** — `Cannot access refs during render` in `SegmentEditor.tsx:33` and `react-refresh/only-export-components` in `StrategyPicker.tsx:9`. Neither is yours; do not fix them as a drive-by. The gate is that lint still reports **2 problems and no more**, and that neither new error names a file you touched.
 
 - [ ] **Step 5: Verify by hand**
 
@@ -1158,8 +1158,8 @@ Note the existing state hooks read from a prop named `initial`, not `table`, so 
 
 - [ ] **Step 4: Build and lint**
 
-Run from `ui/`: `npm run build && npm run lint`
-Expected: both PASS.
+Run from `ui/`: `npm run build`, then `npm run lint`
+Expected: build PASSES. **Lint has a red baseline of exactly 2 pre-existing errors** — `Cannot access refs during render` in `SegmentEditor.tsx:33` and `react-refresh/only-export-components` in `StrategyPicker.tsx:9`. Neither is yours; do not fix them as a drive-by. The gate is that lint still reports **2 problems and no more**, and that neither new error names a file you touched.
 
 - [ ] **Step 5: Verify by hand**
 
@@ -1247,8 +1247,8 @@ In `ui/src/components/testing/ResultDisplay.module.css`, add rules modelled on t
 
 - [ ] **Step 4: Build and lint**
 
-Run from `ui/`: `npm run build && npm run lint`
-Expected: both PASS.
+Run from `ui/`: `npm run build`, then `npm run lint`
+Expected: build PASSES. **Lint has a red baseline of exactly 2 pre-existing errors** — `Cannot access refs during render` in `SegmentEditor.tsx:33` and `react-refresh/only-export-components` in `StrategyPicker.tsx:9`. Neither is yours; do not fix them as a drive-by. The gate is that lint still reports **2 problems and no more**, and that neither new error names a file you touched.
 
 - [ ] **Step 5: Verify by hand**
 
