@@ -1070,7 +1070,12 @@ func requiredOutputErrors(seg *model.Segment, name string) []string {
 	}
 
 	var errs []string
-	if seg.Default != "" {
+	// Only the rule strategy reads Segment.Default (strategy/rule.go, default
+	// branch). A checklist delegates to RuleStrategy but returns from
+	// collectViolations before that branch, and static uses Static.Default
+	// instead — so a stray Default on any other strategy is inert, and gating
+	// on it would reject config that evaluates perfectly well.
+	if seg.Strategy == model.StrategyRule && seg.Default != "" {
 		errs = append(errs, fmt.Sprintf(
 			"segment %q output %q: required, and a default is declared, so it must be set in "+
 				"the segment's outputs — the default path reads no rule values",

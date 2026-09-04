@@ -197,10 +197,17 @@ directions:
   Convention: rename the `Value`, add a new key rather than editing an old one.
   A `deprecated` flag would let the editor hide retired keys while keeping them
   resolvable for historical display.
-- **Whether output expressions can be syntax-checked.** Existing formula validation
-  calls `expr.Compile` with no options while runtime compilation uses
-  `mathOptions`, so a validator might reject an expression that works. Task 5
-  Step 5 of the plan resolves this empirically before adding any check.
+- ~~**Whether output expressions can be syntax-checked.**~~ **Resolved during
+  implementation: yes.** The worry was that validation calls `expr.Compile` with no
+  options while runtime compilation uses `mathOptions`, so a validator might reject
+  an expression that works. Task 5's probe disproved it — bare `expr.Compile`
+  accepts `pow(2, 3)` even though `pow` is registered only via `mathOptions`,
+  because expr-lang defers unresolved calls to runtime when given no typed
+  environment. So the syntax check was added, scoped to fields whose `EvalMode()`
+  is `EvalExpression`. Two things fell out of review and are worth keeping in mind
+  if this check is ever extended: it must skip disabled rules, or a parked
+  half-written expression wedges every other segment's save; and a literal-mode
+  field must never be compiled.
 - **An unreachable second checklist segment is silent.** Because a checklist always
   succeeds, any checklist segment after the first one a layer reaches is dead
   config, and nothing rejects it. There is precedent for catching this class at
