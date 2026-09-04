@@ -21,6 +21,10 @@ type Rule struct {
 	// Messages are optional localized templates keyed by language code (e.g. "en").
 	// Rendered with ${ ... } expr-lang interpolation when this rule wins.
 	Messages map[string]string `json:"messages,omitempty"`
+	// Outputs are this item's authored values for the segment's output schema,
+	// keyed by field name. Only a top-level rule reports, so only a top-level
+	// rule's Outputs are read.
+	Outputs map[string]string `json:"outputs,omitempty"`
 }
 
 // IsEnabled returns true if the rule is enabled (defaults to true if nil).

@@ -55,4 +55,5 @@ type Failure struct {
 	Rule     string            `json:"rule"`
 	Message  string            `json:"message"`
 	Messages map[string]string `json:"messages,omitempty"`
+	Outputs  map[string]interface{} `json:"outputs,omitempty"`
 }

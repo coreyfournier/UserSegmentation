@@ -38,4 +38,9 @@ type Segment struct {
 	DefaultMessages map[string]string `json:"defaultMessages,omitempty"`
 	Promotion       *Promotion        `json:"promotion,omitempty"`
 	InputSchema     InputSchema       `json:"inputSchema,omitempty"`
+	// OutputSchema declares the fields this segment emits with each reported
+	// item. Outputs holds the values for fields that do not vary per item; a
+	// rule's own Outputs take precedence.
+	OutputSchema OutputSchema      `json:"outputSchema,omitempty"`
+	Outputs      map[string]string `json:"outputs,omitempty"`
 }
