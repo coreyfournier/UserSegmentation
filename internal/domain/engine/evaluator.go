@@ -147,7 +147,7 @@ func (e *Evaluator) evaluateLayer(layer *model.Layer, subjectKey string, ctx map
 		}
 
 		// Check required fields and collect warnings
-		lr.Warnings = append(lr.Warnings, validation.CheckRequiredFields(seg, ctx)...)
+		lr.Warnings = append(lr.Warnings, validation.CheckRequiredFields(seg, layer.InputSchema, ctx)...)
 
 		evalCtx := &strategy.EvalContext{
 			SubjectKey:      subjectKey,
@@ -156,6 +156,7 @@ func (e *Evaluator) evaluateLayer(layer *model.Layer, subjectKey string, ctx map
 			RenderAll:       renderAll,
 			DefaultLanguage: defaultLang,
 			Lookups:         lookups,
+			OutputSchema:    layer.OutputSchema,
 		}
 
 		// Check overrides first
@@ -170,8 +171,8 @@ func (e *Evaluator) evaluateLayer(layer *model.Layer, subjectKey string, ctx map
 					Outputs:  res.Outputs,
 				}
 				lr.Warnings = append(lr.Warnings, renderWarnings(seg.ID, res.RenderErrors)...)
-				lr.Warnings = append(lr.Warnings, validation.CheckRequiredOutputs(seg, lr.Assignment, nil)...)
-				return lr
+				lr.Warnings = append(lr.Warnings, validation.CheckRequiredOutputs(seg, layer.OutputSchema, lr.Assignment, nil)...)
+				return dedupRequiredFieldWarnings(lr)
 			}
 		}
 
@@ -203,11 +204,44 @@ func (e *Evaluator) evaluateLayer(layer *model.Layer, subjectKey string, ctx map
 				Outputs:  res.Outputs,
 			}
 			lr.Warnings = append(lr.Warnings, renderWarnings(seg.ID, res.RenderErrors)...)
-			lr.Warnings = append(lr.Warnings, validation.CheckRequiredOutputs(seg, lr.Assignment, lr.Failures)...)
-			return lr
+			lr.Warnings = append(lr.Warnings, validation.CheckRequiredOutputs(seg, layer.OutputSchema, lr.Assignment, lr.Failures)...)
+			return dedupRequiredFieldWarnings(lr)
 		}
 	}
 
+	return dedupRequiredFieldWarnings(lr)
+}
+
+// requiredFieldMissingMessage is the exact text CheckRequiredFields attaches to
+// every warning it produces (internal/domain/validation/validator.go). It is
+// the only warning kind evaluateLayer de-duplicates.
+const requiredFieldMissingMessage = "required field missing from context"
+
+// dedupRequiredFieldWarnings collapses repeated required-input warnings that
+// share a (Field, Message) pair. CheckRequiredFields runs for every segment
+// that passes its `when` dispatch, and the segment loop only exits once a
+// strategy succeeds — so a rule segment that matches nothing falls through
+// and the next segment is checked too, against the same layer schema, and
+// would report the same missing field a second time. Render errors and
+// output warnings are left untouched: they genuinely differ per segment and
+// per finding, so collapsing those would lose real information.
+func dedupRequiredFieldWarnings(lr *LayerResult) *LayerResult {
+	if len(lr.Warnings) < 2 {
+		return lr
+	}
+	seen := make(map[model.Warning]struct{}, len(lr.Warnings))
+	deduped := lr.Warnings[:0:0]
+	for _, w := range lr.Warnings {
+		if w.Message == requiredFieldMissingMessage {
+			key := model.Warning{Field: w.Field, Message: w.Message}
+			if _, ok := seen[key]; ok {
+				continue
+			}
+			seen[key] = struct{}{}
+		}
+		deduped = append(deduped, w)
+	}
+	lr.Warnings = deduped
 	return lr
 }
 

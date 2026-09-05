@@ -254,6 +254,9 @@ func TestAdminUseCase_ReplaceSnapshot_ValidationError(t *testing.T) {
 		Version: 1,
 		Layers: []model.Layer{{
 			Name: "bad",
+			InputSchema: model.InputSchema{
+				"age": {Type: model.FieldTypeString, Required: true},
+			},
 			Segments: []model.Segment{{
 				ID: "s", Strategy: "rule",
 				Rules: []model.Rule{{
@@ -261,9 +264,6 @@ func TestAdminUseCase_ReplaceSnapshot_ValidationError(t *testing.T) {
 					Condition:   &model.Condition{Field: "age", Operator: "gt", Value: 18},
 					SuccessEvent: "x",
 				}},
-				InputSchema: model.InputSchema{
-					"age": {Type: model.FieldTypeString, Required: true},
-				},
 			}},
 		}},
 	}

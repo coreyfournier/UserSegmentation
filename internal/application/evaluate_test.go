@@ -168,17 +168,17 @@ func TestEvaluateUseCase_OutputsWireFormat(t *testing.T) {
 		Layers: []model.Layer{
 			{
 				Name: "diagnostics",
+				OutputSchema: model.OutputSchema{
+					"category":      {Type: model.FieldTypeString}, // literal
+					"description":   {Type: model.FieldTypeString, Eval: model.EvalTemplate},
+					"signals":       {Type: model.FieldTypeObject, Eval: model.EvalExpression},
+					"diagnosisType": {Type: model.FieldTypeString, Lookup: "diagnosis-type"},
+				},
 				Segments: []model.Segment{
 					{
 						ID:       "attendance",
 						Strategy: model.StrategyChecklist,
-						OutputSchema: model.OutputSchema{
-							"category":      {Type: model.FieldTypeString}, // literal
-							"description":   {Type: model.FieldTypeString, Eval: model.EvalTemplate},
-							"signals":       {Type: model.FieldTypeObject, Eval: model.EvalExpression},
-							"diagnosisType": {Type: model.FieldTypeString, Lookup: "diagnosis-type"},
-						},
-						Outputs: map[string]string{"category": "EmployeeAccountStatus"},
+						Outputs:  map[string]string{"category": "EmployeeAccountStatus"},
 						Rules: []model.Rule{{
 							RuleName:     "lowHours",
 							ErrorMessage: "Hours look low.",
@@ -194,13 +194,13 @@ func TestEvaluateUseCase_OutputsWireFormat(t *testing.T) {
 			},
 			{
 				Name: "tier",
+				OutputSchema: model.OutputSchema{
+					"tier": {Type: model.FieldTypeString},
+				},
 				Segments: []model.Segment{
 					{
 						ID:       "vip",
 						Strategy: model.StrategyRule,
-						OutputSchema: model.OutputSchema{
-							"tier": {Type: model.FieldTypeString},
-						},
 						Rules: []model.Rule{{
 							RuleName:     "matches",
 							SuccessEvent: "vip-segment",

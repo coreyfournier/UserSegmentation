@@ -10,13 +10,7 @@ func outputSeg() *model.Segment {
 	return &model.Segment{
 		ID:       "employee-account",
 		Strategy: model.StrategyChecklist,
-		OutputSchema: model.OutputSchema{
-			"category":      {Type: model.FieldTypeString},
-			"diagnosisType": {Type: model.FieldTypeString, Lookup: "diagnosis-type"},
-			"description":   {Type: model.FieldTypeString, Eval: model.EvalTemplate},
-			"signals":       {Type: model.FieldTypeObject, Eval: model.EvalExpression},
-		},
-		Outputs: map[string]string{"category": "EmployeeAccountStatus"},
+		Outputs:  map[string]string{"category": "EmployeeAccountStatus"},
 		Rules: []model.Rule{{
 			RuleName:     "timesheetHoursAbnormallyLow",
 			ErrorMessage: "Hours look low.",
@@ -37,6 +31,12 @@ func outputSeg() *model.Segment {
 func outputCtx() *EvalContext {
 	return &EvalContext{
 		Context: map[string]interface{}{"totalHours": 1.5, "daysElapsed": 3},
+		OutputSchema: model.OutputSchema{
+			"category":      {Type: model.FieldTypeString},
+			"diagnosisType": {Type: model.FieldTypeString, Lookup: "diagnosis-type"},
+			"description":   {Type: model.FieldTypeString, Eval: model.EvalTemplate},
+			"signals":       {Type: model.FieldTypeObject, Eval: model.EvalExpression},
+		},
 		Lookups: map[string]model.LookupTable{
 			"diagnosis-type": {
 				ID:        "diagnosis-type",
@@ -162,12 +162,11 @@ func TestEnrichLookupValue_UnknownKeyPassesThrough(t *testing.T) {
 // authored string — Type is binding on emission, not just on syntax.
 func TestEvaluateOutputs_LiteralNumberEmitsNumber(t *testing.T) {
 	seg := &model.Segment{
-		ID:           "seg",
-		Strategy:     model.StrategyRule,
-		OutputSchema: model.OutputSchema{"rank": {Type: model.FieldTypeNumber}},
-		Outputs:      map[string]string{"rank": "3"},
+		ID:       "seg",
+		Strategy: model.StrategyRule,
+		Outputs:  map[string]string{"rank": "3"},
 	}
-	out, errs := evaluateOutputs(seg, nil, &EvalContext{})
+	out, errs := evaluateOutputs(seg, nil, &EvalContext{OutputSchema: model.OutputSchema{"rank": {Type: model.FieldTypeNumber}}})
 	if len(errs) != 0 {
 		t.Fatalf("expected no render errors, got %v", errs)
 	}
@@ -183,12 +182,11 @@ func TestEvaluateOutputs_LiteralNumberEmitsNumber(t *testing.T) {
 // Same for boolean.
 func TestEvaluateOutputs_LiteralBooleanEmitsBoolean(t *testing.T) {
 	seg := &model.Segment{
-		ID:           "seg",
-		Strategy:     model.StrategyRule,
-		OutputSchema: model.OutputSchema{"active": {Type: model.FieldTypeBoolean}},
-		Outputs:      map[string]string{"active": "true"},
+		ID:       "seg",
+		Strategy: model.StrategyRule,
+		Outputs:  map[string]string{"active": "true"},
 	}
-	out, errs := evaluateOutputs(seg, nil, &EvalContext{})
+	out, errs := evaluateOutputs(seg, nil, &EvalContext{OutputSchema: model.OutputSchema{"active": {Type: model.FieldTypeBoolean}}})
 	if len(errs) != 0 {
 		t.Fatalf("expected no render errors, got %v", errs)
 	}
@@ -205,12 +203,11 @@ func TestEvaluateOutputs_LiteralBooleanEmitsBoolean(t *testing.T) {
 // re-typed.
 func TestEvaluateOutputs_LiteralStringEmitsString(t *testing.T) {
 	seg := &model.Segment{
-		ID:           "seg",
-		Strategy:     model.StrategyRule,
-		OutputSchema: model.OutputSchema{"category": {Type: model.FieldTypeString}},
-		Outputs:      map[string]string{"category": "EmployeeAccountStatus"},
+		ID:       "seg",
+		Strategy: model.StrategyRule,
+		Outputs:  map[string]string{"category": "EmployeeAccountStatus"},
 	}
-	out, errs := evaluateOutputs(seg, nil, &EvalContext{})
+	out, errs := evaluateOutputs(seg, nil, &EvalContext{OutputSchema: model.OutputSchema{"category": {Type: model.FieldTypeString}}})
 	if len(errs) != 0 {
 		t.Fatalf("expected no render errors, got %v", errs)
 	}
@@ -228,13 +225,12 @@ func TestEvaluateOutputs_UncoercibleLiteralDegrades(t *testing.T) {
 	seg := &model.Segment{
 		ID:       "seg",
 		Strategy: model.StrategyRule,
-		OutputSchema: model.OutputSchema{
-			"rank":     {Type: model.FieldTypeNumber},
-			"category": {Type: model.FieldTypeString},
-		},
-		Outputs: map[string]string{"rank": "high", "category": "ok"},
+		Outputs:  map[string]string{"rank": "high", "category": "ok"},
 	}
-	out, errs := evaluateOutputs(seg, nil, &EvalContext{})
+	out, errs := evaluateOutputs(seg, nil, &EvalContext{OutputSchema: model.OutputSchema{
+		"rank":     {Type: model.FieldTypeNumber},
+		"category": {Type: model.FieldTypeString},
+	}})
 	if _, present := out["rank"]; present {
 		t.Error("uncoercible literal should not emit a value")
 	}
@@ -253,12 +249,12 @@ func TestEvaluateOutputs_NumericLookupKeyNowMatches(t *testing.T) {
 	seg := &model.Segment{
 		ID:       "seg",
 		Strategy: model.StrategyRule,
+		Outputs:  map[string]string{"tier": "1"},
+	}
+	ctx := &EvalContext{
 		OutputSchema: model.OutputSchema{
 			"tier": {Type: model.FieldTypeNumber, Lookup: "vip-tiers"},
 		},
-		Outputs: map[string]string{"tier": "1"},
-	}
-	ctx := &EvalContext{
 		Lookups: map[string]model.LookupTable{
 			"vip-tiers": {
 				ID: "vip-tiers", KeyType: model.FieldTypeNumber,

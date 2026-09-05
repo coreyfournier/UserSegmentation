@@ -12,6 +12,9 @@ type EvalContext struct {
 	DefaultLanguage string
 	// Lookups maps lookup table id to table, for in_lookup / not_in_lookup operators.
 	Lookups map[string]model.LookupTable
+	// OutputSchema is the layer's — the only place it is declared. Strategies
+	// never look it up themselves.
+	OutputSchema model.OutputSchema
 	// CollectFailures reports every rule that matches instead of stopping at
 	// the first. A rule still fires on a match; only what happens then differs.
 	// Set internally by ChecklistStrategy — it is not a config field.

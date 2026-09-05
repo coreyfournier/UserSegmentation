@@ -11,11 +11,7 @@ func TestRule_WinnerCarriesOutputs(t *testing.T) {
 	seg := &model.Segment{
 		ID:       "balance-availability",
 		Strategy: model.StrategyRule,
-		OutputSchema: model.OutputSchema{
-			"severity": {Type: model.FieldTypeString},
-			"title":    {Type: model.FieldTypeString, Eval: model.EvalTemplate},
-		},
-		Outputs: map[string]string{"severity": "Warning"},
+		Outputs:  map[string]string{"severity": "Warning"},
 		Rules: []model.Rule{
 			{
 				RuleName: "noDaysWorkedYet",
@@ -33,10 +29,16 @@ func TestRule_WinnerCarriesOutputs(t *testing.T) {
 			},
 		},
 	}
-	ctx := &EvalContext{Context: map[string]interface{}{
-		"calcMode":  "SalaryNonClocking",
-		"cycleName": "March",
-	}}
+	ctx := &EvalContext{
+		Context: map[string]interface{}{
+			"calcMode":  "SalaryNonClocking",
+			"cycleName": "March",
+		},
+		OutputSchema: model.OutputSchema{
+			"severity": {Type: model.FieldTypeString},
+			"title":    {Type: model.FieldTypeString, Eval: model.EvalTemplate},
+		},
+	}
 
 	var s RuleStrategy
 	res, ok := s.Evaluate(seg, ctx)
@@ -54,17 +56,19 @@ func TestRule_WinnerCarriesOutputs(t *testing.T) {
 // Falling through to the default emits the segment-level values only.
 func TestRule_DefaultCarriesSegmentOutputs(t *testing.T) {
 	seg := &model.Segment{
-		ID:           "balance-availability",
-		Strategy:     model.StrategyRule,
-		OutputSchema: model.OutputSchema{"severity": {Type: model.FieldTypeString}},
-		Outputs:      map[string]string{"severity": "Info"},
-		Default:      "none",
+		ID:       "balance-availability",
+		Strategy: model.StrategyRule,
+		Outputs:  map[string]string{"severity": "Info"},
+		Default:  "none",
 		Rules: []model.Rule{{
 			RuleName:  "never",
 			Condition: &model.Condition{Field: "calcMode", Operator: model.OpEq, Value: "nope"},
 		}},
 	}
-	ctx := &EvalContext{Context: map[string]interface{}{"calcMode": "other"}}
+	ctx := &EvalContext{
+		Context:      map[string]interface{}{"calcMode": "other"},
+		OutputSchema: model.OutputSchema{"severity": {Type: model.FieldTypeString}},
+	}
 
 	var s RuleStrategy
 	res, ok := s.Evaluate(seg, ctx)

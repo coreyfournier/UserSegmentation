@@ -17,10 +17,6 @@ func TestEvalOverrides_Outputs(t *testing.T) {
 		Computed: []model.ComputedField{
 			{Name: "derived", Type: model.FieldTypeNumber, Formula: "base * 2"},
 		},
-		OutputSchema: model.OutputSchema{
-			"tier":    model.OutputField{Type: model.FieldTypeString},
-			"derived": model.OutputField{Type: model.FieldTypeString, Eval: model.EvalTemplate},
-		},
 		Overrides: []model.Rule{
 			{
 				RuleName:     "vip-override",
@@ -34,7 +30,13 @@ func TestEvalOverrides_Outputs(t *testing.T) {
 		},
 	}
 
-	ctx := &EvalContext{Context: map[string]interface{}{"plan": "enterprise", "base": 21}}
+	ctx := &EvalContext{
+		Context: map[string]interface{}{"plan": "enterprise", "base": 21},
+		OutputSchema: model.OutputSchema{
+			"tier":    model.OutputField{Type: model.FieldTypeString},
+			"derived": model.OutputField{Type: model.FieldTypeString, Eval: model.EvalTemplate},
+		},
+	}
 	res, ok := EvalOverrides(seg, ctx)
 	if !ok || res.Segment != "vip-segment" {
 		t.Fatalf("expected vip-segment, got %v %v", res, ok)

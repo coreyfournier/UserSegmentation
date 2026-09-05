@@ -60,12 +60,15 @@ func TestDeleteLookup_BlockedWhenReferenced(t *testing.T) {
 		Version: 1,
 		Lookups: []model.LookupTable{{ID: "zips", Name: "Zips", KeyType: model.FieldTypeString,
 			Entries: []model.LookupEntry{{Key: "90210"}}}},
-		Layers: []model.Layer{{Name: "l", Segments: []model.Segment{{
-			ID: "seg", Strategy: "rule",
+		Layers: []model.Layer{{
+			Name:        "l",
 			InputSchema: model.InputSchema{"zip": {Type: model.FieldTypeString}},
-			Rules: []model.Rule{{RuleName: "r",
-				Condition: &model.Condition{Field: "zip", Operator: model.OpInLookup, Value: "zips"}}},
-		}}}},
+			Segments: []model.Segment{{
+				ID: "seg", Strategy: "rule",
+				Rules: []model.Rule{{RuleName: "r",
+					Condition: &model.Condition{Field: "zip", Operator: model.OpInLookup, Value: "zips"}}},
+			}},
+		}},
 	})
 	_, err := uc.DeleteLookup("zips")
 	refErr, ok := err.(*LookupReferencedError)

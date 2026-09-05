@@ -184,6 +184,9 @@ func TestReload_ValidationError(t *testing.T) {
 		Version: 1,
 		Layers: []model.Layer{{
 			Name: "bad",
+			InputSchema: model.InputSchema{
+				"f": {Type: model.FieldTypeString, Required: true},
+			},
 			Segments: []model.Segment{{
 				ID: "s", Strategy: "rule",
 				Rules: []model.Rule{{
@@ -191,9 +194,6 @@ func TestReload_ValidationError(t *testing.T) {
 					Condition:   &model.Condition{Field: "f", Operator: "gt", Value: 1},
 					SuccessEvent: "x",
 				}},
-				InputSchema: model.InputSchema{
-					"f": {Type: model.FieldTypeString, Required: true},
-				},
 			}},
 		}},
 	}

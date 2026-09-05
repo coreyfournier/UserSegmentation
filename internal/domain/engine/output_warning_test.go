@@ -38,13 +38,13 @@ func TestRequiredOutput_MissingFromFindingWarns(t *testing.T) {
 		Layers: []model.Layer{
 			{
 				Name: "checks",
+				OutputSchema: model.OutputSchema{
+					"category": model.OutputField{Type: model.FieldTypeString, Required: true},
+				},
 				Segments: []model.Segment{
 					{
 						ID:       "attendance",
 						Strategy: model.StrategyChecklist,
-						OutputSchema: model.OutputSchema{
-							"category": model.OutputField{Type: model.FieldTypeString, Required: true},
-						},
 						Rules: []model.Rule{
 							{
 								RuleName:     "no-days-worked",
@@ -87,13 +87,13 @@ func TestRequiredOutput_PresentProducesNoWarning(t *testing.T) {
 		Layers: []model.Layer{
 			{
 				Name: "checks",
+				OutputSchema: model.OutputSchema{
+					"category": model.OutputField{Type: model.FieldTypeString, Required: true},
+				},
 				Segments: []model.Segment{
 					{
 						ID:       "attendance",
 						Strategy: model.StrategyChecklist,
-						OutputSchema: model.OutputSchema{
-							"category": model.OutputField{Type: model.FieldTypeString, Required: true},
-						},
 						Rules: []model.Rule{
 							{
 								RuleName:     "no-days-worked",
@@ -143,14 +143,14 @@ func TestRequiredOutput_OverrideOutputExpressionFailsWarns(t *testing.T) {
 		Layers: []model.Layer{
 			{
 				Name: "test",
+				OutputSchema: model.OutputSchema{
+					"category": model.OutputField{Type: model.FieldTypeString, Required: true, Eval: model.EvalExpression},
+				},
 				Segments: []model.Segment{
 					{
 						ID:       "seg",
 						Strategy: model.StrategyRule,
 						Default:  "normal",
-						OutputSchema: model.OutputSchema{
-							"category": model.OutputField{Type: model.FieldTypeString, Required: true, Eval: model.EvalExpression},
-						},
 						Overrides: []model.Rule{
 							{
 								RuleName:     "vip-override",
@@ -201,14 +201,14 @@ func TestRequiredOutput_OverrideAuthoredOutputNoWarning(t *testing.T) {
 		Layers: []model.Layer{
 			{
 				Name: "test",
+				OutputSchema: model.OutputSchema{
+					"category": model.OutputField{Type: model.FieldTypeString, Required: true},
+				},
 				Segments: []model.Segment{
 					{
 						ID:       "seg",
 						Strategy: model.StrategyRule,
 						Default:  "normal",
-						OutputSchema: model.OutputSchema{
-							"category": model.OutputField{Type: model.FieldTypeString, Required: true},
-						},
 						Overrides: []model.Rule{
 							{
 								RuleName:     "vip-override",
@@ -253,13 +253,13 @@ func TestRequiredOutput_ChecklistSatisfiedNoWarning(t *testing.T) {
 		Layers: []model.Layer{
 			{
 				Name: "checks",
+				OutputSchema: model.OutputSchema{
+					"category": model.OutputField{Type: model.FieldTypeString, Required: true},
+				},
 				Segments: []model.Segment{
 					{
 						ID:       "gates",
 						Strategy: model.StrategyChecklist,
-						OutputSchema: model.OutputSchema{
-							"category": model.OutputField{Type: model.FieldTypeString, Required: true},
-						},
 						Rules: []model.Rule{
 							{
 								RuleName:     "no-days-worked",
@@ -301,13 +301,13 @@ func TestRequiredOutput_ChecklistUnevaluableNoWarning(t *testing.T) {
 		Layers: []model.Layer{
 			{
 				Name: "checks",
+				OutputSchema: model.OutputSchema{
+					"category": model.OutputField{Type: model.FieldTypeString, Required: true},
+				},
 				Segments: []model.Segment{
 					{
 						ID:       "gates",
 						Strategy: model.StrategyChecklist,
-						OutputSchema: model.OutputSchema{
-							"category": model.OutputField{Type: model.FieldTypeString, Required: true},
-						},
 						Computed: []model.ComputedField{
 							{Name: "utilization", Type: model.FieldTypeNumber, Formula: "advanceTaken / advanceLimit"},
 						},
@@ -353,13 +353,13 @@ func TestRequiredOutput_FailedExpressionNamesTheField(t *testing.T) {
 		Layers: []model.Layer{
 			{
 				Name: "test",
+				OutputSchema: model.OutputSchema{
+					"diagnosis": model.OutputField{Type: model.FieldTypeString, Eval: model.EvalExpression},
+				},
 				Segments: []model.Segment{
 					{
 						ID:       "seg",
 						Strategy: model.StrategyRule,
-						OutputSchema: model.OutputSchema{
-							"diagnosis": model.OutputField{Type: model.FieldTypeString, Eval: model.EvalExpression},
-						},
 						Rules: []model.Rule{
 							{
 								RuleName:     "matches",
@@ -409,15 +409,15 @@ func TestRequiredOutput_MultipleMissingFieldsAreSortedDeterministically(t *testi
 		Layers: []model.Layer{
 			{
 				Name: "checks",
+				OutputSchema: model.OutputSchema{
+					"zulu":  model.OutputField{Type: model.FieldTypeString, Required: true},
+					"alpha": model.OutputField{Type: model.FieldTypeString, Required: true},
+					"mike":  model.OutputField{Type: model.FieldTypeString, Required: true},
+				},
 				Segments: []model.Segment{
 					{
 						ID:       "gates",
 						Strategy: model.StrategyChecklist,
-						OutputSchema: model.OutputSchema{
-							"zulu":  model.OutputField{Type: model.FieldTypeString, Required: true},
-							"alpha": model.OutputField{Type: model.FieldTypeString, Required: true},
-							"mike":  model.OutputField{Type: model.FieldTypeString, Required: true},
-						},
 						Rules: []model.Rule{
 							{
 								RuleName:     "no-days-worked",

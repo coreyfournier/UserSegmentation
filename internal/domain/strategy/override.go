@@ -26,7 +26,7 @@ func EvalOverrides(seg *model.Segment, ctx *EvalContext) (Result, bool) {
 		res := Result{Segment: event, Reason: "override:" + r.RuleName}
 		applyMessages(&res, r.Messages, ctx)
 
-		if len(seg.OutputSchema) > 0 {
+		if len(ctx.OutputSchema) > 0 {
 			outCtx := ctx
 			if len(seg.Computed) > 0 {
 				enriched, _, _ := enrichWithComputed(seg.Computed, ctx.Context)
