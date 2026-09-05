@@ -63,7 +63,7 @@ func TestLayerSchema_RequiredOutputFieldMissingWarns(t *testing.T) {
 			{
 				Name: "test",
 				OutputSchema: model.OutputSchema{
-					"diagnosis": model.OutputField{Type: model.FieldTypeString, Required: true, Eval: model.EvalExpression},
+					"diagnosis": model.OutputField{Type: model.FieldTypeString, Required: true},
 				},
 				Segments: []model.Segment{
 					{
@@ -74,7 +74,7 @@ func TestLayerSchema_RequiredOutputFieldMissingWarns(t *testing.T) {
 								RuleName:     "matches",
 								SuccessEvent: "matched",
 								Condition:    &model.Condition{Field: "plan", Operator: model.OpEq, Value: "enterprise"},
-								Outputs:      map[string]string{"diagnosis": "amount *"}, // unparseable at runtime
+								Outputs:      map[string]string{"diagnosis": "${amount *}"}, // unparseable template token
 							},
 						},
 					},

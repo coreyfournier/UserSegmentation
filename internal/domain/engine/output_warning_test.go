@@ -144,7 +144,7 @@ func TestRequiredOutput_OverrideOutputExpressionFailsWarns(t *testing.T) {
 			{
 				Name: "test",
 				OutputSchema: model.OutputSchema{
-					"category": model.OutputField{Type: model.FieldTypeString, Required: true, Eval: model.EvalExpression},
+					"category": model.OutputField{Type: model.FieldTypeString, Required: true},
 				},
 				Segments: []model.Segment{
 					{
@@ -156,7 +156,7 @@ func TestRequiredOutput_OverrideOutputExpressionFailsWarns(t *testing.T) {
 								RuleName:     "vip-override",
 								SuccessEvent: "override-val",
 								Condition:    &model.Condition{Field: "plan", Operator: model.OpEq, Value: "enterprise"},
-								Outputs:      map[string]string{"category": "amount *"}, // unparseable
+								Outputs:      map[string]string{"category": "${amount *}"}, // unparseable template token
 							},
 						},
 					},
@@ -354,7 +354,7 @@ func TestRequiredOutput_FailedExpressionNamesTheField(t *testing.T) {
 			{
 				Name: "test",
 				OutputSchema: model.OutputSchema{
-					"diagnosis": model.OutputField{Type: model.FieldTypeString, Eval: model.EvalExpression},
+					"diagnosis": model.OutputField{Type: model.FieldTypeString},
 				},
 				Segments: []model.Segment{
 					{
@@ -365,7 +365,7 @@ func TestRequiredOutput_FailedExpressionNamesTheField(t *testing.T) {
 								RuleName:     "matches",
 								SuccessEvent: "matched",
 								Condition:    &model.Condition{Field: "plan", Operator: model.OpEq, Value: "enterprise"},
-								Outputs:      map[string]string{"diagnosis": "amount *"}, // unparseable at runtime
+								Outputs:      map[string]string{"diagnosis": "${amount *}"}, // unparseable template token
 							},
 						},
 					},

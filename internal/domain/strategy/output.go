@@ -2,7 +2,6 @@ package strategy
 
 import (
 	"fmt"
-	"strconv"
 
 	"github.com/segmentation-service/segmentation/internal/domain/model"
 )
@@ -32,20 +31,7 @@ func evaluateOutputs(seg *model.Segment, itemOutputs map[string]string, ctx *Eva
 		}
 
 		var value interface{}
-		switch decl.EvalMode() {
-		case model.EvalExpression:
-			fn, err := compileFormula(raw)
-			if err != nil {
-				errs = append(errs, RenderError{Field: name, Token: raw, Err: err.Error()})
-				continue
-			}
-			v, err := fn(ctx.Context)
-			if err != nil {
-				errs = append(errs, RenderError{Field: name, Token: raw, Err: err.Error()})
-				continue
-			}
-			value = v
-		case model.EvalTemplate:
+		if decl.IsTemplate() {
 			rendered, bad := renderTemplate(raw, ctx.Context)
 			if len(bad) > 0 {
 				for _, te := range bad {
@@ -59,8 +45,13 @@ func evaluateOutputs(seg *model.Segment, itemOutputs map[string]string, ctx *Eva
 				continue
 			}
 			value = rendered
-		default: // EvalLiteral
-			v, err := coerceLiteral(raw, decl.Type)
+		} else {
+			fn, err := compileFormula(raw)
+			if err != nil {
+				errs = append(errs, RenderError{Field: name, Token: raw, Err: err.Error()})
+				continue
+			}
+			v, err := fn(ctx.Context)
 			if err != nil {
 				errs = append(errs, RenderError{Field: name, Token: raw, Err: err.Error()})
 				continue
@@ -78,29 +69,6 @@ func evaluateOutputs(seg *model.Segment, itemOutputs map[string]string, ctx *Eva
 		return nil, errs
 	}
 	return out, errs
-}
-
-// coerceLiteral parses a literal-mode authored value as the field's declared
-// type, so a number or boolean field emits its JSON type instead of the
-// authored string verbatim. string is returned unchanged — any text is a
-// valid string — and array/object never reach here: config validation
-// (validateOutputSchema) rejects them outside expression mode, so a field
-// declaring either always takes the expression branch above instead.
-//
-// Config validation independently checks that every literal parses
-// (validation.literalTypeErrors), so a failure here means something slipped
-// past that gate. The caller degrades exactly like a failed template or
-// expression: record a RenderError naming the field, omit it, keep the
-// result — a runtime surprise must not fail the evaluation.
-func coerceLiteral(raw string, ft model.FieldType) (interface{}, error) {
-	switch ft {
-	case model.FieldTypeNumber:
-		return strconv.ParseFloat(raw, 64)
-	case model.FieldTypeBoolean:
-		return strconv.ParseBool(raw)
-	default:
-		return raw, nil
-	}
 }
 
 // enrichLookupValue turns an authored key into the {key, value} shape a consumer

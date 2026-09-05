@@ -34,7 +34,7 @@ func TestEvalOverrides_Outputs(t *testing.T) {
 		Context: map[string]interface{}{"plan": "enterprise", "base": 21},
 		OutputSchema: model.OutputSchema{
 			"tier":    model.OutputField{Type: model.FieldTypeString},
-			"derived": model.OutputField{Type: model.FieldTypeString, Eval: model.EvalTemplate},
+			"derived": model.OutputField{Type: model.FieldTypeString},
 		},
 	}
 	res, ok := EvalOverrides(seg, ctx)

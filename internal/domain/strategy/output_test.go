@@ -34,8 +34,8 @@ func outputCtx() *EvalContext {
 		OutputSchema: model.OutputSchema{
 			"category":      {Type: model.FieldTypeString},
 			"diagnosisType": {Type: model.FieldTypeString, Lookup: "diagnosis-type"},
-			"description":   {Type: model.FieldTypeString, Eval: model.EvalTemplate},
-			"signals":       {Type: model.FieldTypeObject, Eval: model.EvalExpression},
+			"description":   {Type: model.FieldTypeString},
+			"signals":       {Type: model.FieldTypeObject},
 		},
 		Lookups: map[string]model.LookupTable{
 			"diagnosis-type": {
@@ -158,27 +158,6 @@ func TestEnrichLookupValue_UnknownKeyPassesThrough(t *testing.T) {
 	}
 }
 
-// A literal declared number is coerced and emitted as a JSON number, not the
-// authored string — Type is binding on emission, not just on syntax.
-func TestEvaluateOutputs_LiteralNumberEmitsNumber(t *testing.T) {
-	seg := &model.Segment{
-		ID:       "seg",
-		Strategy: model.StrategyRule,
-		Outputs:  map[string]string{"rank": "3"},
-	}
-	out, errs := evaluateOutputs(seg, nil, &EvalContext{OutputSchema: model.OutputSchema{"rank": {Type: model.FieldTypeNumber}}})
-	if len(errs) != 0 {
-		t.Fatalf("expected no render errors, got %v", errs)
-	}
-	got, isFloat := out["rank"].(float64)
-	if !isFloat {
-		t.Fatalf("expected rank to be a float64 (JSON number), got %T (%v)", out["rank"], out["rank"])
-	}
-	if got != 3 {
-		t.Errorf("rank = %v, want 3", got)
-	}
-}
-
 // Same for boolean.
 func TestEvaluateOutputs_LiteralBooleanEmitsBoolean(t *testing.T) {
 	seg := &model.Segment{
@@ -213,32 +192,6 @@ func TestEvaluateOutputs_LiteralStringEmitsString(t *testing.T) {
 	}
 	if got, isString := out["category"].(string); !isString || got != "EmployeeAccountStatus" {
 		t.Errorf("category = %v (%T), want the string EmployeeAccountStatus", out["category"], out["category"])
-	}
-}
-
-// A runtime coercion failure degrades exactly like a failed template or
-// expression: the field is omitted, a RenderError is recorded naming it, and
-// the rest of the record still reports. Config validation should already
-// reject an uncoercible literal at load, so reaching this means something
-// slipped through — it must never panic or fail the evaluation.
-func TestEvaluateOutputs_UncoercibleLiteralDegrades(t *testing.T) {
-	seg := &model.Segment{
-		ID:       "seg",
-		Strategy: model.StrategyRule,
-		Outputs:  map[string]string{"rank": "high", "category": "ok"},
-	}
-	out, errs := evaluateOutputs(seg, nil, &EvalContext{OutputSchema: model.OutputSchema{
-		"rank":     {Type: model.FieldTypeNumber},
-		"category": {Type: model.FieldTypeString},
-	}})
-	if _, present := out["rank"]; present {
-		t.Error("uncoercible literal should not emit a value")
-	}
-	if out["category"] != "ok" {
-		t.Error("other fields should still be emitted")
-	}
-	if len(errs) != 1 || errs[0].Field != "rank" {
-		t.Fatalf("expected one render error naming rank, got %v", errs)
 	}
 }
 

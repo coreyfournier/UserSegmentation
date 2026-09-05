@@ -170,8 +170,8 @@ func TestEvaluateUseCase_OutputsWireFormat(t *testing.T) {
 				Name: "diagnostics",
 				OutputSchema: model.OutputSchema{
 					"category":      {Type: model.FieldTypeString}, // literal
-					"description":   {Type: model.FieldTypeString, Eval: model.EvalTemplate},
-					"signals":       {Type: model.FieldTypeObject, Eval: model.EvalExpression},
+					"description":   {Type: model.FieldTypeString},
+					"signals":       {Type: model.FieldTypeObject},
 					"diagnosisType": {Type: model.FieldTypeString, Lookup: "diagnosis-type"},
 				},
 				Segments: []model.Segment{

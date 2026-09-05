@@ -36,7 +36,7 @@ func TestRule_WinnerCarriesOutputs(t *testing.T) {
 		},
 		OutputSchema: model.OutputSchema{
 			"severity": {Type: model.FieldTypeString},
-			"title":    {Type: model.FieldTypeString, Eval: model.EvalTemplate},
+			"title":    {Type: model.FieldTypeString},
 		},
 	}
 
