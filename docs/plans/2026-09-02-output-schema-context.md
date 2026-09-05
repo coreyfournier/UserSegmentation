@@ -226,11 +226,11 @@ directions:
   an expression that works. Task 5's probe disproved it — bare `expr.Compile`
   accepts `pow(2, 3)` even though `pow` is registered only via `mathOptions`,
   because expr-lang defers unresolved calls to runtime when given no typed
-  environment. So the syntax check was added, scoped to fields whose `EvalMode()`
-  is `EvalExpression`. Two things fell out of review and are worth keeping in mind
-  if this check is ever extended: it must skip disabled rules, or a parked
-  half-written expression wedges every other segment's save; and a literal-mode
-  field must never be compiled.
+  environment. So the syntax check was added. (Since superseded: the eval mode is
+  no longer declared but derived from the field's type, so the syntax check now
+  covers every non-string field.) One thing fell out of review and is worth
+  keeping in mind if this check is ever extended: it must skip disabled rules, or
+  a parked half-written expression wedges every other segment's save.
 - **An unreachable second checklist segment is silent.** Because a checklist always
   succeeds, any checklist segment after the first one a layer reaches is dead
   config, and nothing rejects it. There is precedent for catching this class at
