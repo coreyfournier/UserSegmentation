@@ -12,21 +12,21 @@ func TestValidateSnapshot_ValidConfig(t *testing.T) {
 		Layers: []model.Layer{
 			{
 				Name: "test",
+				InputSchema: model.InputSchema{
+					"country": {Type: model.FieldTypeString, Required: true},
+					"age":     {Type: model.FieldTypeNumber, Required: false},
+				},
 				Segments: []model.Segment{
 					{
 						ID:       "seg1",
 						Strategy: model.StrategyRule,
-						InputSchema: model.InputSchema{
-							"country": {Type: model.FieldTypeString, Required: true},
-							"age":     {Type: model.FieldTypeNumber, Required: false},
-						},
 						Rules: []model.Rule{
 							{
-								RuleName:   "check",
+								RuleName:  "check",
 								Condition: &model.Condition{Field: "country", Operator: model.OpEq, Value: "US"},
 							},
 							{
-								RuleName:   "age-check",
+								RuleName:  "age-check",
 								Condition: &model.Condition{Field: "age", Operator: model.OpGte, Value: 18},
 							},
 						},
@@ -44,12 +44,12 @@ func TestValidateSnapshot_MissingField(t *testing.T) {
 	snap := &model.Snapshot{
 		Layers: []model.Layer{
 			{
-				Name: "test",
+				Name:        "test",
+				InputSchema: model.InputSchema{"country": {Type: model.FieldTypeString}},
 				Segments: []model.Segment{
 					{
-						ID:          "seg1",
-						Strategy:    model.StrategyRule,
-						InputSchema: model.InputSchema{"country": {Type: model.FieldTypeString}},
+						ID:       "seg1",
+						Strategy: model.StrategyRule,
 						Rules: []model.Rule{
 							{RuleName: "bad", Condition: &model.Condition{Field: "missing_field", Operator: model.OpEq, Value: "x"}},
 						},
@@ -67,12 +67,12 @@ func TestValidateSnapshot_IncompatibleOperator(t *testing.T) {
 	snap := &model.Snapshot{
 		Layers: []model.Layer{
 			{
-				Name: "test",
+				Name:        "test",
+				InputSchema: model.InputSchema{"name": {Type: model.FieldTypeString}},
 				Segments: []model.Segment{
 					{
-						ID:          "seg1",
-						Strategy:    model.StrategyRule,
-						InputSchema: model.InputSchema{"name": {Type: model.FieldTypeString}},
+						ID:       "seg1",
+						Strategy: model.StrategyRule,
 						Rules: []model.Rule{
 							{RuleName: "bad", Condition: &model.Condition{Field: "name", Operator: model.OpGt, Value: "x"}},
 						},
@@ -90,12 +90,12 @@ func TestValidateSnapshot_IncompatibleOperator(t *testing.T) {
 // declaring the dependency only when declared is true.
 func crossLayerSnapshot(declared bool) *model.Snapshot {
 	layer := model.Layer{
-		Name: "test",
+		Name:        "test",
+		InputSchema: model.InputSchema{"country": {Type: model.FieldTypeString}},
 		Segments: []model.Segment{
 			{
-				ID:          "seg1",
-				Strategy:    model.StrategyRule,
-				InputSchema: model.InputSchema{"country": {Type: model.FieldTypeString}},
+				ID:       "seg1",
+				Strategy: model.StrategyRule,
 				Rules: []model.Rule{
 					{RuleName: "cross", Condition: &model.Condition{Field: "layer:base-tier", Operator: model.OpEq, Value: "pro"}},
 				},
@@ -133,13 +133,13 @@ func TestValidateSnapshot_DependencyWithoutReference(t *testing.T) {
 		Layers: []model.Layer{
 			{Name: "gate"},
 			{
-				Name:      "downstream",
-				DependsOn: []string{"gate"},
+				Name:        "downstream",
+				DependsOn:   []string{"gate"},
+				InputSchema: model.InputSchema{"country": {Type: model.FieldTypeString}},
 				Segments: []model.Segment{
 					{
-						ID:          "seg1",
-						Strategy:    model.StrategyRule,
-						InputSchema: model.InputSchema{"country": {Type: model.FieldTypeString}},
+						ID:       "seg1",
+						Strategy: model.StrategyRule,
 						Rules: []model.Rule{
 							{RuleName: "plain", Condition: &model.Condition{Field: "country", Operator: model.OpEq, Value: "US"}},
 						},
@@ -154,20 +154,18 @@ func TestValidateSnapshot_DependencyWithoutReference(t *testing.T) {
 }
 
 func TestCheckRequiredFields(t *testing.T) {
-	seg := &model.Segment{
-		ID: "test",
-		InputSchema: model.InputSchema{
-			"country": {Type: model.FieldTypeString, Required: true},
-			"age":     {Type: model.FieldTypeNumber, Required: false},
-		},
+	seg := &model.Segment{ID: "test"}
+	schema := model.InputSchema{
+		"country": {Type: model.FieldTypeString, Required: true},
+		"age":     {Type: model.FieldTypeNumber, Required: false},
 	}
 
-	warnings := CheckRequiredFields(seg, map[string]interface{}{"age": 25})
+	warnings := CheckRequiredFields(seg, schema, map[string]interface{}{"age": 25})
 	if len(warnings) != 1 || warnings[0].Field != "country" {
 		t.Errorf("expected warning for missing country, got %v", warnings)
 	}
 
-	warnings = CheckRequiredFields(seg, map[string]interface{}{"country": "US"})
+	warnings = CheckRequiredFields(seg, schema, map[string]interface{}{"country": "US"})
 	if len(warnings) != 0 {
 		t.Errorf("expected no warnings, got %v", warnings)
 	}

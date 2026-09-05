@@ -80,8 +80,8 @@ func TestGraph_AcyclicPasses(t *testing.T) {
 // unevaluable instead of a load failure.
 func TestGraph_FormulasAreCompiled(t *testing.T) {
 	seg := model.Segment{
-		ID:          "bad",
-		Strategy:    model.StrategyChecklist,
+		ID:       "bad",
+		Strategy: model.StrategyChecklist,
 		Computed: []model.ComputedField{{Name: "Broken", Type: model.FieldTypeNumber, Formula: "1 +"}},
 	}
 	expectError(t, graphSnapshot(model.Layer{Name: "gate", Segments: []model.Segment{seg}}), "formula")
@@ -90,13 +90,17 @@ func TestGraph_FormulasAreCompiled(t *testing.T) {
 // The When dispatch predicate is a rule tree and is checked like any other.
 func TestGraph_WhenPredicateValidated(t *testing.T) {
 	seg := model.Segment{
-		ID:          "precision",
-		Strategy:    model.StrategyChecklist,
-		InputSchema: model.InputSchema{"productType": {Type: model.FieldTypeString}},
+		ID:       "precision",
+		Strategy: model.StrategyChecklist,
 		When: &model.Rule{
-			RuleName:   "isPrecision",
+			RuleName:  "isPrecision",
 			Condition: &model.Condition{Field: "notInSchema", Operator: model.OpEq, Value: "Precision"},
 		},
 	}
-	expectError(t, graphSnapshot(model.Layer{Name: "payroll", Segments: []model.Segment{seg}}), "not in inputSchema")
+	layer := model.Layer{
+		Name:        "payroll",
+		InputSchema: model.InputSchema{"productType": {Type: model.FieldTypeString}},
+		Segments:    []model.Segment{seg},
+	}
+	expectError(t, graphSnapshot(layer), "not in inputSchema")
 }

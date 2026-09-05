@@ -11,12 +11,12 @@ import (
 func snapWithOutputField(f model.OutputField) *model.Snapshot {
 	return &model.Snapshot{
 		Layers: []model.Layer{{
-			Name: "diagnostics",
+			Name:         "diagnostics",
+			OutputSchema: model.OutputSchema{"field": f},
+			InputSchema:  model.InputSchema{"x": {Type: model.FieldTypeString}},
 			Segments: []model.Segment{{
-				ID:           "employee",
-				Strategy:     model.StrategyChecklist,
-				OutputSchema: model.OutputSchema{"field": f},
-				InputSchema:  model.InputSchema{"x": {Type: model.FieldTypeString}},
+				ID:       "employee",
+				Strategy: model.StrategyChecklist,
 				Rules: []model.Rule{{
 					RuleName:  "someCheck",
 					Condition: &model.Condition{Field: "x", Operator: model.OpIsNull},
@@ -219,12 +219,12 @@ func TestValidate_OutputSchemaExemptOnStaticAndPercentage(t *testing.T) {
 		snap := &model.Snapshot{
 			Layers: []model.Layer{{
 				Name: "tier",
+				OutputSchema: model.OutputSchema{
+					"field": model.OutputField{Type: model.FieldTypeNumber, Lookup: "vip-tiers"},
+				},
 				Segments: []model.Segment{{
 					ID:       "seg",
 					Strategy: strat,
-					OutputSchema: model.OutputSchema{
-						"field": model.OutputField{Type: model.FieldTypeNumber, Lookup: "vip-tiers"},
-					},
 					// An unknown key, an unparseable literal, and a lookup
 					// type mismatch (field declared number, table is string) —
 					// none of it is enforced for these strategies.
@@ -539,11 +539,11 @@ func TestValidate_RequiredOutputExemptOnStaticAndPercentage(t *testing.T) {
 	for _, strat := range []string{model.StrategyStatic, model.StrategyPercentage} {
 		snap := &model.Snapshot{
 			Layers: []model.Layer{{
-				Name: "tier",
+				Name:         "tier",
+				OutputSchema: model.OutputSchema{"field": required},
 				Segments: []model.Segment{{
-					ID:           "seg",
-					Strategy:     strat,
-					OutputSchema: model.OutputSchema{"field": required},
+					ID:       "seg",
+					Strategy: strat,
 				}},
 			}},
 		}
@@ -558,17 +558,17 @@ func TestValidate_RequiredOutputExemptOnStaticAndPercentage(t *testing.T) {
 // is exempt — neither strategy ever populates Outputs, so the warning would
 // fire on every single evaluation with no way to silence it.
 func TestCheckRequiredOutputs_ExemptOnStaticAndPercentageAssignment(t *testing.T) {
+	schema := model.OutputSchema{
+		"category": model.OutputField{Type: model.FieldTypeString, Required: true},
+	}
 	for _, strat := range []string{model.StrategyStatic, model.StrategyPercentage} {
 		seg := &model.Segment{
 			ID:       "seg",
 			Strategy: strat,
-			OutputSchema: model.OutputSchema{
-				"category": model.OutputField{Type: model.FieldTypeString, Required: true},
-			},
 		}
 		a := &model.Assignment{Segment: "whatever", Strategy: strat} // Outputs deliberately absent
 
-		if got := CheckRequiredOutputs(seg, a, nil); len(got) != 0 {
+		if got := CheckRequiredOutputs(seg, schema, a, nil); len(got) != 0 {
 			t.Fatalf("strategy %q: expected no warnings, got %v", strat, got)
 		}
 	}
@@ -583,13 +583,13 @@ func TestCheckRequiredOutputs_OverrideOnStaticSegmentStillChecked(t *testing.T) 
 	seg := &model.Segment{
 		ID:       "seg",
 		Strategy: model.StrategyStatic,
-		OutputSchema: model.OutputSchema{
-			"category": model.OutputField{Type: model.FieldTypeString, Required: true},
-		},
+	}
+	schema := model.OutputSchema{
+		"category": model.OutputField{Type: model.FieldTypeString, Required: true},
 	}
 	a := &model.Assignment{Segment: "vip", Strategy: "override"} // Outputs absent: the override's value failed to resolve
 
-	got := CheckRequiredOutputs(seg, a, nil)
+	got := CheckRequiredOutputs(seg, schema, a, nil)
 	if len(got) != 1 {
 		t.Fatalf("expected one warning for the missing required field on the override, got %v", got)
 	}

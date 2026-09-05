@@ -52,7 +52,23 @@ func ValidateSnapshot(snap *model.Snapshot) error {
 					model.StatusSatisfied, model.StatusViolated, model.StatusUnevaluable))
 			}
 
-			errs = append(errs, validateOutputSchema(&seg, lookups)...)
+			// Schemas live on the layer. A segment still carrying one is config
+			// written against the old shape; rejecting it beats decoding it to
+			// nothing and silently disabling rule-field validation.
+			if len(seg.LegacyInputSchema) > 0 {
+				errs = append(errs, fmt.Sprintf(
+					"segment %q: inputSchema is declared on the layer now, not the segment — "+
+						"move these %d field(s) to layer %q",
+					seg.ID, len(seg.LegacyInputSchema), layer.Name))
+			}
+			if len(seg.LegacyOutputSchema) > 0 {
+				errs = append(errs, fmt.Sprintf(
+					"segment %q: outputSchema is declared on the layer now, not the segment — "+
+						"move these %d field(s) to layer %q",
+					seg.ID, len(seg.LegacyOutputSchema), layer.Name))
+			}
+
+			errs = append(errs, validateOutputSchema(&seg, layer.OutputSchema, lookups)...)
 
 			// Formulas are syntax-checked wherever they are declared. Gating
 			// this on the strategy used to mean a typo on a segment that never
@@ -64,12 +80,12 @@ func ValidateSnapshot(snap *model.Snapshot) error {
 				}
 			}
 
-			if seg.InputSchema == nil && len(seg.Computed) == 0 {
+			if layer.InputSchema == nil && len(seg.Computed) == 0 {
 				continue
 			}
 
-			// Build the effective schema: inputSchema fields + expression-defined fields.
-			effective := buildEffectiveSchema(seg)
+			// Build the effective schema: layer's inputSchema fields + expression-defined fields.
+			effective := buildEffectiveSchema(layer.InputSchema, seg.Computed)
 			vc := ruleContext{
 				schema:  effective,
 				layer:   layer.Name,
@@ -96,14 +112,15 @@ func ValidateSnapshot(snap *model.Snapshot) error {
 	return nil
 }
 
-// buildEffectiveSchema merges the segment's inputSchema with any expression-defined fields.
-// Expression fields overwrite inputSchema entries with the same name.
-func buildEffectiveSchema(seg model.Segment) model.InputSchema {
-	effective := make(model.InputSchema, len(seg.InputSchema)+len(seg.Computed))
-	for k, v := range seg.InputSchema {
+// buildEffectiveSchema merges the layer's inputSchema with any expression-defined
+// fields declared on a segment. Expression fields overwrite inputSchema entries
+// with the same name.
+func buildEffectiveSchema(inSchema model.InputSchema, computed []model.ComputedField) model.InputSchema {
+	effective := make(model.InputSchema, len(inSchema)+len(computed))
+	for k, v := range inSchema {
 		effective[k] = v
 	}
-	for _, def := range seg.Computed {
+	for _, def := range computed {
 		effective[def.Name] = model.SchemaField{Type: def.Type}
 	}
 	return effective
@@ -275,13 +292,15 @@ func validateLookupRef(r *model.Rule, fieldType model.FieldType, segID string, l
 	return nil
 }
 
-// CheckRequiredFields returns warnings for required schema fields missing from context.
-func CheckRequiredFields(seg *model.Segment, ctx map[string]interface{}) []model.Warning {
-	if seg.InputSchema == nil {
+// CheckRequiredFields returns warnings for required schema fields missing from
+// context. schema is the enclosing layer's InputSchema — the only place it is
+// declared.
+func CheckRequiredFields(seg *model.Segment, schema model.InputSchema, ctx map[string]interface{}) []model.Warning {
+	if schema == nil {
 		return nil
 	}
 	var warnings []model.Warning
-	for field, sf := range seg.InputSchema {
+	for field, sf := range schema {
 		if sf.Required {
 			if _, ok := model.ResolveField(ctx, field); !ok {
 				warnings = append(warnings, model.Warning{
@@ -296,7 +315,8 @@ func CheckRequiredFields(seg *model.Segment, ctx map[string]interface{}) []model
 }
 
 // CheckRequiredOutputs returns warnings for required output fields absent from
-// what a segment actually emitted.
+// what a segment actually emitted. schema is the enclosing layer's
+// OutputSchema — the only place it is declared.
 //
 // Config validation already rejects a required field that no authoring path
 // supplies — including on an override rule — so reaching here means something
@@ -304,7 +324,7 @@ func CheckRequiredFields(seg *model.Segment, ctx map[string]interface{}) []model
 // that means the value's expression or template failed and the field was
 // dropped, which is deliberate degradation and not recoverable at load. So the
 // caller is told and decides.
-func CheckRequiredOutputs(seg *model.Segment, a *model.Assignment, failures []model.Failure) []model.Warning {
+func CheckRequiredOutputs(seg *model.Segment, schema model.OutputSchema, a *model.Assignment, failures []model.Failure) []model.Warning {
 	// Output-schema enforcement does not apply to the static or percentage
 	// strategies: neither ever populates Result.Outputs, so a required field
 	// on one of them would warn on every evaluation with no config change
@@ -318,7 +338,7 @@ func CheckRequiredOutputs(seg *model.Segment, a *model.Assignment, failures []mo
 	}
 
 	var required []string
-	for name, f := range seg.OutputSchema {
+	for name, f := range schema {
 		if f.Required {
 			required = append(required, name)
 		}
@@ -397,16 +417,17 @@ func outputEnforcementExempt(seg *model.Segment) bool {
 // field's authored value parses as its declared type, a lookup-bound field's
 // declared type matches the table's key type, and every Required field is
 // actually authored. Lookup membership and order uniqueness remain the
-// author's invariants and are deliberately not checked.
-func validateOutputSchema(seg *model.Segment, lookups map[string]model.LookupTable) []string {
+// author's invariants and are deliberately not checked. schema is the
+// enclosing layer's OutputSchema — the only place it is declared.
+func validateOutputSchema(seg *model.Segment, schema model.OutputSchema, lookups map[string]model.LookupTable) []string {
 	var errs []string
 
 	// Name-checking is not per-field — it is what tells us an authored key has
 	// no field to check against in the first place — so it runs once up front
 	// rather than inside the per-field loop below.
-	errs = append(errs, unknownOutputNameErrors(seg)...)
+	errs = append(errs, unknownOutputNameErrors(seg, schema)...)
 
-	for name, f := range seg.OutputSchema {
+	for name, f := range schema {
 		if f.Lookup != "" {
 			tbl, ok := lookups[f.Lookup]
 			if !ok {
@@ -492,7 +513,7 @@ func literalTypeErrors(seg *model.Segment, name string, ft model.FieldType) []st
 	return errs
 }
 
-// unknownOutputNameErrors rejects an authored output key that the segment's
+// unknownOutputNameErrors rejects an authored output key that the layer's
 // outputSchema does not declare, at every authoring site. This is the same
 // class as the unknown-strategy rejection at the top of this file: config
 // that can never do anything, because evaluateOutputs iterates the schema —
@@ -500,7 +521,7 @@ func literalTypeErrors(seg *model.Segment, name string, ft model.FieldType) []st
 // diagnostic at runtime. Lookup-membership-style checks these are not: a
 // declared field with an unlisted value is the author's invariant and stays
 // unchecked; this is about a key that has no field to check against at all.
-func unknownOutputNameErrors(seg *model.Segment) []string {
+func unknownOutputNameErrors(seg *model.Segment, schema model.OutputSchema) []string {
 	if outputEnforcementExempt(seg) {
 		return nil
 	}
@@ -513,7 +534,7 @@ func unknownOutputNameErrors(seg *model.Segment) []string {
 		sort.Strings(names) // stable output; map iteration is not ordered
 
 		for _, name := range names {
-			if _, declared := seg.OutputSchema[name]; declared {
+			if _, declared := schema[name]; declared {
 				continue
 			}
 			switch m.kind {
