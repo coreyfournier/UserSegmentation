@@ -37,10 +37,16 @@ type Segment struct {
 	// rendered when the segment falls back to Default.
 	DefaultMessages map[string]string `json:"defaultMessages,omitempty"`
 	Promotion       *Promotion        `json:"promotion,omitempty"`
-	InputSchema     InputSchema       `json:"inputSchema,omitempty"`
-	// OutputSchema declares the fields this segment emits with each reported
-	// item. Outputs holds the values for fields that do not vary per item; a
-	// rule's own Outputs take precedence.
-	OutputSchema OutputSchema      `json:"outputSchema,omitempty"`
-	Outputs      map[string]string `json:"outputs,omitempty"`
+	Outputs         map[string]string `json:"outputs,omitempty"`
+	// LegacyInputSchema and LegacyOutputSchema exist only to catch config
+	// written before schemas moved to the layer. They carry no behaviour:
+	// validation rejects any segment where either is non-empty, telling the
+	// author to move it up.
+	//
+	// Without them Go's decoder would drop the old keys silently, and a dropped
+	// input schema switches rule-field validation off rather than failing — so
+	// the config would load, look fine, and check nothing. Delete both once no
+	// config in flight still carries them.
+	LegacyInputSchema  InputSchema  `json:"inputSchema,omitempty"`
+	LegacyOutputSchema OutputSchema `json:"outputSchema,omitempty"`
 }
