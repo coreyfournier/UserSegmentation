@@ -147,35 +147,6 @@ export interface FieldCoverage {
   defaultNeedsSegmentValue: boolean;
 }
 
-/**
- * How completely a field is authored across the segment.
- *
- * Only top-level rules are counted, because only they report. Disabled rules
- * are excluded, matching the engine's gate, which exempts them so a
- * work-in-progress item cannot block an unrelated save.
- *
- * Enabled overrides are also counted, matching the engine's own
- * requiredOutputErrors: an override that fires replaces the strategy result
- * entirely, so it carries the same reporting obligation as a rule. But this
- * editor never wires per-item values into the overrides tree, so an override
- * cannot author the field itself — any shortfall there can only be closed by
- * the segment-level value, which is why overridesAuthored/overridesTotal are
- * reported separately rather than folded into authored/total.
- *
- * A rule-strategy segment with a non-empty default is a separate case: the
- * default path calls evaluateOutputs with no rule values at all, so no number
- * of authored rules can satisfy a required field on it — only the
- * segment-level value can.
- *
- * `schema` is the declaration this field lives in — the layer's output
- * schema now, never the segment's — passed explicitly rather than read off
- * `seg`, since a `Segment` no longer carries one. It gates
- * `defaultNeedsSegmentValue`: a name no longer declared in the schema
- * currently in force has no engine obligation to be read regardless of the
- * segment's default, so a stale coverage call (e.g. mid-edit, just after a
- * field was removed from the layer) does not spuriously report that it still
- * needs one.
- */
 export interface OutputRow {
   name: string;
   /** Absent when the key is orphaned — authored but no longer declared. */
@@ -267,6 +238,35 @@ export function renameOutputKey(
   return Object.keys(next).length ? next : undefined;
 }
 
+/**
+ * How completely a field is authored across the segment.
+ *
+ * Only top-level rules are counted, because only they report. Disabled rules
+ * are excluded, matching the engine's gate, which exempts them so a
+ * work-in-progress item cannot block an unrelated save.
+ *
+ * Enabled overrides are also counted, matching the engine's own
+ * requiredOutputErrors: an override that fires replaces the strategy result
+ * entirely, so it carries the same reporting obligation as a rule. But this
+ * editor never wires per-item values into the overrides tree, so an override
+ * cannot author the field itself — any shortfall there can only be closed by
+ * the segment-level value, which is why overridesAuthored/overridesTotal are
+ * reported separately rather than folded into authored/total.
+ *
+ * A rule-strategy segment with a non-empty default is a separate case: the
+ * default path calls evaluateOutputs with no rule values at all, so no number
+ * of authored rules can satisfy a required field on it — only the
+ * segment-level value can.
+ *
+ * `schema` is the declaration this field lives in — the layer's output
+ * schema now, never the segment's — passed explicitly rather than read off
+ * `seg`, since a `Segment` no longer carries one. It gates
+ * `defaultNeedsSegmentValue`: a name no longer declared in the schema
+ * currently in force has no engine obligation to be read regardless of the
+ * segment's default, so a stale coverage call (e.g. mid-edit, just after a
+ * field was removed from the layer) does not spuriously report that it still
+ * needs one.
+ */
 export function fieldCoverage(seg: Segment, schema: OutputSchema | undefined, name: string): FieldCoverage {
   const reporting = (seg.rules ?? []).filter((r: Rule) => r.enabled !== false);
   const authored = reporting.filter((r) => !!r.outputs?.[name]).length;
