@@ -46,15 +46,15 @@
               ]
             }
           ],
-          "default": "false",
-          "inputSchema": {
-            "UserState": {
-              "type": "string",
-              "required": true
-            }
-          }
+          "default": "false"
         }
-      ]
+      ],
+      "inputSchema": {
+        "UserState": {
+          "type": "string",
+          "required": true
+        }
+      }
     },
     {
       "name": "Risk Rating",
@@ -80,16 +80,6 @@
             }
           ],
           "default": "false",
-          "inputSchema": {
-            "CompanyRating": {
-              "type": "number",
-              "required": true
-            },
-            "PayCheckRaiting": {
-              "type": "number",
-              "required": true
-            }
-          },
           "computed": [
             {
               "name": "RiskRating",
@@ -98,7 +88,17 @@
             }
           ]
         }
-      ]
+      ],
+      "inputSchema": {
+        "CompanyRating": {
+          "type": "number",
+          "required": true
+        },
+        "PayCheckRaiting": {
+          "type": "number",
+          "required": true
+        }
+      }
     },
     {
       "name": "dSDsd",
@@ -192,19 +192,19 @@
           "promotion": {
             "effective_from": "2026-06-01T00:00:00Z",
             "effective_until": "2026-08-31T23:59:59Z"
-          },
-          "inputSchema": {
-            "country": {
-              "type": "string",
-              "required": true
-            },
-            "plan": {
-              "type": "string",
-              "required": false
-            }
           }
         }
-      ]
+      ],
+      "inputSchema": {
+        "country": {
+          "type": "string",
+          "required": true
+        },
+        "plan": {
+          "type": "string",
+          "required": false
+        }
+      }
     },
     {
       "name": "features",
@@ -275,12 +275,6 @@
             }
           ],
           "default": "fee-standard",
-          "inputSchema": {
-            "Employees": {
-              "type": "array",
-              "required": true
-            }
-          },
           "computed": [
             {
               "name": "CTTotal",
@@ -294,7 +288,13 @@
             }
           ]
         }
-      ]
+      ],
+      "inputSchema": {
+        "Employees": {
+          "type": "array",
+          "required": true
+        }
+      }
     },
     {
       "name": "ewa-eligibility",
@@ -323,24 +323,6 @@
             }
           ],
           "default": "eligible",
-          "inputSchema": {
-            "DaysWorked": {
-              "type": "number",
-              "required": true
-            },
-            "EarnedWages": {
-              "type": "number",
-              "required": true
-            },
-            "RequestedAmount": {
-              "type": "number",
-              "required": true
-            },
-            "StateCap": {
-              "type": "number",
-              "required": true
-            }
-          },
           "computed": [
             {
               "name": "MaxAllowed",
@@ -354,7 +336,25 @@
             }
           ]
         }
-      ]
+      ],
+      "inputSchema": {
+        "DaysWorked": {
+          "type": "number",
+          "required": true
+        },
+        "EarnedWages": {
+          "type": "number",
+          "required": true
+        },
+        "RequestedAmount": {
+          "type": "number",
+          "required": true
+        },
+        "StateCap": {
+          "type": "number",
+          "required": true
+        }
+      }
     },
     {
       "name": "ewa-risk",
@@ -383,36 +383,6 @@
             }
           ],
           "default": "approve-net-pay-cap",
-          "inputSchema": {
-            "AchCost": {
-              "type": "number",
-              "required": true
-            },
-            "Alpha": {
-              "type": "number",
-              "required": true
-            },
-            "Fee": {
-              "type": "number",
-              "required": true
-            },
-            "Lambda": {
-              "type": "number",
-              "required": true
-            },
-            "NetPay": {
-              "type": "number",
-              "required": true
-            },
-            "Signals": {
-              "type": "array",
-              "required": true
-            },
-            "w0": {
-              "type": "number",
-              "required": true
-            }
-          },
           "computed": [
             {
               "name": "Z",
@@ -451,7 +421,37 @@
             }
           ]
         }
-      ]
+      ],
+      "inputSchema": {
+        "AchCost": {
+          "type": "number",
+          "required": true
+        },
+        "Alpha": {
+          "type": "number",
+          "required": true
+        },
+        "Fee": {
+          "type": "number",
+          "required": true
+        },
+        "Lambda": {
+          "type": "number",
+          "required": true
+        },
+        "NetPay": {
+          "type": "number",
+          "required": true
+        },
+        "Signals": {
+          "type": "array",
+          "required": true
+        },
+        "w0": {
+          "type": "number",
+          "required": true
+        }
+      }
     },
     {
       "name": "transfer-fee",
@@ -523,19 +523,19 @@
                 "operator": "is_null_or_empty"
               }
             }
-          ],
-          "inputSchema": {
-            "company.ein": {
-              "type": "string",
-              "required": true
-            },
-            "company.legalName": {
-              "type": "string",
-              "required": true
-            }
-          }
+          ]
         }
-      ]
+      ],
+      "inputSchema": {
+        "company.ein": {
+          "type": "string",
+          "required": true
+        },
+        "company.legalName": {
+          "type": "string",
+          "required": true
+        }
+      }
     },
     {
       "name": "company-payroll-setup",
@@ -599,32 +599,6 @@
               ]
             }
           ],
-          "inputSchema": {
-            "company.anchorDate": {
-              "type": "string",
-              "required": true
-            },
-            "company.checkDate": {
-              "type": "string",
-              "required": true
-            },
-            "company.defaultPayRate": {
-              "type": "number",
-              "required": false
-            },
-            "company.payFrequency": {
-              "type": "string",
-              "required": true
-            },
-            "company.periodEnd": {
-              "type": "string",
-              "required": true
-            },
-            "company.productType": {
-              "type": "string",
-              "required": true
-            }
-          },
           "computed": [
             {
               "name": "PayPeriodDatesValid",
@@ -653,19 +627,39 @@
                 "operator": "is_null_or_empty"
               }
             }
-          ],
-          "inputSchema": {
-            "company.fundingAccount": {
-              "type": "string",
-              "required": true
-            },
-            "company.productType": {
-              "type": "string",
-              "required": true
-            }
-          }
+          ]
         }
-      ]
+      ],
+      "inputSchema": {
+        "company.anchorDate": {
+          "type": "string",
+          "required": true
+        },
+        "company.checkDate": {
+          "type": "string",
+          "required": true
+        },
+        "company.defaultPayRate": {
+          "type": "number",
+          "required": false
+        },
+        "company.fundingAccount": {
+          "type": "string",
+          "required": true
+        },
+        "company.payFrequency": {
+          "type": "string",
+          "required": true
+        },
+        "company.periodEnd": {
+          "type": "string",
+          "required": true
+        },
+        "company.productType": {
+          "type": "string",
+          "required": true
+        }
+      }
     },
     {
       "name": "employee-readiness",
@@ -714,27 +708,27 @@
                 }
               ]
             }
-          ],
-          "inputSchema": {
-            "employee.contactEmail": {
-              "type": "string",
-              "required": true
-            },
-            "employee.contactPhone": {
-              "type": "string",
-              "required": true
-            },
-            "employee.hireDate": {
-              "type": "string",
-              "required": true
-            },
-            "employee.payGroupId": {
-              "type": "string",
-              "required": true
-            }
-          }
+          ]
         }
-      ]
+      ],
+      "inputSchema": {
+        "employee.contactEmail": {
+          "type": "string",
+          "required": true
+        },
+        "employee.contactPhone": {
+          "type": "string",
+          "required": true
+        },
+        "employee.hireDate": {
+          "type": "string",
+          "required": true
+        },
+        "employee.payGroupId": {
+          "type": "string",
+          "required": true
+        }
+      }
     },
     {
       "name": "CompanyValidation",
@@ -771,23 +765,23 @@
                 "operator": "is_null"
               }
             }
-          ],
-          "inputSchema": {
-            "DefaultPayRate": {
-              "type": "number",
-              "required": false
-            },
-            "EmailContact": {
-              "type": "string",
-              "required": false
-            },
-            "ProductType": {
-              "type": "string",
-              "required": false
-            }
-          }
+          ]
         }
       ],
+      "inputSchema": {
+        "DefaultPayRate": {
+          "type": "number",
+          "required": false
+        },
+        "EmailContact": {
+          "type": "string",
+          "required": false
+        },
+        "ProductType": {
+          "type": "string",
+          "required": false
+        }
+      },
       "defaultLanguage": "en"
     },
     {
@@ -833,19 +827,19 @@
                 "en": "An account for deposits are required"
               }
             }
-          ],
-          "inputSchema": {
-            "HasDepositAccount": {
-              "type": "boolean",
-              "required": false
-            },
-            "ProductType": {
-              "type": "string",
-              "required": true
-            }
-          }
+          ]
         }
       ],
+      "inputSchema": {
+        "HasDepositAccount": {
+          "type": "boolean",
+          "required": false
+        },
+        "ProductType": {
+          "type": "string",
+          "required": true
+        }
+      },
       "defaultLanguage": "en"
     }
   ]
