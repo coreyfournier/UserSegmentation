@@ -3,7 +3,6 @@ package validation
 import (
 	"fmt"
 	"sort"
-	"strconv"
 	"strings"
 
 	"github.com/expr-lang/expr"
@@ -445,12 +444,12 @@ func outputEnforcementExempt(seg *model.Segment) bool {
 	return seg.Strategy == model.StrategyStatic || seg.Strategy == model.StrategyPercentage
 }
 
-// validateOutputSchema checks a referenced lookup table exists, the object and
-// array types are confined to expression mode, a template-mode field can only
-// declare string, every authored key is actually declared, a literal-mode
-// field's authored value parses as its declared type, a lookup-bound field's
-// declared type matches the table's key type, and every Required field is
-// actually authored. Lookup membership and order uniqueness remain the
+// validateOutputSchema checks a referenced lookup table exists, a lookup-bound
+// field's declared type matches the table's key type, every authored key is
+// actually declared, a legacy "eval" key is rejected (the mode is derived from
+// the type now), every non-string (i.e. expression-mode) field's authored
+// value compiles as a syntactically valid expression, and every Required field
+// is actually authored. Lookup membership and order uniqueness remain the
 // author's invariants and are deliberately not checked. schema is the
 // enclosing layer's OutputSchema — the only place it is declared.
 func validateOutputSchema(seg *model.Segment, schema model.OutputSchema, lookups map[string]model.LookupTable) []string {
@@ -478,70 +477,18 @@ func validateOutputSchema(seg *model.Segment, schema model.OutputSchema, lookups
 					seg.ID, name, f.Type, f.Lookup, tbl.KeyType))
 			}
 		}
-		if (f.Type == model.FieldTypeObject || f.Type == model.FieldTypeArray) && f.EvalMode() != model.EvalExpression {
+		if f.LegacyEval != "" {
 			errs = append(errs, fmt.Sprintf(
-				"segment %q output %q: the %q type requires eval \"expression\"",
-				seg.ID, name, f.Type))
+				"segment %q output %q: \"eval\" is no longer declared — the mode is derived "+
+					"from the type, so a string is a template and everything else is an "+
+					"expression; remove it",
+				seg.ID, name))
 		}
-		if !outputEnforcementExempt(seg) && f.EvalMode() == model.EvalTemplate && f.Type != model.FieldTypeString {
-			errs = append(errs, fmt.Sprintf(
-				"segment %q output %q: eval \"template\" always produces a string, so type must be %q, not %q",
-				seg.ID, name, model.FieldTypeString, f.Type))
-		}
-		if f.EvalMode() == model.EvalExpression {
+		if !f.IsTemplate() {
 			errs = append(errs, validateOutputExpressionSyntax(seg, name)...)
-		}
-		if !outputEnforcementExempt(seg) && f.EvalMode() == model.EvalLiteral {
-			errs = append(errs, literalTypeErrors(seg, name, f.Type)...)
 		}
 		if f.Required {
 			errs = append(errs, requiredOutputErrors(seg, name)...)
-		}
-	}
-	return errs
-}
-
-// literalTypeErrors rejects a literal-mode authored value that does not parse
-// as its field's declared type, at every authoring site (segment, enabled
-// rules, enabled overrides). A literal is emitted verbatim as text unless it
-// is coerced, so this is the load-time half of the type binding — the runtime
-// half (strategy/output.go's evaluateOutputs) does the same parse and emits
-// the parsed value; a value this check accepts is a value that parse will
-// also accept. string is unconstrained (any text is a valid string); array and
-// object are not reachable in literal mode at all, and are reported instead by
-// the eval-mode/type-shape check above, so they are skipped here rather than
-// double-reported.
-func literalTypeErrors(seg *model.Segment, name string, ft model.FieldType) []string {
-	var errs []string
-	for _, s := range outputAuthoringSites(seg, name) {
-		if !s.ok {
-			continue
-		}
-		var err error
-		switch ft {
-		case model.FieldTypeNumber:
-			_, err = strconv.ParseFloat(s.value, 64)
-		case model.FieldTypeBoolean:
-			_, err = strconv.ParseBool(s.value)
-		default:
-			continue
-		}
-		if err == nil {
-			continue
-		}
-		switch s.kind {
-		case siteSegment:
-			errs = append(errs, fmt.Sprintf(
-				"segment %q output %q: literal %q does not parse as %q: %v",
-				seg.ID, name, s.value, ft, err))
-		case siteRule:
-			errs = append(errs, fmt.Sprintf(
-				"segment %q rule %q output %q: literal %q does not parse as %q: %v",
-				seg.ID, s.name, name, s.value, ft, err))
-		case siteOverride:
-			errs = append(errs, fmt.Sprintf(
-				"segment %q override %q output %q: literal %q does not parse as %q: %v",
-				seg.ID, s.name, name, s.value, ft, err))
 		}
 	}
 	return errs

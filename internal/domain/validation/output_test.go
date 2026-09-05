@@ -36,97 +36,6 @@ func TestValidate_OutputLookupMustExist(t *testing.T) {
 	}
 }
 
-func TestValidate_ObjectTypeRequiresExpressionMode(t *testing.T) {
-	err := ValidateSnapshot(snapWithOutputField(model.OutputField{
-		Type: model.FieldTypeObject,
-	}))
-	if err == nil || !strings.Contains(err.Error(), "object") {
-		t.Fatalf("expected an object-type error, got %v", err)
-	}
-
-	if err := ValidateSnapshot(snapWithOutputField(model.OutputField{
-		Type: model.FieldTypeObject,
-		Eval: model.EvalExpression,
-	})); err != nil {
-		t.Fatalf("object with expression mode should be valid, got %v", err)
-	}
-}
-
-// array is not expressible as a literal or a template either, so it carries
-// the same expression-mode requirement as object.
-func TestValidate_ArrayTypeRequiresExpressionMode(t *testing.T) {
-	err := ValidateSnapshot(snapWithOutputField(model.OutputField{
-		Type: model.FieldTypeArray,
-	}))
-	if err == nil || !strings.Contains(err.Error(), "array") {
-		t.Fatalf("expected an array-type error, got %v", err)
-	}
-
-	if err := ValidateSnapshot(snapWithOutputField(model.OutputField{
-		Type: model.FieldTypeArray,
-		Eval: model.EvalExpression,
-	})); err != nil {
-		t.Fatalf("array with expression mode should be valid, got %v", err)
-	}
-}
-
-// A template always produces a string, so any other declared type is rejected
-// at load — a template cannot produce it.
-func TestValidate_TemplateModeRequiresStringType(t *testing.T) {
-	err := ValidateSnapshot(snapWithOutputField(model.OutputField{
-		Type: model.FieldTypeNumber,
-		Eval: model.EvalTemplate,
-	}))
-	if err == nil || !strings.Contains(err.Error(), "template") {
-		t.Fatalf("expected a template-type error, got %v", err)
-	}
-
-	if err := ValidateSnapshot(snapWithOutputField(model.OutputField{
-		Type: model.FieldTypeString,
-		Eval: model.EvalTemplate,
-	})); err != nil {
-		t.Fatalf("template with string type should be valid, got %v", err)
-	}
-}
-
-// A literal-mode number field's authored value must actually parse as a
-// number at every authoring site, mirroring what evaluateOutputs will do at
-// runtime — a value validation accepts is a value coercion will also accept.
-func TestValidate_LiteralNumberMustParse(t *testing.T) {
-	numField := model.OutputField{Type: model.FieldTypeNumber}
-
-	snap := snapWithOutputField(numField)
-	snap.Layers[0].Segments[0].Rules[0].Outputs = map[string]string{"field": "high"}
-	err := ValidateSnapshot(snap)
-	if err == nil || !strings.Contains(err.Error(), "field") {
-		t.Fatalf("expected a literal-parse error naming the field, got %v", err)
-	}
-
-	snap = snapWithOutputField(numField)
-	snap.Layers[0].Segments[0].Rules[0].Outputs = map[string]string{"field": "3"}
-	if err := ValidateSnapshot(snap); err != nil {
-		t.Fatalf("a numeric literal should validate, got %v", err)
-	}
-}
-
-// Same check for boolean.
-func TestValidate_LiteralBooleanMustParse(t *testing.T) {
-	boolField := model.OutputField{Type: model.FieldTypeBoolean}
-
-	snap := snapWithOutputField(boolField)
-	snap.Layers[0].Segments[0].Rules[0].Outputs = map[string]string{"field": "yesish"}
-	err := ValidateSnapshot(snap)
-	if err == nil || !strings.Contains(err.Error(), "field") {
-		t.Fatalf("expected a literal-parse error naming the field, got %v", err)
-	}
-
-	snap = snapWithOutputField(boolField)
-	snap.Layers[0].Segments[0].Rules[0].Outputs = map[string]string{"field": "true"}
-	if err := ValidateSnapshot(snap); err != nil {
-		t.Fatalf("a boolean literal should validate, got %v", err)
-	}
-}
-
 // A lookup-bound field's declared type must match the table's key type,
 // mirroring validateLookupRef's own check for a rule condition.
 func TestValidate_OutputLookupTypeMismatch(t *testing.T) {
@@ -210,10 +119,14 @@ func TestValidate_UnknownOutputKeyIsRejected(t *testing.T) {
 	}
 }
 
-// static and percentage are exempt from every check this task adds — name,
-// literal-type, and lookup-type — for the same reason they are exempt from
-// Required: neither strategy ever populates Result.Outputs, so nothing they
-// declare is binding.
+// static and percentage are exempt from every check this task adds — name and
+// lookup-type — for the same reason they are exempt from Required: neither
+// strategy ever populates Result.Outputs, so nothing they declare is binding.
+// (Expression syntax checking is not among the checks these strategies are
+// exempt from — it never was, even before eval mode was derived from type —
+// so the authored value here must still be syntactically valid; it is
+// deliberately not a real number to show that its *content* is unconstrained,
+// just not its syntax.)
 func TestValidate_OutputSchemaExemptOnStaticAndPercentage(t *testing.T) {
 	for _, strat := range []string{model.StrategyStatic, model.StrategyPercentage} {
 		snap := &model.Snapshot{
@@ -225,10 +138,10 @@ func TestValidate_OutputSchemaExemptOnStaticAndPercentage(t *testing.T) {
 				Segments: []model.Segment{{
 					ID:       "seg",
 					Strategy: strat,
-					// An unknown key, an unparseable literal, and a lookup
-					// type mismatch (field declared number, table is string) —
-					// none of it is enforced for these strategies.
-					Outputs: map[string]string{"field": "not-a-number", "extraneous": "x"},
+					// An unknown key and a lookup type mismatch (field
+					// declared number, table is string) — neither is
+					// enforced for these strategies.
+					Outputs: map[string]string{"field": "unparsed_value", "extraneous": "x"},
 				}},
 			}},
 			Lookups: []model.LookupTable{{
@@ -388,7 +301,9 @@ func TestExprCompile_AcceptsRegisteredMathFunctions(t *testing.T) {
 }
 
 func TestValidate_OutputExpressionSyntaxIsChecked(t *testing.T) {
-	exprField := model.OutputField{Type: model.FieldTypeString, Eval: model.EvalExpression}
+	// Any non-string type is expression mode now, so a number field exercises
+	// the syntax check.
+	exprField := model.OutputField{Type: model.FieldTypeNumber}
 
 	// A broken expression authored on the rule is caught and the field is named.
 	snap := snapWithOutputField(exprField)
@@ -419,20 +334,20 @@ func TestValidate_OutputExpressionSyntaxIsChecked(t *testing.T) {
 		t.Fatalf("valid segment-level expression should not error, got %v", err)
 	}
 
-	// A literal-mode field (Eval left empty) is never compiled, so the same
-	// broken text is not a syntax error there.
-	literalField := model.OutputField{Type: model.FieldTypeString}
-	snap = snapWithOutputField(literalField)
+	// A string (template) field is never compiled, so the same broken text is
+	// not a syntax error there.
+	templateField := model.OutputField{Type: model.FieldTypeString}
+	snap = snapWithOutputField(templateField)
 	snap.Layers[0].Segments[0].Rules[0].Outputs = map[string]string{"field": "amount *"}
 	if err := ValidateSnapshot(snap); err != nil {
-		t.Fatalf("literal-mode field should not be syntax-checked, got %v", err)
+		t.Fatalf("template field should not be syntax-checked, got %v", err)
 	}
 }
 
 func TestValidate_DisabledRuleExpressionSyntaxIsExempt(t *testing.T) {
 	// A disabled rule's broken expression must not wedge the save — it is
 	// only reported once the rule is re-enabled, matching requiredOutputErrors.
-	snap := snapWithOutputField(model.OutputField{Type: model.FieldTypeString, Eval: model.EvalExpression})
+	snap := snapWithOutputField(model.OutputField{Type: model.FieldTypeNumber})
 	snap.Layers[0].Segments[0].Rules[0].Outputs = map[string]string{"field": "amount *"}
 	disabled := false
 	snap.Layers[0].Segments[0].Rules[0].Enabled = &disabled
@@ -484,7 +399,7 @@ func TestValidate_RequiredOutputEmptySegmentValueDoesNotSatisfy(t *testing.T) {
 // used to walk only seg.Outputs and seg.Rules, leaving an override's broken
 // expression to fail at every evaluation instead of at load.
 func TestValidate_OverrideOutputExpressionSyntaxIsChecked(t *testing.T) {
-	exprField := model.OutputField{Type: model.FieldTypeString, Eval: model.EvalExpression}
+	exprField := model.OutputField{Type: model.FieldTypeNumber}
 
 	snap := snapWithOutputField(exprField)
 	seg := &snap.Layers[0].Segments[0]
