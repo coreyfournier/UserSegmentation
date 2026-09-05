@@ -56,6 +56,17 @@ func evaluateOutputs(seg *model.Segment, itemOutputs map[string]string, ctx *Eva
 				errs = append(errs, RenderError{Field: name, Token: raw, Err: err.Error()})
 				continue
 			}
+			if v == nil {
+				// An unbound identifier is not a compile error — expr returns
+				// (nil, nil) — so a typoed field name would otherwise emit null
+				// and, because the key is present, satisfy a required field.
+				errs = append(errs, RenderError{
+					Field: name,
+					Token: raw,
+					Err:   "expression resolved to nothing — an unknown identifier evaluates to nil",
+				})
+				continue
+			}
 			value = v
 		}
 

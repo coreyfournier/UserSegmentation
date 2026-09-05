@@ -195,6 +195,43 @@ func TestEvaluateOutputs_LiteralStringEmitsString(t *testing.T) {
 	}
 }
 
+// An expression that resolves to nothing — an unknown identifier, most often
+// a typo in a field name — is not a compile error: expr.Run returns (nil,
+// nil). The field must be omitted (not emitted as a null that would satisfy a
+// Required check), exactly one RenderError must name it, and a sibling field
+// that resolves fine must still be emitted.
+func TestEvaluateOutputs_UnboundIdentifierDegrades(t *testing.T) {
+	seg := &model.Segment{
+		ID:       "seg",
+		Strategy: model.StrategyRule,
+		Outputs: map[string]string{
+			"shortfall": "MaxAllowd", // typo: MaxAllowed
+			"severity":  "Critical",
+		},
+	}
+	ctx := &EvalContext{
+		Context: map[string]interface{}{"MaxAllowed": 40, "actualHours": 45},
+		OutputSchema: model.OutputSchema{
+			"shortfall": {Type: model.FieldTypeNumber, Required: true},
+			"severity":  {Type: model.FieldTypeString},
+		},
+	}
+	out, errs := evaluateOutputs(seg, nil, ctx)
+
+	if _, present := out["shortfall"]; present {
+		t.Errorf("shortfall should be omitted, got %v", out["shortfall"])
+	}
+	if len(errs) != 1 {
+		t.Fatalf("expected exactly one render error, got %d: %v", len(errs), errs)
+	}
+	if errs[0].Field != "shortfall" {
+		t.Errorf("render error field = %q, want %q", errs[0].Field, "shortfall")
+	}
+	if got, isString := out["severity"].(string); !isString || got != "Critical" {
+		t.Errorf("severity = %v (%T), want the sibling field to still be emitted", out["severity"], out["severity"])
+	}
+}
+
 // A lookup-bound field with a numeric KeyType now compares against the
 // coerced numeric value instead of the raw authored string, so a match that
 // used to fall through as a bare key now enriches correctly.
