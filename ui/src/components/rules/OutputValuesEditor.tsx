@@ -1,6 +1,9 @@
 import { useState } from 'react';
-import type { OutputField, OutputSchema } from '../../api/types';
+import type { EvalMode, FieldType, OutputField, OutputSchema } from '../../api/types';
 import {
+  EVAL_MODES,
+  EVAL_MODE_HINT,
+  allowedTypesForMode,
   availableOutputFields,
   evalModeOf,
   outputValueRows,
@@ -40,6 +43,10 @@ export default function OutputValuesEditor({ outputs, schema, onChange, onDeclar
   // whichever triggers it first reveals the same name input below the grid.
   const [showDeclare, setShowDeclare] = useState(false);
   const [newName, setNewName] = useState('');
+  // Declaring inline must offer the same choices as the layer editor, or a
+  // field created here is always a string and has to be corrected there.
+  const [newMode, setNewMode] = useState<EvalMode>('literal');
+  const [newType, setNewType] = useState<FieldType>('string');
 
   const set = (name: string, raw: string) => {
     const next = { ...(outputs ?? {}) };
@@ -60,9 +67,15 @@ export default function OutputValuesEditor({ outputs, schema, onChange, onDeclar
     // key on the first save.
     const name = newName.trim();
     if (!name || schema[name]) return;
+    const field: OutputField = { type: newType };
+    // Omit eval when literal, matching the layer editor and the Go accessor,
+    // which both treat an absent mode as literal.
+    if (newMode !== 'literal') field.eval = newMode;
     // Required stays false so declaring a field mid-edit invalidates nothing.
-    onDeclare(name, { type: 'string' });
+    onDeclare(name, field);
     setNewName('');
+    setNewMode('literal');
+    setNewType('string');
     // Collapse again, or the panel stays open for the life of the component
     // with no way to dismiss it.
     setShowDeclare(false);
@@ -211,6 +224,32 @@ export default function OutputValuesEditor({ outputs, schema, onChange, onDeclar
             aria-label="new output field name"
             style={{ fontSize: 11 }}
           />
+          <select
+            value={newMode}
+            aria-label="new output field eval mode"
+            title={EVAL_MODE_HINT[newMode]}
+            onChange={(e) => {
+              const m = e.target.value as EvalMode;
+              setNewMode(m);
+              // Snap the type when the new mode cannot honour it, rather than
+              // declaring a pairing the engine rejects at load.
+              const allowed = allowedTypesForMode(m);
+              if (!allowed.includes(newType)) setNewType(allowed[0]);
+            }}
+          >
+            {EVAL_MODES.map((m) => (
+              <option key={m} value={m}>{m}</option>
+            ))}
+          </select>
+          <select
+            value={newType}
+            aria-label="new output field type"
+            onChange={(e) => setNewType(e.target.value as FieldType)}
+          >
+            {allowedTypesForMode(newMode).map((t) => (
+              <option key={t} value={t}>{t}</option>
+            ))}
+          </select>
           <button
             className="btn-secondary btn-sm"
             onClick={declare}

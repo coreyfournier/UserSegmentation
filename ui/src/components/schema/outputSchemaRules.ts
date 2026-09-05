@@ -24,6 +24,22 @@ export function evalModeOf(field: OutputField): EvalMode {
   return field.eval ?? 'literal';
 }
 
+/** The eval modes, in the order they are offered. */
+export const EVAL_MODES: EvalMode[] = ['literal', 'template', 'expression'];
+
+/**
+ * One line explaining each mode to an author choosing one.
+ *
+ * Lives here rather than in a component because two places declare fields —
+ * the layer's schema editor and the inline declare on a rule's value editor —
+ * and the same choice must read identically in both.
+ */
+export const EVAL_MODE_HINT: Record<EvalMode, string> = {
+  literal: 'a constant, emitted as the declared type',
+  template: 'text with ${ ... } tokens, always a string',
+  expression: 'one whole expression, returning a typed value',
+};
+
 /**
  * Which declared types each mode can honour.
  *

@@ -1,6 +1,6 @@
 import { useState, useRef } from 'react';
 import type { EvalMode, FieldType, LookupTable, OutputField, OutputSchema } from '../../api/types';
-import { allowedTypesForMode, evalModeOf, validateLiteralValue, validateOutputField, type FieldCoverage } from './outputSchemaRules';
+import { EVAL_MODES, EVAL_MODE_HINT, allowedTypesForMode, evalModeOf, validateLiteralValue, validateOutputField, type FieldCoverage } from './outputSchemaRules';
 import styles from './OutputSchemaEditor.module.css';
 
 interface Props {
@@ -14,14 +14,6 @@ interface Props {
   /** Called instead of the local delete, so the owner can also prune authored values. */
   onRemoveField?: (name: string) => void;
 }
-
-const MODES: EvalMode[] = ['literal', 'template', 'expression'];
-
-const MODE_HINT: Record<EvalMode, string> = {
-  literal: 'a constant, emitted as the declared type',
-  template: 'text with ${ ... } tokens, always a string',
-  expression: 'one whole expression, returning a typed value',
-};
 
 export default function OutputSchemaEditor({ value, onChange, lookups, segmentOutputs, onSegmentOutputsChange, coverage, onRemoveField }: Props) {
   const schema = value ?? {};
@@ -113,10 +105,10 @@ export default function OutputSchemaEditor({ value, onChange, lookups, segmentOu
                   <select
                     value={mode}
                     onChange={(e) => patch(name, { eval: e.target.value as EvalMode })}
-                    title={MODE_HINT[mode]}
+                    title={EVAL_MODE_HINT[mode]}
                     aria-label={`${name} eval mode`}
                   >
-                    {MODES.map((m) => <option key={m} value={m}>{m}</option>)}
+                    {EVAL_MODES.map((m) => <option key={m} value={m}>{m}</option>)}
                   </select>
                 </td>
                 <td>
@@ -242,7 +234,7 @@ export default function OutputSchemaEditor({ value, onChange, lookups, segmentOu
                   if (!allowed.includes(newType)) setNewType(allowed[0]);
                 }}
               >
-                {MODES.map((m) => <option key={m} value={m}>{m}</option>)}
+                {EVAL_MODES.map((m) => <option key={m} value={m}>{m}</option>)}
               </select>
             </td>
             <td>
@@ -250,7 +242,7 @@ export default function OutputSchemaEditor({ value, onChange, lookups, segmentOu
                 {newAllowed.map((t) => <option key={t} value={t}>{t}</option>)}
               </select>
             </td>
-            <td colSpan={3} style={{ fontSize: 10, color: 'var(--text-muted)' }}>{MODE_HINT[newMode]}</td>
+            <td colSpan={3} style={{ fontSize: 10, color: 'var(--text-muted)' }}>{EVAL_MODE_HINT[newMode]}</td>
             <td><button className="btn-primary btn-sm" onClick={add}>+</button></td>
           </tr>
         </tbody>
