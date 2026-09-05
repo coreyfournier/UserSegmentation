@@ -1,6 +1,13 @@
 import { useState } from 'react';
 import type { OutputField, OutputSchema } from '../../api/types';
-import { evalModeOf, validateLiteralValue, type FieldCoverage } from '../schema/outputSchemaRules';
+import {
+  availableOutputFields,
+  evalModeOf,
+  outputValueRows,
+  renameOutputKey,
+  validateLiteralValue,
+  type FieldCoverage,
+} from '../schema/outputSchemaRules';
 import styles from './OutputValuesEditor.module.css';
 
 interface Props {
@@ -22,7 +29,16 @@ const PLACEHOLDER: Record<string, string> = {
   expression: 'one whole expression',
 };
 
+/**
+ * Sentinel select value for "declare new…". Never collides with a real field
+ * name — those come from JSON object keys, which cannot contain NUL.
+ */
+const DECLARE_NEW = '\0declare-new';
+
 export default function OutputValuesEditor({ outputs, schema, onChange, onDeclare, coverage }: Props) {
+  // Shared by every select's "declare new…" option and the add-value picker:
+  // whichever triggers it first reveals the same name input below the grid.
+  const [showDeclare, setShowDeclare] = useState(false);
   const [newName, setNewName] = useState('');
 
   const set = (name: string, raw: string) => {
@@ -32,7 +48,12 @@ export default function OutputValuesEditor({ outputs, schema, onChange, onDeclar
     onChange(Object.keys(next).length ? next : undefined);
   };
 
-  const declareAndFocus = () => {
+  // A required row's remove control clears its value but the row stays
+  // (outputValueRows always includes required fields); an optional or
+  // orphaned row's key disappears entirely, so the row does too.
+  const remove = (name: string) => set(name, '');
+
+  const declare = () => {
     // Trim to match OutputSchemaEditor's add path. Without it " severity" and
     // "severity" slip past the duplicate check as two visually identical
     // fields, and the engine rejects the padded one as an undeclared output
@@ -44,31 +65,59 @@ export default function OutputValuesEditor({ outputs, schema, onChange, onDeclar
     setNewName('');
   };
 
-  const names = Object.keys(schema);
+  const rows = outputValueRows(schema, outputs);
+  // Fields not yet used by any row, offered by the add-value picker below.
+  const remaining = availableOutputFields(schema, outputs, '');
 
   return (
     <div>
-      {names.length > 0 && (
+      {rows.length > 0 && (
         <div className={styles.grid}>
-          {names.map((name) => {
-            const field = schema[name];
-            const raw = outputs?.[name] ?? '';
-            const err = validateLiteralValue(field, raw);
+          {rows.map((row) => {
+            const err = row.field ? validateLiteralValue(row.field, row.value) : null;
+            const options = availableOutputFields(schema, outputs, row.name);
             return (
-              <div key={name} style={{ display: 'contents' }}>
-                <div className={styles.name} title={`${evalModeOf(field)} · ${field.type}${field.required ? ' · required' : ''}`}>
-                  {name}{field.required ? ' *' : ''}
+              <div key={row.name} style={{ display: 'contents' }}>
+                <div>
+                  <select
+                    value={row.name}
+                    aria-label={`output field for ${row.name}`}
+                    title={
+                      row.field
+                        ? `${evalModeOf(row.field)} · ${row.field.type}${row.field.required ? ' · required' : ''}`
+                        : 'not declared on the layer'
+                    }
+                    onChange={(e) => {
+                      if (e.target.value === DECLARE_NEW) {
+                        setShowDeclare(true);
+                        return;
+                      }
+                      onChange(renameOutputKey(outputs, row.name, e.target.value));
+                    }}
+                  >
+                    {options.map((n) => (
+                      <option key={n} value={n}>
+                        {n}
+                        {schema[n]?.required ? ' *' : ''}
+                      </option>
+                    ))}
+                    <option value={DECLARE_NEW}>declare new…</option>
+                  </select>
+                  {row.orphaned && (
+                    <div className={styles.err}>not declared on the layer; pick a field or remove</div>
+                  )}
                 </div>
                 <div>
                   <input
-                    value={raw}
-                    onChange={(e) => set(name, e.target.value)}
-                    placeholder={PLACEHOLDER[evalModeOf(field)]}
-                    aria-label={name}
+                    value={row.value}
+                    onChange={(e) => set(row.name, e.target.value)}
+                    placeholder={row.field ? PLACEHOLDER[evalModeOf(row.field)] : undefined}
+                    aria-label={`value for ${row.name}`}
                   />
                   {err && <div className={styles.err}>{err}</div>}
-                  {coverage && (() => {
-                    const c = coverage(name);
+                  {coverage && row.field && (() => {
+                    const field = row.field;
+                    const c = coverage(row.name);
                     if (c.segmentLevel) {
                       return <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>set for the whole segment</div>;
                     }
@@ -98,32 +147,70 @@ export default function OutputValuesEditor({ outputs, schema, onChange, onDeclar
                     );
                   })()}
                 </div>
+                <div>
+                  <button
+                    type="button"
+                    className="btn-danger btn-sm"
+                    onClick={() => remove(row.name)}
+                    aria-label={`remove ${row.name}`}
+                  >
+                    x
+                  </button>
+                </div>
               </div>
             );
           })}
         </div>
       )}
       <div className={styles.addRow}>
-        <input
-          value={newName}
-          onChange={(e) => setNewName(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter') {
-              e.preventDefault();
-              declareAndFocus();
+        <select
+          value=""
+          aria-label="add an output value"
+          onChange={(e) => {
+            const picked = e.target.value;
+            if (!picked) return;
+            if (picked === DECLARE_NEW) {
+              setShowDeclare(true);
+              return;
             }
+            onChange({ ...(outputs ?? {}), [picked]: '' });
           }}
-          placeholder="new output field"
-          style={{ fontSize: 11 }}
-        />
-        <button
-          className="btn-secondary btn-sm"
-          onClick={declareAndFocus}
-          disabled={!newName.trim() || !!schema[newName.trim()]}
         >
-          + add to schema
-        </button>
+          <option value="" disabled>
+            + add a value…
+          </option>
+          {remaining.map((n) => (
+            <option key={n} value={n}>
+              {n}
+            </option>
+          ))}
+          <option value={DECLARE_NEW}>declare new…</option>
+        </select>
       </div>
+      {showDeclare && (
+        <div className={styles.addRow}>
+          <input
+            value={newName}
+            onChange={(e) => setNewName(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault();
+                declare();
+              }
+            }}
+            placeholder="new output field"
+            aria-label="new output field name"
+            style={{ fontSize: 11 }}
+          />
+          <button
+            className="btn-secondary btn-sm"
+            onClick={declare}
+            disabled={!newName.trim() || !!schema[newName.trim()]}
+          >
+            + add to schema
+          </button>
+        </div>
+      )}
     </div>
   );
 }
