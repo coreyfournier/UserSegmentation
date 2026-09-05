@@ -530,8 +530,8 @@ A layer may declare `outputSchema` for its `rule` and `checklist` segments: name
   "outputSchema": {
     "type":      { "type": "string" },
     "severity":  { "type": "string", "lookup": "diagnosis-severity", "required": true },
-    "message":   { "type": "string", "eval": "template" },
-    "shortfall": { "type": "number", "eval": "expression" }
+    "message":   { "type": "string" },
+    "shortfall": { "type": "number" }
   },
   "segments": [
     {
@@ -578,22 +578,14 @@ A layer may declare `outputSchema` for its `rule` and `checklist` segments: name
 
 #### Eval modes
 
-Each field declares how its authored value becomes a value:
-
-| Mode | Authored value is | Result |
-|---|---|---|
-| *(absent)* | — | same as `literal` |
-| `literal` | a constant | emitted as the declared type |
-| `template` | text with `${ … }` tokens | always a string |
-| `expression` | one whole [expr-lang](https://expr-lang.org/) expression | the type the expression returns |
+How an authored value becomes a value is derived from the field's declared `type`, not authored separately: a `string` field's value is a template (text with `${ … }` tokens); every other type's value is a single whole [expr-lang](https://expr-lang.org/) expression, emitted as whatever the expression returns.
 
 #### Type rules
 
 Enforced at config load, not left to fail at evaluation:
 
-- A `template` field can only produce a string — it must declare `"type": "string"`; any other declared type is rejected.
-- `array` and `object` cannot be a constant or interpolated text, so a field declaring either type must use `"eval": "expression"`.
-- A `literal` value must parse as its declared type, and is emitted as that type — not as the authored string. `{"type":"number"}` authored as `"3"` emits the JSON number `3`, not `"3"`. Validation parses the literal the same way evaluation does, so a value that loads is a value that will also evaluate.
+- An authored value need not look like a literal to be accepted — `{"type":"number"}` authored as `"3"` still emits the JSON number `3`, because `3` is itself a valid expression. Validation compiles the value the same way evaluation does, so a value that loads is a value that will also evaluate.
+- A stale `"eval"` key (from before the mode was derived from the type) is rejected at load, naming the field and telling you to remove it.
 
 #### Where values are authored
 
@@ -623,7 +615,7 @@ Setting a field's `lookup` to a table id turns its authored value from a bare ke
 
 #### Degradation
 
-A failed `template` or `expression` is recorded as an error, and that one field is simply omitted from the record — the finding still reports. There is no partial value: a failing template degrades the whole field, not just the unresolved token, unlike a [localized message](#localized-messages), which leaves the raw `${…}` in place. A required-field check tests presence, and a half-rendered string would still be present — so output values are all-or-nothing in every eval mode.
+A field whose value fails to render or evaluate is recorded as an error, and that one field is simply omitted from the record — the finding still reports. There is no partial value: a failing template degrades the whole field, not just the unresolved token, unlike a [localized message](#localized-messages), which leaves the raw `${…}` in place. A required-field check tests presence, and a half-rendered string would still be present — so an output value is all-or-nothing, whether it is templated or evaluated as an expression.
 
 ### Checklist Strategy
 
