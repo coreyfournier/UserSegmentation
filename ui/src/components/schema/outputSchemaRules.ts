@@ -176,6 +176,97 @@ export interface FieldCoverage {
  * field was removed from the layer) does not spuriously report that it still
  * needs one.
  */
+export interface OutputRow {
+  name: string;
+  /** Absent when the key is orphaned — authored but no longer declared. */
+  field?: OutputField;
+  value: string;
+  required: boolean;
+  orphaned: boolean;
+}
+
+/**
+ * The rows an output-value editor shows.
+ *
+ * Required fields always appear even when unauthored, because the engine
+ * rejects the save without them and an invisible obligation is worse than a
+ * long list. Optional fields appear only once authored, which is what keeps a
+ * ten-field schema from rendering ten inputs on every check.
+ *
+ * Orphans — keys with no declaration, left behind when a field was removed
+ * from the layer's schema — always appear, flagged. They already break the
+ * save with "output %q is not declared in outputSchema"; showing them is what
+ * lets an author re-point or clear one.
+ *
+ * Order is required, then orphaned, then authored optional, alphabetical
+ * within each group, so the list is stable across authors and a re-point moves
+ * a row predictably.
+ */
+export function outputValueRows(
+  schema: OutputSchema,
+  outputs?: Record<string, string>,
+): OutputRow[] {
+  const vals = outputs ?? {};
+  const required: OutputRow[] = [];
+  const optional: OutputRow[] = [];
+  const orphaned: OutputRow[] = [];
+
+  for (const [name, field] of Object.entries(schema)) {
+    const row: OutputRow = {
+      name,
+      field,
+      value: vals[name] ?? '',
+      required: !!field.required,
+      orphaned: false,
+    };
+    if (row.required) required.push(row);
+    else if (name in vals) optional.push(row);
+  }
+  for (const name of Object.keys(vals)) {
+    if (!(name in schema)) {
+      orphaned.push({ name, value: vals[name], required: false, orphaned: true });
+    }
+  }
+
+  const byName = (a: OutputRow, b: OutputRow) => a.name.localeCompare(b.name);
+  return [...required.sort(byName), ...orphaned.sort(byName), ...optional.sort(byName)];
+}
+
+/**
+ * The field names a row's dropdown may offer: everything declared, minus what
+ * other rows already use, plus this row's own current selection — without
+ * which the select would render with no matching option and silently display
+ * the wrong one.
+ */
+export function availableOutputFields(
+  schema: OutputSchema,
+  outputs: Record<string, string> | undefined,
+  current: string,
+): string[] {
+  const used = new Set(Object.keys(outputs ?? {}));
+  used.delete(current);
+  const names = new Set(Object.keys(schema).filter((n) => !used.has(n)));
+  if (current) names.add(current);
+  return [...names].sort((a, b) => a.localeCompare(b));
+}
+
+/**
+ * Re-points an authored value at a different field, carrying the value across.
+ * This is how a mis-picked or mis-typed field is corrected without retyping.
+ */
+export function renameOutputKey(
+  outputs: Record<string, string> | undefined,
+  from: string,
+  to: string,
+): Record<string, string> | undefined {
+  if (!outputs) return undefined;
+  const next = { ...outputs };
+  const value = next[from];
+  delete next[from];
+  if (to) next[to] = value;
+  return Object.keys(next).length ? next : undefined;
+}
+
 export function fieldCoverage(seg: Segment, schema: OutputSchema | undefined, name: string): FieldCoverage {
   const reporting = (seg.rules ?? []).filter((r: Rule) => r.enabled !== false);
   const authored = reporting.filter((r) => !!r.outputs?.[name]).length;

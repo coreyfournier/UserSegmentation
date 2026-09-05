@@ -30,6 +30,9 @@ const {
   validateLiteralValue,
   supportsOutputSchema,
   fieldCoverage,
+  outputValueRows,
+  availableOutputFields,
+  renameOutputKey,
 } = await import(
   pathToFileURL(join(out, 'components', 'schema', 'outputSchemaRules.js')).href
 );
@@ -178,5 +181,57 @@ assert.equal(fieldCoverage({ ...ruleSeg, default: undefined }, schema, 'cat').de
 // A checklist never reads Default, so it never needs the segment-level value
 // on that account, even if a stray default is present.
 assert.equal(fieldCoverage({ ...seg, default: 'stray' }, schema, 'cat').defaultNeedsSegmentValue, false);
+
+// --- output value rows -------------------------------------------------
+const rowSchema = {
+  severity: { type: 'string', required: true },
+  category: { type: 'string', required: true },
+  title:    { type: 'string' },
+  notes:    { type: 'string' },
+};
+
+// Required fields always appear, authored or not. Optional ones only when
+// authored. Orphans — keys with no declaration — appear flagged, because a
+// stale value is otherwise invisible while still breaking the save.
+let rows = outputValueRows(rowSchema, { title: 'T', ghost: 'G' });
+assert.deepEqual(rows.map(r => r.name), ['category', 'severity', 'ghost', 'title']);
+assert.deepEqual(rows.map(r => r.required), [true, true, false, false]);
+assert.deepEqual(rows.map(r => r.orphaned), [false, false, true, false]);
+assert.equal(rows.find(r => r.name === 'severity').value, '');
+assert.equal(rows.find(r => r.name === 'title').value, 'T');
+assert.equal(rows.find(r => r.name === 'ghost').field, undefined);
+
+// No outputs at all still shows the two required fields.
+assert.deepEqual(outputValueRows(rowSchema, undefined).map(r => r.name), ['category', 'severity']);
+
+// An empty schema with an authored key is all orphans.
+assert.deepEqual(outputValueRows({}, { x: '1' }).map(r => r.orphaned), [true]);
+
+// --- the dropdown's options -------------------------------------------
+// A field already used by ANOTHER row is not offered; the row's own current
+// selection always is, or the select would have no matching option.
+assert.deepEqual(
+  availableOutputFields(rowSchema, { severity: 'C', title: 'T' }, 'title'),
+  ['category', 'notes', 'title'],
+);
+assert.deepEqual(
+  availableOutputFields(rowSchema, {}, ''),
+  ['category', 'notes', 'severity', 'title'],
+);
+// An orphan's own name is offered so the select can display it.
+assert.ok(availableOutputFields(rowSchema, { ghost: 'G' }, 'ghost').includes('ghost'));
+
+// --- re-pointing a row -------------------------------------------------
+// The value follows the rename, the old key goes, order is irrelevant.
+assert.deepEqual(renameOutputKey({ severty: 'Critical' }, 'severty', 'severity'),
+                 { severity: 'Critical' });
+// Renaming onto a name already present overwrites it — the caller prevents
+// this via availableOutputFields, but the function must not corrupt the map.
+assert.deepEqual(renameOutputKey({ a: '1', b: '2' }, 'a', 'b'), { b: '1' });
+// Renaming the only key to itself is a no-op, not a delete.
+assert.deepEqual(renameOutputKey({ a: '1' }, 'a', 'a'), { a: '1' });
+// Emptying yields undefined so the key is omitted from JSON.
+assert.equal(renameOutputKey({ a: '1' }, 'a', ''), undefined);
+assert.equal(renameOutputKey(undefined, 'a', 'b'), undefined);
 
 console.log('output schema rules OK');
