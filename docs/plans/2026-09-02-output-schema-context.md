@@ -10,6 +10,7 @@ The design detail is in the sibling documents:
 | `2026-09-02-output-schema-engine-plan.md` | the TDD implementation plan, 8 tasks |
 | `2026-09-04-balance-diagnostics-port.md` | how the source service becomes layers, segments and rules |
 | `2026-09-04-output-schema-ui-plan.md` | the UI plan, 6 tasks |
+| `2026-09-04-shared-schemas-plan.md` | centralising both schemas at snapshot level, 7 tasks |
 | `.superpowers/sdd/balance-diagnostics-survey.md` | what the source service actually does, surveyed |
 | `README.md` § Production readiness | why this is a POC and what production needs |
 
