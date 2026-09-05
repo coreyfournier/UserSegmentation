@@ -363,7 +363,15 @@ Attach optional, localized messages to any top-level **rule**, **override**, or 
 
 **Why:** keep the human-readable, translatable messaging next to the rule that produces it, and render it with live values from the evaluation context — no second lookup or downstream string-building.
 
-**How:** a `messages` map keys each locale to a template. Templates support `${ … }` interpolation, where the contents are any [expr-lang](https://expr-lang.org/) expression evaluated against the (enriched) context — so both plain variables (`${TransferFee}`) and expressions (`${CTTotal > 30 ? 'free' : 'partial'}`) work.
+**How:** a `messages` map keys each locale to a template. Each `${ … }` token resolves in two steps, in this order: first, if the token's text names a field the layer's `inputSchema` declares, that field's value is used as-is — the context is a flat map whose keys may contain dots, so `${company.ein}` reads the single key `"company.ein"` rather than doing member access on a `company` object (which is why a *condition* on a dotted field has always worked, while a template on the same field used not to). Otherwise the token is compiled as an [expr-lang](https://expr-lang.org/) expression, so both plain variables (`${TransferFee}`) and compound expressions (`${CTTotal > 30 ? 'free' : 'partial'}`) work — a token is not merely a field reference.
+
+Both steps are checked at config load, not left to fail at evaluation: a token that names neither a declared field nor a compilable expression is rejected, naming the layer, segment, rule and token:
+
+```
+layer "payroll" segment "p" rule "r1" errorMessage: token "${nam}": unknown name nam
+```
+
+A layer that declares no `inputSchema` skips this check entirely — with no fields declared there is nothing to check a token against, so tokens there are accepted unchecked rather than all rejected.
 
 ```json
 {
@@ -578,7 +586,7 @@ A layer may declare `outputSchema` for its `rule` and `checklist` segments: name
 
 #### Eval modes
 
-How an authored value becomes a value is derived from the field's declared `type`, not authored separately: a `string` field's value is a template (text with `${ … }` tokens); every other type's value is a single whole [expr-lang](https://expr-lang.org/) expression, emitted as whatever the expression returns.
+How an authored value becomes a value is derived from the field's declared `type`, not authored separately: a `string` field's value is a template (text with `${ … }` tokens); every other type's value is a single whole [expr-lang](https://expr-lang.org/) expression, emitted as whatever the expression returns. A `string` field's `${ … }` tokens resolve exactly as in [Localized Messages](#localized-messages) — declared field first, expr-lang expression otherwise — and are validated at load the same way, rejecting an unknown name with the same `layer`/`segment`/`rule`/token message.
 
 #### Type rules
 

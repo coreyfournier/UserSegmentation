@@ -247,6 +247,12 @@ directions:
   drag-and-drop once custom numbers are allowed. The engine plan makes the fields
   exist and be exercisable through `POST /v1/evaluate` and the admin lookup
   endpoints; nothing authors them yet except raw JSON.
+- **A `${…}` token cannot be checked past its top-level name.** `SchemaField` is
+  `{Type, Required}` and nothing more, so an `array` or `object` field declares
+  no element or member shape. `${employees}` validates; `${employees[0].name}`
+  and `${payload.nested}` do not. Both are accepted **unchecked** rather than
+  falsely rejected, which is the safe direction. Closing it needs a nested
+  schema type. See the TODO at `internal/domain/validation/validator.go:206`.
 
 ## What the consumer side would look like
 
