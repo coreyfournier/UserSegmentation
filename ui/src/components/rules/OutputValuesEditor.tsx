@@ -63,11 +63,20 @@ export default function OutputValuesEditor({ outputs, schema, onChange, onDeclar
     // Required stays false so declaring a field mid-edit invalidates nothing.
     onDeclare(name, { type: 'string' });
     setNewName('');
+    // Collapse again, or the panel stays open for the life of the component
+    // with no way to dismiss it.
+    setShowDeclare(false);
   };
 
   const rows = outputValueRows(schema, outputs);
-  // Fields not yet used by any row, offered by the add-value picker below.
-  const remaining = availableOutputFields(schema, outputs, '');
+  // Fields with no row yet. Deliberately not availableOutputFields, which
+  // excludes by presence in `outputs` — a required field is always shown as a
+  // row while being absent from `outputs`, so that would offer it here too and
+  // picking it would appear to do nothing.
+  const shown = new Set(rows.map((r) => r.name));
+  const remaining = Object.keys(schema)
+    .filter((n) => !shown.has(n))
+    .sort((a, b) => a.localeCompare(b));
 
   return (
     <div>
@@ -208,6 +217,16 @@ export default function OutputValuesEditor({ outputs, schema, onChange, onDeclar
             disabled={!newName.trim() || !!schema[newName.trim()]}
           >
             + add to schema
+          </button>
+          <button
+            type="button"
+            className="btn-secondary btn-sm"
+            onClick={() => {
+              setNewName('');
+              setShowDeclare(false);
+            }}
+          >
+            cancel
           </button>
         </div>
       )}
