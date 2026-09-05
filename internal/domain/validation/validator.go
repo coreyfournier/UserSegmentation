@@ -7,6 +7,7 @@ import (
 
 	"github.com/expr-lang/expr"
 	"github.com/segmentation-service/segmentation/internal/domain/model"
+	"github.com/segmentation-service/segmentation/internal/domain/strategy"
 )
 
 // ValidateSnapshot validates all rules against their inputSchemas at config load time.
@@ -84,7 +85,21 @@ func ValidateSnapshot(snap *model.Snapshot) error {
 					seg.ID, len(seg.LegacyOutputSchema), layer.Name))
 			}
 
-			errs = append(errs, validateOutputSchema(&seg, layer.OutputSchema, lookups)...)
+			// Build the effective schema: layer's inputSchema fields + expression-defined fields.
+			// This happens unconditionally — validateOutputSchema needs it too,
+			// below — but env (the expr compile-time environment) is built only
+			// when the layer actually declares an inputSchema. With no declared
+			// fields there is nothing to check a token against, so the escape
+			// hatch documented on Layer.InputSchema applies to token validation
+			// the same way it applies to rule-field validation: skip it entirely
+			// rather than reject every token in the layer.
+			effective := buildEffectiveSchema(layer.InputSchema, seg.Computed)
+			var env map[string]interface{}
+			if layer.InputSchema != nil {
+				env = envFromSchema(effective)
+			}
+
+			errs = append(errs, validateOutputSchema(&seg, layer.OutputSchema, lookups, effective, env)...)
 
 			// Formulas are syntax-checked wherever they are declared. Gating
 			// this on the strategy used to mean a typo on a segment that never
@@ -96,18 +111,26 @@ func ValidateSnapshot(snap *model.Snapshot) error {
 				}
 			}
 
+			// The segment's fallback default-language messages, checked the same
+			// way a rule's own messages are — see validateRuleTree.
+			if env != nil {
+				for _, lang := range sortedKeys(seg.DefaultMessages) {
+					where := fmt.Sprintf("layer %q segment %q defaultMessages[%s]", layer.Name, seg.ID, lang)
+					errs = append(errs, validateTemplateTokens(where, seg.DefaultMessages[lang], effective, env)...)
+				}
+			}
+
 			if layer.InputSchema == nil && len(seg.Computed) == 0 {
 				continue
 			}
 
-			// Build the effective schema: layer's inputSchema fields + expression-defined fields.
-			effective := buildEffectiveSchema(layer.InputSchema, seg.Computed)
 			vc := ruleContext{
 				schema:  effective,
 				layer:   layer.Name,
 				segment: seg.ID,
 				deps:    deps,
 				lookups: lookups,
+				env:     env,
 			}
 
 			// Validate rules, overrides and the dispatch predicate.
@@ -176,6 +199,124 @@ func buildEffectiveSchema(inSchema model.InputSchema, computed []model.ComputedF
 	return effective
 }
 
+// envFromSchema builds a compile-time environment from the effective schema so
+// expr can report an unknown identifier. Values are zero values of the declared
+// type; only the names and shapes matter here.
+//
+// TODO: an array or object field carries no declared element or member shape —
+// SchemaField is {Type, Required} and nothing more — so a token that reaches
+// inside one cannot be checked past its top-level name. ${employees} validates,
+// ${employees[0].name} and ${payload.nested} do not, and both are accepted
+// unchecked rather than falsely rejected. Closing this needs a nested schema
+// type, which is a larger change than this validation.
+func envFromSchema(schema model.InputSchema) map[string]interface{} {
+	env := make(map[string]interface{}, len(schema))
+	for name, f := range schema {
+		env[name] = zeroValueForFieldType(f.Type)
+	}
+	return env
+}
+
+// zeroValueForFieldType returns a representative zero value for a declared
+// field type — enough for expr to type-check identifier usage, nothing more.
+func zeroValueForFieldType(t model.FieldType) interface{} {
+	switch t {
+	case model.FieldTypeNumber:
+		return float64(0)
+	case model.FieldTypeBoolean:
+		return false
+	case model.FieldTypeArray:
+		return []interface{}{}
+	case model.FieldTypeObject:
+		return map[string]interface{}{}
+	default: // FieldTypeString, and anything unrecognized
+		return ""
+	}
+}
+
+// templateToken is one ${ ... } span found by scanTemplateTokens.
+type templateToken struct {
+	// expr is the trimmed text between the delimiters — what gets resolved as
+	// a declared field first and evaluated as an expr-lang expression on
+	// fallback, mirroring resolveTokenValue in internal/domain/strategy/message.go.
+	expr string
+}
+
+// scanTemplateTokens mirrors renderTemplate's own scan in
+// internal/domain/strategy/message.go byte for byte: a token spans from "${"
+// to the next "}", and an unterminated "${" (no closing "}") ends the scan
+// with the remainder left out entirely — renderTemplate treats it as literal
+// text to emit as-is, not a token, and this must agree. The two are not
+// shared code (validation and strategy have no import relationship that would
+// make one a natural home for the other without either exporting rendering
+// internals or making validation depend on the runtime package for a few
+// lines of string scanning), so if renderTemplate's scanning rule ever
+// changes, this must change with it.
+func scanTemplateTokens(tmpl string) []templateToken {
+	var toks []templateToken
+	i := 0
+	for i < len(tmpl) {
+		rel := strings.Index(tmpl[i:], "${")
+		if rel < 0 {
+			break
+		}
+		start := i + rel
+		relEnd := strings.Index(tmpl[start+2:], "}")
+		if relEnd < 0 {
+			// Unterminated token: the rest is literal text, not a token.
+			break
+		}
+		end := start + 2 + relEnd
+		toks = append(toks, templateToken{expr: strings.TrimSpace(tmpl[start+2 : end])})
+		i = end + 1
+	}
+	return toks
+}
+
+// validateTemplateTokens reports any ${…} token that names something the schema
+// does not declare, or that does not compile.
+//
+// A declared field wins first, exactly as it does at evaluation: the context is
+// a flat map whose keys may contain dots, so "company.ein" is one key rather
+// than member access, and rejecting it here would forbid the naming convention
+// this config uses throughout.
+//
+// Compilation uses strategy.ExprOptions() — the runtime's own set. An
+// env-constrained compile rejects pow(2, 3) without them, and a validator that
+// rejects working config is worse than the gap it closes.
+//
+// where is a caller-formatted description of the token's location, used as
+// the error prefix; schema and env must be the same effective schema and its
+// derived environment (see envFromSchema) used to validate the rest of the
+// segment, so a declared field is recognized the same way everywhere.
+func validateTemplateTokens(where, tmpl string, schema model.InputSchema, env map[string]interface{}) []string {
+	if tmpl == "" {
+		return nil
+	}
+	var errs []string
+	opts := append([]expr.Option{expr.Env(env)}, strategy.ExprOptions()...)
+	for _, tok := range scanTemplateTokens(tmpl) {
+		if _, declared := schema[tok.expr]; declared {
+			continue
+		}
+		if _, err := expr.Compile(tok.expr, opts...); err != nil {
+			errs = append(errs, fmt.Sprintf("%s: token %q: %v", where, "${"+tok.expr+"}", err))
+		}
+	}
+	return errs
+}
+
+// sortedKeys returns m's keys in sorted order, for stable diagnostic output —
+// map iteration is not ordered.
+func sortedKeys(m map[string]string) []string {
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	return keys
+}
+
 // ruleContext carries everything a rule tree is validated against.
 type ruleContext struct {
 	schema  model.InputSchema
@@ -183,10 +324,30 @@ type ruleContext struct {
 	segment string
 	deps    map[string]struct{}
 	lookups map[string]model.LookupTable
+	// env is the expr compile-time environment derived from schema, or nil
+	// when the layer declares no inputSchema. Message-token validation is
+	// skipped entirely when env is nil — see validateTemplateTokens' escape
+	// hatch — while field/lookup validation below still runs whenever there
+	// is an effective schema to check against (including a computed-only one).
+	env map[string]interface{}
 }
 
 func validateRuleTree(r *model.Rule, vc ruleContext) []string {
 	var errs []string
+
+	// Message templates are checked at every node, leaf or composite — a
+	// composite carries the same ErrorMessage/Messages fields a leaf does, and
+	// both are validated regardless of whether every current runtime path
+	// renders them, so a nested rule's typo cannot hide behind depth.
+	if vc.env != nil {
+		where := fmt.Sprintf("layer %q segment %q rule %q errorMessage", vc.layer, vc.segment, r.RuleName)
+		errs = append(errs, validateTemplateTokens(where, r.ErrorMessage, vc.schema, vc.env)...)
+		for _, lang := range sortedKeys(r.Messages) {
+			where := fmt.Sprintf("layer %q segment %q rule %q messages[%s]", vc.layer, vc.segment, r.RuleName, lang)
+			errs = append(errs, validateTemplateTokens(where, r.Messages[lang], vc.schema, vc.env)...)
+		}
+	}
+
 	if r.IsLeaf() {
 		field := r.Condition.Field
 
@@ -464,13 +625,19 @@ func outputEnforcementExempt(seg *model.Segment) bool {
 // validateOutputSchema checks a referenced lookup table exists, a lookup-bound
 // field's declared type matches the table's key type, every authored key is
 // actually declared, every non-string (i.e. expression-mode) field's authored
-// value compiles as a syntactically valid expression, and every Required field
-// is actually authored. (A legacy "eval" key is a layer-level concern, checked
-// once per field in ValidateSnapshot's layer loop rather than here.) Lookup
-// membership and order uniqueness remain the author's invariants and are
-// deliberately not checked. schema is the enclosing layer's OutputSchema —
-// the only place it is declared.
-func validateOutputSchema(seg *model.Segment, schema model.OutputSchema, lookups map[string]model.LookupTable) []string {
+// value compiles as a syntactically valid expression, every string (i.e.
+// template-mode) field's authored value has only tokens the schema declares,
+// and every Required field is actually authored. (A legacy "eval" key is a
+// layer-level concern, checked once per field in ValidateSnapshot's layer loop
+// rather than here.) Lookup membership and order uniqueness remain the
+// author's invariants and are deliberately not checked. schema is the
+// enclosing layer's OutputSchema — the only place it is declared. inSchema
+// and env are the segment's effective input schema and its derived expr
+// environment (nil when the layer declares no inputSchema — see
+// envFromSchema and the escape hatch it defers to); output values render
+// against the same context a rule condition does, so they are checked
+// against the same schema.
+func validateOutputSchema(seg *model.Segment, schema model.OutputSchema, lookups map[string]model.LookupTable, inSchema model.InputSchema, env map[string]interface{}) []string {
 	var errs []string
 
 	// Name-checking is not per-field — it is what tells us an authored key has
@@ -495,8 +662,14 @@ func validateOutputSchema(seg *model.Segment, schema model.OutputSchema, lookups
 					seg.ID, name, f.Type, f.Lookup, tbl.KeyType))
 			}
 		}
-		if !f.IsTemplate() {
-			errs = append(errs, validateOutputExpressionSyntax(seg, name)...)
+		if f.IsTemplate() {
+			// Same escape hatch as everywhere else a token is checked: with no
+			// declared inputSchema there is nothing to check a token against.
+			if env != nil {
+				errs = append(errs, validateOutputTemplateTokens(seg, name, inSchema, env)...)
+			}
+		} else {
+			errs = append(errs, validateOutputExpressionSyntax(seg, name, env)...)
 		}
 		if f.Required {
 			errs = append(errs, requiredOutputErrors(seg, name)...)
@@ -642,13 +815,25 @@ func outputAuthoringSites(seg *model.Segment, field string) []outputAuthoringSit
 // segment-level value (the fallback every rule shares), each enabled
 // top-level rule's own value, and each enabled override's own value, wherever
 // one is authored.
-func validateOutputExpressionSyntax(seg *model.Segment, name string) []string {
+//
+// env constrains the compile to the effective input schema's declared names,
+// exactly like validateTemplateTokens — so a typo such as MaxAllowd (for a
+// declared MaxAllowed) is caught here instead of resolving to nil at runtime
+// (see evaluateOutputs). env is nil when the layer declares no inputSchema;
+// compiling without expr.Env then accepts any identifier, the same escape
+// hatch token validation applies, so an output expression in that layer is
+// not falsely rejected for referencing a context field nothing declares.
+func validateOutputExpressionSyntax(seg *model.Segment, name string, env map[string]interface{}) []string {
 	var errs []string
+	opts := strategy.ExprOptions()
+	if env != nil {
+		opts = append(append([]expr.Option{}, opts...), expr.Env(env))
+	}
 	for _, s := range outputAuthoringSites(seg, name) {
 		if !s.ok {
 			continue
 		}
-		if _, err := expr.Compile(s.value); err != nil {
+		if _, err := expr.Compile(s.value, opts...); err != nil {
 			switch s.kind {
 			case siteSegment:
 				errs = append(errs, fmt.Sprintf("segment %q output %q: %v", seg.ID, name, err))
@@ -658,6 +843,32 @@ func validateOutputExpressionSyntax(seg *model.Segment, name string) []string {
 				errs = append(errs, fmt.Sprintf("segment %q override %q output %q: %v", seg.ID, s.name, name, err))
 			}
 		}
+	}
+	return errs
+}
+
+// validateOutputTemplateTokens checks every authored value for a
+// template-mode (string) output field against the effective input schema,
+// using the same site enumeration validateOutputExpressionSyntax does: a
+// segment-level value (the fallback every rule shares), each enabled
+// top-level rule's own value, and each enabled override's own value, wherever
+// one is authored. Called only when env is non-nil (see validateOutputSchema).
+func validateOutputTemplateTokens(seg *model.Segment, name string, schema model.InputSchema, env map[string]interface{}) []string {
+	var errs []string
+	for _, s := range outputAuthoringSites(seg, name) {
+		if !s.ok {
+			continue
+		}
+		var where string
+		switch s.kind {
+		case siteSegment:
+			where = fmt.Sprintf("segment %q output %q", seg.ID, name)
+		case siteRule:
+			where = fmt.Sprintf("segment %q rule %q output %q", seg.ID, s.name, name)
+		case siteOverride:
+			where = fmt.Sprintf("segment %q override %q output %q", seg.ID, s.name, name)
+		}
+		errs = append(errs, validateTemplateTokens(where, s.value, schema, env)...)
 	}
 	return errs
 }

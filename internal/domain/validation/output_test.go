@@ -13,7 +13,14 @@ func snapWithOutputField(f model.OutputField) *model.Snapshot {
 		Layers: []model.Layer{{
 			Name:         "diagnostics",
 			OutputSchema: model.OutputSchema{"field": f},
-			InputSchema:  model.InputSchema{"x": {Type: model.FieldTypeString}},
+			// "amount" is declared purely so the expression-syntax tests
+			// below (which compile "amount * 2" etc.) exercise syntax, not
+			// the load-time unknown-identifier check added alongside them —
+			// see validateOutputExpressionSyntax.
+			InputSchema: model.InputSchema{
+				"x":      {Type: model.FieldTypeString},
+				"amount": {Type: model.FieldTypeNumber},
+			},
 			Segments: []model.Segment{{
 				ID:       "employee",
 				Strategy: model.StrategyChecklist,
