@@ -13,7 +13,8 @@ import MessagesEditor from '../rules/MessagesEditor';
 import PredicateEditor from '../rules/PredicateEditor';
 import PromotionEditor from '../promotion/PromotionEditor';
 import EmittedFieldsReference from '../schema/EmittedFieldsReference';
-import { supportsOutputSchema } from '../schema/outputSchemaRules';
+import OutputValuesEditor from '../rules/OutputValuesEditor';
+import { fieldCoverage, supportsOutputSchema } from '../schema/outputSchemaRules';
 import ErrorBanner from '../common/ErrorBanner';
 import styles from './SegmentEditor.module.css';
 
@@ -29,6 +30,9 @@ export default function SegmentEditor() {
   // A rule may only reference layers this one declares a dependency on, so the
   // picker offers exactly those — the UI cannot build a config validation rejects.
   const layerNames = layer?.dependsOn ?? [];
+  // "Edit on the layer" must open this segment's own layer, not just the list —
+  // LayerList reads this query param on mount and opens that layer's edit modal.
+  const editLayerHref = layerName ? `/layers?edit=${encodeURIComponent(layerName)}` : '/layers';
 
   const [seg, setSeg] = useState<Segment | null>(null);
   const segRef = useRef(seg);
@@ -116,6 +120,7 @@ export default function SegmentEditor() {
       </div>
 
       {updateSegment.error && <ErrorBanner message={(updateSegment.error as Error).message} />}
+      {updateLayer.error && <ErrorBanner message={(updateLayer.error as Error).message} />}
 
       {/* Strategy */}
       <section className={`card ${styles.section}`}>
@@ -136,7 +141,7 @@ export default function SegmentEditor() {
         <p className={styles.layerNote}>
           Declared on layer <strong>{layerName}</strong> — every segment in it shares this
           schema.{' '}
-          <button type="button" className="btn-ghost btn-sm" onClick={() => navigate('/layers')}>
+          <button type="button" className="btn-ghost btn-sm" onClick={() => navigate(editLayerHref)}>
             Edit on the layer
           </button>
         </p>
@@ -172,7 +177,7 @@ export default function SegmentEditor() {
             <p className={styles.layerNote}>
               Declared on layer <strong>{layerName}</strong> — every segment in it shares this
               schema.{' '}
-              <button type="button" className="btn-ghost btn-sm" onClick={() => navigate('/layers')}>
+              <button type="button" className="btn-ghost btn-sm" onClick={() => navigate(editLayerHref)}>
                 Edit on the layer
               </button>
             </p>
@@ -198,6 +203,26 @@ export default function SegmentEditor() {
                 nothing to attach to until one is.
               </p>
             )}
+            {layer?.outputSchema && Object.keys(layer.outputSchema).length > 0 && (() => {
+              const layerOutputSchema = layer.outputSchema!;
+              return (
+                <div style={{ marginTop: 16 }}>
+                  <label style={{ fontSize: 12, fontWeight: 600 }}>Segment Values</label>
+                  <p style={{ fontSize: 11, color: 'var(--text-muted)', margin: '4px 0 8px' }}>
+                    Set a value once here to satisfy a field for every reporting rule at once —
+                    the only way to satisfy a required field when this segment declares a{' '}
+                    <code>default</code>, since the default path reads no rule values at all.
+                  </p>
+                  <OutputValuesEditor
+                    outputs={seg.outputs}
+                    schema={layerOutputSchema}
+                    onChange={(o) => update({ outputs: o })}
+                    onDeclare={declareOutput}
+                    coverage={(name) => fieldCoverage(seg, layerOutputSchema, name)}
+                  />
+                </div>
+              );
+            })()}
             <div style={{ marginTop: 12 }}>
               <EmittedFieldsReference />
             </div>

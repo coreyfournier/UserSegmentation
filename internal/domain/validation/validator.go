@@ -112,6 +112,40 @@ func ValidateSnapshot(snap *model.Snapshot) error {
 	return nil
 }
 
+// WarnMissingInputSchemas returns one advisory line per layer whose segments'
+// rule fields go unvalidated because the layer declares no inputSchema. This
+// is deliberately not an error — the escape hatch stays (several shipped
+// layers rely on it) — but a config author or operator should be able to see
+// that it is in effect rather than discover it the hard way when a typoed
+// field silently passes.
+//
+// A segment that supplies its own Computed fields is still validated against
+// those (buildEffectiveSchema works with an empty inputSchema), so it is not
+// counted here even when its layer has no inputSchema.
+func WarnMissingInputSchemas(snap *model.Snapshot) []string {
+	var warnings []string
+	for _, layer := range snap.Layers {
+		if layer.InputSchema != nil {
+			continue
+		}
+		var affected int
+		for _, seg := range layer.Segments {
+			if len(seg.Computed) > 0 {
+				continue
+			}
+			if len(seg.Rules) > 0 || len(seg.Overrides) > 0 || seg.When != nil {
+				affected++
+			}
+		}
+		if affected > 0 {
+			warnings = append(warnings, fmt.Sprintf(
+				"layer %q: no inputSchema — rule fields are not validated for its %d segment(s)",
+				layer.Name, affected))
+		}
+	}
+	return warnings
+}
+
 // buildEffectiveSchema merges the layer's inputSchema with any expression-defined
 // fields declared on a segment. Expression fields overwrite inputSchema entries
 // with the same name.

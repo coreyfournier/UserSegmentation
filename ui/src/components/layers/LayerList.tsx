@@ -1,6 +1,7 @@
 import { useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useLayers, useCreateLayer, useUpdateLayer, useDeleteLayer } from '../../api/layers';
-import { useCreateSegment } from '../../api/segments';
+import { useCreateSegment, useUpdateSegment } from '../../api/segments';
 import type { Layer, Segment, StrategyType } from '../../api/types';
 import { STRATEGY_OPTIONS } from '../segments/StrategyPicker';
 import LayerCard from './LayerCard';
@@ -39,6 +40,7 @@ export default function LayerList() {
   const { data: layers, isLoading, error } = useLayers();
   const createLayer = useCreateLayer();
   const updateLayer = useUpdateLayer();
+  const updateSegment = useUpdateSegment();
   const deleteLayer = useDeleteLayer();
   const createSegment = useCreateSegment();
 
@@ -48,6 +50,23 @@ export default function LayerList() {
   const [addSegTo, setAddSegTo] = useState<string | null>(null);
   const [newSegId, setNewSegId] = useState('');
   const [newSegStrategy, setNewSegStrategy] = useState<StrategyType>('static');
+
+  // "Edit on the layer" (SegmentEditor) links here with ?edit=<layer name> so
+  // it opens that specific layer's editor rather than just the list. Derived
+  // at render instead of synced into state via an effect — `editing` (an
+  // explicit click on a card) always wins once set, and closing clears both.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const editParam = searchParams.get('edit');
+  const editingFromQuery = editParam ? layers?.find((l) => l.name === editParam) ?? null : null;
+  const activeEditing = editing ?? editingFromQuery;
+  const closeEditModal = () => {
+    setEditing(null);
+    if (searchParams.has('edit')) {
+      const next = new URLSearchParams(searchParams);
+      next.delete('edit');
+      setSearchParams(next, { replace: true });
+    }
+  };
 
   if (isLoading) return <p>Loading...</p>;
   if (error) return <ErrorBanner message={(error as Error).message} />;
@@ -66,6 +85,8 @@ export default function LayerList() {
       </div>
 
       {createLayer.error && <ErrorBanner message={(createLayer.error as Error).message} />}
+      {updateLayer.error && <ErrorBanner message={(updateLayer.error as Error).message} />}
+      {updateSegment.error && <ErrorBanner message={(updateSegment.error as Error).message} />}
 
       {sorted.map((layer) => (
         <LayerCard
@@ -95,19 +116,35 @@ export default function LayerList() {
       </Modal>
 
       {/* Edit Layer Modal */}
-      <Modal open={!!editing} onClose={() => setEditing(null)} title="Edit Layer">
-        {editing && (
+      <Modal open={!!activeEditing} onClose={closeEditModal} title="Edit Layer">
+        {activeEditing && (
           <LayerForm
-            initial={editing}
+            initial={activeEditing}
             allLayers={layers ?? []}
             submitLabel="Save"
-            onSubmit={(l) => {
-              updateLayer.mutate(
-                { name: editing.name, layer: l },
-                { onSuccess: () => setEditing(null) }
-              );
+            onSubmit={async (l, changedSegments) => {
+              // Segments pruned of a just-removed output field's stale values
+              // (LayerForm's onRemoveField) must be saved BEFORE the layer:
+              // a layer PUT validates the whole snapshot as it stands, so a
+              // segment still carrying a value for the field being removed
+              // would reject the very schema change that orphaned it. They
+              // are saved under the layer's current name — a rename, if any,
+              // is part of the layer PUT that follows.
+              const layerName = activeEditing.name;
+              try {
+                if (changedSegments?.length) {
+                  for (const seg of changedSegments) {
+                    await updateSegment.mutateAsync({ layerName, segId: seg.id, segment: seg });
+                  }
+                }
+                await updateLayer.mutateAsync({ name: layerName, layer: l });
+                closeEditModal();
+              } catch {
+                // Left open; updateLayer.error / updateSegment.error above
+                // render what failed so the author can retry or adjust.
+              }
             }}
-            onCancel={() => setEditing(null)}
+            onCancel={closeEditModal}
           />
         )}
       </Modal>

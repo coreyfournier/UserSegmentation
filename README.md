@@ -427,12 +427,11 @@ Centralized, named tables of typed keys that rules match against — instead of 
   "layers": [
     {
       "name": "geo",
-      "order": 1,
+      "inputSchema": { "zip": { "type": "string", "required": true } },
       "segments": [
         {
           "id": "region",
           "strategy": "rule",
-          "inputSchema": { "zip": { "type": "string", "required": true } },
           "rules": [
             {
               "ruleName": "premium",
@@ -471,25 +470,30 @@ A `rule` or `checklist` segment may declare `computed` fields: named values deri
 
 ```json
 {
-  "id": "pricing-tier",
-  "strategy": "rule",
-  "computed": [
-    { "name": "AdjustedScore", "type": "number", "formula": "abs(Rating) * Weight" },
-    { "name": "IsHighValue",   "type": "boolean", "formula": "Revenue > 10000 && AdjustedScore > 5" }
-  ],
+  "name": "pricing",
   "inputSchema": {
     "Rating":  { "type": "number", "required": true },
     "Weight":  { "type": "number", "required": true },
     "Revenue": { "type": "number", "required": false }
   },
-  "rules": [
+  "segments": [
     {
-      "ruleName": "high-value",
-      "successEvent": "premium",
-      "condition": { "field": "IsHighValue", "operator": "eq", "value": true }
+      "id": "pricing-tier",
+      "strategy": "rule",
+      "computed": [
+        { "name": "AdjustedScore", "type": "number", "formula": "abs(Rating) * Weight" },
+        { "name": "IsHighValue",   "type": "boolean", "formula": "Revenue > 10000 && AdjustedScore > 5" }
+      ],
+      "rules": [
+        {
+          "ruleName": "high-value",
+          "successEvent": "premium",
+          "condition": { "field": "IsHighValue", "operator": "eq", "value": true }
+        }
+      ],
+      "default": "standard"
     }
-  ],
-  "default": "standard"
+  ]
 }
 ```
 
@@ -516,34 +520,39 @@ This service additionally registers the following math functions:
 
 ### Output Schema
 
-A `rule` or `checklist` segment may declare `outputSchema`: named fields resolved into a structured record on every reported result, instead of a bare rule name and message. A `checklist` finding carries its own record; a `rule` segment's winning result carries one on the layer result. Raw JSON was the only way to author one until the segment editor grew a dedicated tab for it.
+A layer may declare `outputSchema` for its `rule` and `checklist` segments: named fields resolved into a structured record on every reported result, instead of a bare rule name and message. A `checklist` finding carries its own record; a `rule` segment's winning result carries one on the layer result. Raw JSON was the only way to author one until the layer editor grew a dedicated tab for it.
 
 **Why:** without it, a consumer reconstructs a typed object from `segment` + `reason` + `computed` (or `rule` + `message`) by hand, per finding. An output schema authors that mapping once, in config, next to the rule that produces it — the same locality argument [Localized Messages](#localized-messages) already makes for message text.
 
 ```json
 {
-  "id": "payroll-diagnostics",
-  "strategy": "checklist",
-  "computed": [
-    { "name": "MaxAllowed", "type": "number", "formula": "min(EarnedWages * 0.5, StateCap)" }
-  ],
+  "name": "payroll-diagnostics",
   "outputSchema": {
     "type":      { "type": "string" },
     "severity":  { "type": "string", "lookup": "diagnosis-severity", "required": true },
     "message":   { "type": "string", "eval": "template" },
     "shortfall": { "type": "number", "eval": "expression" }
   },
-  "rules": [
+  "segments": [
     {
-      "ruleName": "advanceLimitBelowFloor",
-      "condition": { "field": "MaxAllowed", "operator": "lt", "value": 25 },
-      "errorMessage": "Advance limit is below the minimum.",
-      "outputs": {
-        "type": "limit-below-floor",
-        "severity": "high",
-        "message": "Advance limit of ${MaxAllowed} is below the $25 minimum.",
-        "shortfall": "25 - MaxAllowed"
-      }
+      "id": "payroll-diagnostics",
+      "strategy": "checklist",
+      "computed": [
+        { "name": "MaxAllowed", "type": "number", "formula": "min(EarnedWages * 0.5, StateCap)" }
+      ],
+      "rules": [
+        {
+          "ruleName": "advanceLimitBelowFloor",
+          "condition": { "field": "MaxAllowed", "operator": "lt", "value": 25 },
+          "errorMessage": "Advance limit is below the minimum.",
+          "outputs": {
+            "type": "limit-below-floor",
+            "severity": "high",
+            "message": "Advance limit of ${MaxAllowed} is below the $25 minimum.",
+            "shortfall": "25 - MaxAllowed"
+          }
+        }
+      ]
     }
   ]
 }
@@ -591,7 +600,7 @@ Enforced at config load, not left to fail at evaluation:
 - **Per reporting rule**, in that rule's own `outputs` — for a value that differs per finding.
 - **Once, on the segment**, in its `outputs` — for a field that does not vary, covering every rule at once.
 
-A rule's own value wins when both are present. Only **top-level** rules carry `outputs` and report; a nested `And`/`Or` branch is part of another rule's condition, not a reporting unit of its own, so it carries no output values (see [A group is one item](#a-group-is-one-item)). An authored key the segment's `outputSchema` does not declare is rejected at load — the evaluator reads the schema, not what was authored, so an undeclared key would otherwise be silently dropped with no diagnostic at runtime.
+A rule's own value wins when both are present. Only **top-level** rules carry `outputs` and report; a nested `And`/`Or` branch is part of another rule's condition, not a reporting unit of its own, so it carries no output values (see [A group is one item](#a-group-is-one-item)). An authored key the layer's `outputSchema` does not declare is rejected at load — the evaluator reads the schema, not what was authored, so an undeclared key would otherwise be silently dropped with no diagnostic at runtime.
 
 #### `required`
 
@@ -646,10 +655,10 @@ Three round trips for problems that were all visible on the first pass. `rule` s
 ```json
 {
   "name": "company-identity",
+  "inputSchema": { "company.ein": { "type": "string", "required": true } },
   "segments": [{
     "id": "all-types",
     "strategy": "checklist",
-    "inputSchema": { "company.ein": { "type": "string", "required": true } },
     "rules": [
       {
         "ruleName": "companyMissingFederalEIN",
@@ -871,40 +880,45 @@ Computes the total EWA transfer spend for CT-state employees in the current batc
 - Otherwise → standard $4 fee
 
 <details>
-<summary>Segment config JSON</summary>
+<summary>Layer config JSON</summary>
 
 ```json
 {
-  "id": "ct-fee",
-  "strategy": "rule",
-  "computed": [
-    {
-      "name": "CTTotal",
-      "type": "number",
-      "formula": "sum(map(filter(Employees, {.State == \"CT\"}), {.TransferSpendThisMonth}))"
-    },
-    {
-      "name": "TransferFee",
-      "type": "number",
-      "formula": "CTTotal > 30.0 ? 0.0 : (CTTotal + 4.0 > 30.0 ? 30.0 - CTTotal : 4.0)"
-    }
-  ],
+  "name": "ct-fee",
   "inputSchema": {
     "Employees": { "type": "array", "required": true }
   },
-  "rules": [
+  "segments": [
     {
-      "ruleName": "fee-waived",
-      "successEvent": "fee-waived",
-      "condition": { "field": "CTTotal", "operator": "gt", "value": 30 }
-    },
-    {
-      "ruleName": "fee-partial",
-      "successEvent": "fee-partial",
-      "condition": { "field": "CTTotal", "operator": "gt", "value": 26 }
+      "id": "ct-fee",
+      "strategy": "rule",
+      "computed": [
+        {
+          "name": "CTTotal",
+          "type": "number",
+          "formula": "sum(map(filter(Employees, {.State == \"CT\"}), {.TransferSpendThisMonth}))"
+        },
+        {
+          "name": "TransferFee",
+          "type": "number",
+          "formula": "CTTotal > 30.0 ? 0.0 : (CTTotal + 4.0 > 30.0 ? 30.0 - CTTotal : 4.0)"
+        }
+      ],
+      "rules": [
+        {
+          "ruleName": "fee-waived",
+          "successEvent": "fee-waived",
+          "condition": { "field": "CTTotal", "operator": "gt", "value": 30 }
+        },
+        {
+          "ruleName": "fee-partial",
+          "successEvent": "fee-partial",
+          "condition": { "field": "CTTotal", "operator": "gt", "value": 26 }
+        }
+      ],
+      "default": "fee-standard"
     }
-  ],
-  "default": "fee-standard"
+  ]
 }
 ```
 
@@ -964,27 +978,11 @@ Three scenarios, same config:
 A logistic risk model for pricing and approving an earned wage advance. Age-decayed signals feed a log-odds accumulator; the resulting default probability determines the risk-adjusted maximum offer. The binding constraint (risk ceiling vs. net-pay cap) is surfaced as a segment for downstream routing.
 
 <details>
-<summary>Segment config JSON</summary>
+<summary>Layer config JSON</summary>
 
 ```json
 {
-  "id": "ewa-risk",
-  "strategy": "rule",
-  "computed": [
-    {
-      "name": "Z", "type": "number",
-      "formula": "w0 + sum(map(Signals, {.weight * .score * exp(-.age_sec / .tau_sec)}))"
-    },
-    { "name": "P",              "type": "number", "formula": "1.0 / (1.0 + exp(-Z))" },
-    { "name": "M",              "type": "number", "formula": "Fee - AchCost" },
-    {
-      "name": "RiskCeiling", "type": "number",
-      "formula": "(M * (1.0 - P) - AchCost * P) / (P + Lambda * P * (1.0 - P))"
-    },
-    { "name": "NetPayCap",      "type": "number", "formula": "Alpha * NetPay" },
-    { "name": "Offered",        "type": "number", "formula": "max(0.0, min(RiskCeiling, NetPayCap))" },
-    { "name": "BindingLimit",   "type": "string", "formula": "RiskCeiling < NetPayCap ? \"risk-ceiling\" : \"net-pay-cap\"" }
-  ],
+  "name": "ewa-risk",
   "inputSchema": {
     "Signals":  { "type": "array",  "required": true  },
     "w0":       { "type": "number", "required": true  },
@@ -994,19 +992,40 @@ A logistic risk model for pricing and approving an earned wage advance. Age-deca
     "Alpha":    { "type": "number", "required": true  },
     "NetPay":   { "type": "number", "required": true  }
   },
-  "rules": [
+  "segments": [
     {
-      "ruleName": "below-minimum",
-      "successEvent": "decline",
-      "condition": { "field": "Offered", "operator": "lt", "value": 1 }
-    },
-    {
-      "ruleName": "risk-limited",
-      "successEvent": "approve-risk-ceiling",
-      "condition": { "field": "BindingLimit", "operator": "eq", "value": "risk-ceiling" }
+      "id": "ewa-risk",
+      "strategy": "rule",
+      "computed": [
+        {
+          "name": "Z", "type": "number",
+          "formula": "w0 + sum(map(Signals, {.weight * .score * exp(-.age_sec / .tau_sec)}))"
+        },
+        { "name": "P",              "type": "number", "formula": "1.0 / (1.0 + exp(-Z))" },
+        { "name": "M",              "type": "number", "formula": "Fee - AchCost" },
+        {
+          "name": "RiskCeiling", "type": "number",
+          "formula": "(M * (1.0 - P) - AchCost * P) / (P + Lambda * P * (1.0 - P))"
+        },
+        { "name": "NetPayCap",      "type": "number", "formula": "Alpha * NetPay" },
+        { "name": "Offered",        "type": "number", "formula": "max(0.0, min(RiskCeiling, NetPayCap))" },
+        { "name": "BindingLimit",   "type": "string", "formula": "RiskCeiling < NetPayCap ? \"risk-ceiling\" : \"net-pay-cap\"" }
+      ],
+      "rules": [
+        {
+          "ruleName": "below-minimum",
+          "successEvent": "decline",
+          "condition": { "field": "Offered", "operator": "lt", "value": 1 }
+        },
+        {
+          "ruleName": "risk-limited",
+          "successEvent": "approve-risk-ceiling",
+          "condition": { "field": "BindingLimit", "operator": "eq", "value": "risk-ceiling" }
+        }
+      ],
+      "default": "approve-net-pay-cap"
     }
-  ],
-  "default": "approve-net-pay-cap"
+  ]
 }
 ```
 
@@ -1062,7 +1081,6 @@ The segment editor shows: strategy = Expression, promotion window = Jul 4–31 2
 ```json
 {
   "name": "transfer-fee",
-  "order": 7,
   "defaultLanguage": "en",
   "segments": [
     {

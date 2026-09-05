@@ -80,4 +80,4 @@ Rules follow a recursive tree structure (`internal/domain/model/rule.go`). A **l
 
 ## Config Format
 
-`config/segments.json` defines layers (ordered), each containing segments with a strategy (`static`, `rule`, or `percentage`), optional `overrides`, `promotion` time bounds, and `inputSchema` for validation.
+`config/segments.json` defines layers (execution order comes from each layer's `dependsOn` edges, topologically sorted — not an ordinal), each declaring `inputSchema` and `outputSchema` once for all its segments, and each containing segments with a strategy (`static`, `rule`, `percentage`, or `checklist`), optional `overrides`, and `promotion` time bounds.

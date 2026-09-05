@@ -167,15 +167,16 @@ export interface FieldCoverage {
  * of authored rules can satisfy a required field on it — only the
  * segment-level value can.
  *
- * `_schema` is the declaration this field lives in — the layer's output
+ * `schema` is the declaration this field lives in — the layer's output
  * schema now, never the segment's — passed explicitly rather than read off
- * `seg`, since a `Segment` no longer carries one. Coverage itself does not
- * consult it (authored counts come from the segment's rules/overrides/outputs
- * regardless of how the field is declared); it is accepted anyway so a
- * caller can never mistake this for a function that still reads the schema
- * off the segment.
+ * `seg`, since a `Segment` no longer carries one. It gates
+ * `defaultNeedsSegmentValue`: a name no longer declared in the schema
+ * currently in force has no engine obligation to be read regardless of the
+ * segment's default, so a stale coverage call (e.g. mid-edit, just after a
+ * field was removed from the layer) does not spuriously report that it still
+ * needs one.
  */
-export function fieldCoverage(seg: Segment, _schema: OutputSchema | undefined, name: string): FieldCoverage {
+export function fieldCoverage(seg: Segment, schema: OutputSchema | undefined, name: string): FieldCoverage {
   const reporting = (seg.rules ?? []).filter((r: Rule) => r.enabled !== false);
   const authored = reporting.filter((r) => !!r.outputs?.[name]).length;
   const overrides = (seg.overrides ?? []).filter((r: Rule) => r.enabled !== false);
@@ -186,6 +187,6 @@ export function fieldCoverage(seg: Segment, _schema: OutputSchema | undefined, n
     segmentLevel: !!seg.outputs?.[name],
     overridesAuthored,
     overridesTotal: overrides.length,
-    defaultNeedsSegmentValue: seg.strategy === 'rule' && !!seg.default,
+    defaultNeedsSegmentValue: seg.strategy === 'rule' && !!seg.default && !!schema?.[name],
   };
 }

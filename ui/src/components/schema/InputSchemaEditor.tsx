@@ -5,11 +5,14 @@ import styles from './InputSchemaEditor.module.css';
 interface Props {
   value?: InputSchema;
   onChange: (s?: InputSchema) => void;
+  /** Called instead of the local delete, so the owner can warn when removing
+   *  the layer's last field would turn off rule-field validation entirely. */
+  onRemoveField?: (field: string) => void;
 }
 
 const TYPES: FieldType[] = ['string', 'number', 'boolean', 'array'];
 
-export default function InputSchemaEditor({ value, onChange }: Props) {
+export default function InputSchemaEditor({ value, onChange, onRemoveField }: Props) {
   const schema = value ?? {};
   const entries = Object.entries(schema);
   const [newField, setNewField] = useState('');
@@ -18,6 +21,10 @@ export default function InputSchemaEditor({ value, onChange }: Props) {
   const addRowRef = useRef<HTMLTableRowElement>(null);
 
   const remove = (field: string) => {
+    if (onRemoveField) {
+      onRemoveField(field);
+      return;
+    }
     const s = { ...schema };
     delete s[field];
     onChange(Object.keys(s).length ? s : undefined);
