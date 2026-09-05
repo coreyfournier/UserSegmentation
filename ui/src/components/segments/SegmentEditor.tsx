@@ -1,7 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { useLayers } from '../../api/layers';
-import { useLookups } from '../../api/lookups';
+import { useLayers, useUpdateLayer } from '../../api/layers';
 import { useUpdateSegment } from '../../api/segments';
 import type { Segment, StrategyType, InputSchema, OutputField } from '../../api/types';
 import StrategyPicker from './StrategyPicker';
@@ -13,10 +12,8 @@ import RuleTreeBuilder from '../rules/RuleTreeBuilder';
 import MessagesEditor from '../rules/MessagesEditor';
 import PredicateEditor from '../rules/PredicateEditor';
 import PromotionEditor from '../promotion/PromotionEditor';
-import InputSchemaEditor from '../schema/InputSchemaEditor';
-import OutputSchemaEditor from '../schema/OutputSchemaEditor';
 import EmittedFieldsReference from '../schema/EmittedFieldsReference';
-import { fieldCoverage, supportsOutputSchema } from '../schema/outputSchemaRules';
+import { supportsOutputSchema } from '../schema/outputSchemaRules';
 import ErrorBanner from '../common/ErrorBanner';
 import styles from './SegmentEditor.module.css';
 
@@ -24,8 +21,8 @@ export default function SegmentEditor() {
   const { name: layerName, id: segId } = useParams<{ name: string; id: string }>();
   const navigate = useNavigate();
   const { data: layers } = useLayers();
-  const { data: lookups } = useLookups();
   const updateSegment = useUpdateSegment();
+  const updateLayer = useUpdateLayer();
 
   const layer = layers?.find((l) => l.name === layerName);
   const original = layer?.segments.find((s) => s.id === segId);
@@ -46,39 +43,21 @@ export default function SegmentEditor() {
   const update = (partial: Partial<Segment>) =>
     setSeg((prev) => (prev ? { ...prev, ...partial } : prev));
 
-  const declareOutput = (name: string, field: OutputField) =>
-    update({ outputSchema: { ...(seg.outputSchema ?? {}), [name]: field } });
-
-  // Deleting a declared field must also prune the values authored for it, or
-  // the engine rejects the save over values the author can no longer even
-  // see: OutputValuesEditor iterates Object.keys(schema), so once the
-  // declaration is gone the stale values become invisible. Only top-level
-  // rules are touched — only they can author output values in this UI.
-  const removeOutputField = (name: string) => {
-    const ruleClears = (seg.rules ?? []).filter((r) => r.outputs && name in r.outputs).length;
-    const segClears = seg.outputs && name in seg.outputs ? 1 : 0;
-    const total = ruleClears + segClears;
-    if (total > 0 && !window.confirm(`Delete "${name}"? This also clears ${total} authored value(s).`)) {
-      return;
-    }
-
-    const nextSchema = { ...(seg.outputSchema ?? {}) };
-    delete nextSchema[name];
-
-    const nextOutputs = seg.outputs ? { ...seg.outputs } : undefined;
-    if (nextOutputs) delete nextOutputs[name];
-
-    const nextRules = (seg.rules ?? []).map((r) => {
-      if (!r.outputs || !(name in r.outputs)) return r;
-      const outputs = { ...r.outputs };
-      delete outputs[name];
-      return { ...r, outputs: Object.keys(outputs).length ? outputs : undefined };
-    });
-
-    update({
-      outputSchema: Object.keys(nextSchema).length ? nextSchema : undefined,
-      outputs: nextOutputs && Object.keys(nextOutputs).length ? nextOutputs : undefined,
-      rules: nextRules,
+  // Output schema is declared on the layer, not the segment, so "declare a new
+  // field inline while authoring a check's value" (from OutputValuesEditor,
+  // via onDeclareOutput below) patches the layer instead of local segment
+  // state — the same convenience, aimed at where the declaration now lives.
+  const declareOutput = (name: string, field: OutputField) => {
+    if (!layer) return;
+    updateLayer.mutate({
+      name: layer.name,
+      layer: {
+        name: layer.name,
+        dependsOn: layer.dependsOn,
+        defaultLanguage: layer.defaultLanguage,
+        inputSchema: layer.inputSchema,
+        outputSchema: { ...(layer.outputSchema ?? {}), [name]: field },
+      },
     });
   };
 
@@ -103,10 +82,13 @@ export default function SegmentEditor() {
   };
 
   // Computed and checklist both compute fields before rules run, so merge them
-  // into the schema used for the rule field autocomplete.
+  // into the schema used for the rule field autocomplete. The input schema
+  // itself comes from the layer — a segment declares none of its own, exactly
+  // what the engine reads.
   const effectiveSchema = (s: Segment): InputSchema | undefined => {
-    if (!s.computed?.length) return s.inputSchema;
-    const merged: InputSchema = { ...s.inputSchema };
+    const base = layer?.inputSchema;
+    if (!s.computed?.length) return base;
+    const merged: InputSchema = { ...base };
     for (const def of s.computed) {
       if (def.name) merged[def.name] = { type: def.type, required: false };
     }
@@ -147,34 +129,75 @@ export default function SegmentEditor() {
         <PromotionEditor value={seg.promotion} onChange={(p) => update({ promotion: p })} />
       </section>
 
-      {/* Input Schema */}
+      {/* Input Schema — declared on the layer, not here. Shown read-only so an
+          author does not conclude this segment's rules are unchecked. */}
       <section id="input-schema" className={`card ${styles.section}`}>
         <h3>Input Schema</h3>
-        <InputSchemaEditor
-          value={seg.inputSchema}
-          onChange={(s) => update({ inputSchema: s })}
-        />
+        <p className={styles.layerNote}>
+          Declared on layer <strong>{layerName}</strong> — every segment in it shares this
+          schema.{' '}
+          <button type="button" className="btn-ghost btn-sm" onClick={() => navigate('/layers')}>
+            Edit on the layer
+          </button>
+        </p>
+        {layer?.inputSchema && Object.keys(layer.inputSchema).length > 0 ? (
+          <table className={styles.readonlyTable}>
+            <thead>
+              <tr><th>Field</th><th>Type</th><th>Required</th></tr>
+            </thead>
+            <tbody>
+              {Object.entries(layer.inputSchema).map(([f, sf]) => (
+                <tr key={f}>
+                  <td>{f}</td>
+                  <td>{sf.type}</td>
+                  <td>{sf.required ? 'yes' : '—'}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        ) : (
+          <p style={{ fontSize: 12, color: 'var(--text-muted)', margin: 0 }}>
+            No input schema declared on this layer yet.
+          </p>
+        )}
       </section>
 
       {/* Output Schema — after the input schema, because an output value
-          interpolates the fields declared there. */}
+          interpolates the fields declared there. Also declared on the layer;
+          shown read-only for the same reason as the input schema above. */}
       <section className={`card ${styles.section}`}>
         <h3>Output Schema</h3>
         {supportsOutputSchema(seg.strategy) ? (
           <>
-            <p style={{ fontSize: 12, color: 'var(--text-muted)', margin: '0 0 12px' }}>
-              Declares the record emitted with each reported item, so a consumer receives a
-              populated object instead of mapping one by hand.
+            <p className={styles.layerNote}>
+              Declared on layer <strong>{layerName}</strong> — every segment in it shares this
+              schema.{' '}
+              <button type="button" className="btn-ghost btn-sm" onClick={() => navigate('/layers')}>
+                Edit on the layer
+              </button>
             </p>
-            <OutputSchemaEditor
-              value={seg.outputSchema}
-              onChange={(s) => update({ outputSchema: s })}
-              lookups={lookups ?? []}
-              segmentOutputs={seg.outputs}
-              onSegmentOutputsChange={(o) => update({ outputs: o })}
-              coverage={(name) => fieldCoverage(seg, name)}
-              onRemoveField={removeOutputField}
-            />
+            {layer?.outputSchema && Object.keys(layer.outputSchema).length > 0 ? (
+              <table className={styles.readonlyTable}>
+                <thead>
+                  <tr><th>Field</th><th>Eval</th><th>Type</th><th>Required</th></tr>
+                </thead>
+                <tbody>
+                  {Object.entries(layer.outputSchema).map(([name, f]) => (
+                    <tr key={name}>
+                      <td>{name}</td>
+                      <td>{f.eval ?? 'literal'}</td>
+                      <td>{f.type}</td>
+                      <td>{f.required ? 'yes' : '—'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            ) : (
+              <p style={{ fontSize: 12, color: 'var(--text-muted)', margin: 0 }}>
+                No output schema declared on this layer yet — values authored below have
+                nothing to attach to until one is.
+              </p>
+            )}
             <div style={{ marginTop: 12 }}>
               <EmittedFieldsReference />
             </div>
@@ -185,12 +208,13 @@ export default function SegmentEditor() {
               <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 8 }}>
                 {Object.keys(effectiveSchema(seg) ?? {}).length === 0 ? (
                   <p style={{ margin: 0 }}>
-                    None declared yet — <a href="#input-schema">add input fields</a>.
+                    None declared yet — <a href="#input-schema">see the input schema above</a>.
                   </p>
                 ) : (
                   <>
                     <p style={{ margin: '0 0 6px' }}>
-                      From the <a href="#input-schema">input schema</a> and computed fields:
+                      From the layer's <a href="#input-schema">input schema</a> and this
+                      segment's computed fields:
                     </p>
                     <ul style={{ margin: 0, paddingLeft: 18 }}>
                       {Object.entries(effectiveSchema(seg) ?? {}).map(([f, sf]) => (
@@ -218,7 +242,7 @@ export default function SegmentEditor() {
         <PredicateEditor
           value={seg.when}
           onChange={(when) => update({ when })}
-          schema={seg.inputSchema}
+          schema={layer?.inputSchema}
           layerNames={layerNames}
           hint={
             'Dispatch condition for the whole segment, tested against the fields declared ' +
@@ -248,9 +272,9 @@ export default function SegmentEditor() {
             defaultMessages={seg.defaultMessages}
             onDefaultMessagesChange={(m) => update({ defaultMessages: m })}
             ruleSchema={effectiveSchema(seg)}
-            overrideSchema={seg.inputSchema}
+            overrideSchema={layer?.inputSchema}
             layerNames={layerNames}
-            outputSchema={seg.outputSchema}
+            outputSchema={layer?.outputSchema}
             onDeclareOutput={declareOutput}
             computedSlot={
               <div className="form-group">
@@ -298,7 +322,7 @@ export default function SegmentEditor() {
                 layerNames={layerNames}
                 label="Checks"
                 perRuleMessages
-                outputSchema={seg.outputSchema}
+                outputSchema={layer?.outputSchema}
                 onDeclareOutput={declareOutput}
                 hint={
                   'Each check states a condition that describes a problem; when it holds, its ' +
@@ -322,7 +346,7 @@ export default function SegmentEditor() {
           <RuleTreeBuilder
             rules={seg.overrides ?? []}
             onChange={(r) => update({ overrides: r })}
-            schema={seg.inputSchema}
+            schema={layer?.inputSchema}
             layerNames={layerNames}
             label="Override Rules"
           />

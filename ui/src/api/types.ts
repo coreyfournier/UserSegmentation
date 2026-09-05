@@ -128,9 +128,6 @@ export interface Segment {
   /** Localized messages rendered when the segment falls back to `default`. */
   defaultMessages?: Record<string, string>;
   promotion?: Promotion;
-  inputSchema?: InputSchema;
-  /** Declares the fields this segment emits with each reported item. */
-  outputSchema?: OutputSchema;
   /** Values for output fields that do not vary per reported item. */
   outputs?: Record<string, string>;
 }
@@ -146,6 +143,9 @@ export interface Layer {
   segments: Segment[];
   /** Fallback locale for message rendering; empty means "en". */
   defaultLanguage?: string;
+  inputSchema?: InputSchema;
+  /** Declares the fields this layer's segments emit with each reported item. */
+  outputSchema?: OutputSchema;
 }
 
 export interface Snapshot {

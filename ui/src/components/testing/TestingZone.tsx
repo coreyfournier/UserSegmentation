@@ -22,9 +22,7 @@ export default function TestingZone() {
   for (const layer of layers ?? []) {
     // When layers are selected, only show schemas for those; otherwise show all.
     if (selectedLayers.length && !selectedLayers.includes(layer.name)) continue;
-    for (const seg of layer.segments) {
-      if (seg.inputSchema) allSchemas.push(seg.inputSchema);
-    }
+    if (layer.inputSchema) allSchemas.push(layer.inputSchema);
   }
 
   const toggleLayer = (name: string) => {

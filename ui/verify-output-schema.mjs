@@ -101,11 +101,13 @@ assert.equal(supportsOutputSchema('static'), false);
 assert.equal(supportsOutputSchema('percentage'), false);
 
 // Coverage counts reporting rules only, ignores disabled ones, and reports
-// a segment-level value as covering everything.
+// a segment-level value as covering everything. The schema the field is
+// declared in lives on the layer now, so it is passed alongside the
+// segment rather than read off it.
+const schema = { cat: { type: 'string' } };
 const seg = {
   id: 's',
   strategy: 'checklist',
-  outputSchema: { cat: { type: 'string' } },
   rules: [
     { ruleName: 'a', outputs: { cat: 'x' }, condition: { field: 'f', operator: 'eq', value: 1 } },
     { ruleName: 'b', condition: { field: 'f', operator: 'eq', value: 2 } },
@@ -113,22 +115,23 @@ const seg = {
   ],
 };
 assert.deepEqual(
-  fieldCoverage(seg, 'cat'),
+  fieldCoverage(seg, schema, 'cat'),
   { authored: 1, total: 2, segmentLevel: false, overridesAuthored: 0, overridesTotal: 0, defaultNeedsSegmentValue: false },
 );
 assert.deepEqual(
-  fieldCoverage({ ...seg, outputs: { cat: 'y' } }, 'cat'),
+  fieldCoverage({ ...seg, outputs: { cat: 'y' } }, schema, 'cat'),
   { authored: 1, total: 2, segmentLevel: true, overridesAuthored: 0, overridesTotal: 0, defaultNeedsSegmentValue: false },
 );
 // An empty segment-level value does not count — the engine treats it as unauthored.
 assert.deepEqual(
-  fieldCoverage({ ...seg, outputs: { cat: '' } }, 'cat'),
+  fieldCoverage({ ...seg, outputs: { cat: '' } }, schema, 'cat'),
   { authored: 1, total: 2, segmentLevel: false, overridesAuthored: 0, overridesTotal: 0, defaultNeedsSegmentValue: false },
 );
 // Nor does an empty rule-level value — key presence alone must not count as authoring it.
 assert.deepEqual(
   fieldCoverage(
     { ...seg, rules: [...seg.rules, { ruleName: 'd', outputs: { cat: '' }, condition: { field: 'f', operator: 'eq', value: 4 } }] },
+    schema,
     'cat',
   ),
   { authored: 1, total: 3, segmentLevel: false, overridesAuthored: 0, overridesTotal: 0, defaultNeedsSegmentValue: false },
@@ -146,12 +149,12 @@ const withOverrides = {
   ],
 };
 assert.deepEqual(
-  fieldCoverage(withOverrides, 'cat'),
+  fieldCoverage(withOverrides, schema, 'cat'),
   { authored: 1, total: 2, segmentLevel: false, overridesAuthored: 1, overridesTotal: 2, defaultNeedsSegmentValue: false },
 );
 // A segment-level value still covers everything, overrides included.
 assert.deepEqual(
-  fieldCoverage({ ...withOverrides, outputs: { cat: 'y' } }, 'cat'),
+  fieldCoverage({ ...withOverrides, outputs: { cat: 'y' } }, schema, 'cat'),
   { authored: 1, total: 2, segmentLevel: true, overridesAuthored: 1, overridesTotal: 2, defaultNeedsSegmentValue: false },
 );
 
@@ -161,20 +164,19 @@ const ruleSeg = {
   id: 's2',
   strategy: 'rule',
   default: 'fallback',
-  outputSchema: { cat: { type: 'string' } },
   rules: [
     { ruleName: 'a', outputs: { cat: 'x' }, condition: { field: 'f', operator: 'eq', value: 1 } },
   ],
 };
 assert.deepEqual(
-  fieldCoverage(ruleSeg, 'cat'),
+  fieldCoverage(ruleSeg, schema, 'cat'),
   { authored: 1, total: 1, segmentLevel: false, overridesAuthored: 0, overridesTotal: 0, defaultNeedsSegmentValue: true },
 );
 // No default declared: rule values alone are enough.
-assert.equal(fieldCoverage({ ...ruleSeg, default: '' }, 'cat').defaultNeedsSegmentValue, false);
-assert.equal(fieldCoverage({ ...ruleSeg, default: undefined }, 'cat').defaultNeedsSegmentValue, false);
+assert.equal(fieldCoverage({ ...ruleSeg, default: '' }, schema, 'cat').defaultNeedsSegmentValue, false);
+assert.equal(fieldCoverage({ ...ruleSeg, default: undefined }, schema, 'cat').defaultNeedsSegmentValue, false);
 // A checklist never reads Default, so it never needs the segment-level value
 // on that account, even if a stray default is present.
-assert.equal(fieldCoverage({ ...seg, default: 'stray' }, 'cat').defaultNeedsSegmentValue, false);
+assert.equal(fieldCoverage({ ...seg, default: 'stray' }, schema, 'cat').defaultNeedsSegmentValue, false);
 
 console.log('output schema rules OK');

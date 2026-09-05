@@ -3,6 +3,7 @@ import type {
   FieldType,
   LookupTable,
   OutputField,
+  OutputSchema,
   Rule,
   Segment,
   StrategyType,
@@ -165,8 +166,16 @@ export interface FieldCoverage {
  * default path calls evaluateOutputs with no rule values at all, so no number
  * of authored rules can satisfy a required field on it — only the
  * segment-level value can.
+ *
+ * `_schema` is the declaration this field lives in — the layer's output
+ * schema now, never the segment's — passed explicitly rather than read off
+ * `seg`, since a `Segment` no longer carries one. Coverage itself does not
+ * consult it (authored counts come from the segment's rules/overrides/outputs
+ * regardless of how the field is declared); it is accepted anyway so a
+ * caller can never mistake this for a function that still reads the schema
+ * off the segment.
  */
-export function fieldCoverage(seg: Segment, name: string): FieldCoverage {
+export function fieldCoverage(seg: Segment, _schema: OutputSchema | undefined, name: string): FieldCoverage {
   const reporting = (seg.rules ?? []).filter((r: Rule) => r.enabled !== false);
   const authored = reporting.filter((r) => !!r.outputs?.[name]).length;
   const overrides = (seg.overrides ?? []).filter((r: Rule) => r.enabled !== false);

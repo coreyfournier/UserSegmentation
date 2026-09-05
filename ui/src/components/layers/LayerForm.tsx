@@ -1,5 +1,8 @@
 import { useState } from 'react';
-import type { Layer } from '../../api/types';
+import { useLookups } from '../../api/lookups';
+import type { InputSchema, Layer, OutputSchema } from '../../api/types';
+import InputSchemaEditor from '../schema/InputSchemaEditor';
+import OutputSchemaEditor from '../schema/OutputSchemaEditor';
 
 interface Props {
   initial?: Partial<Layer>;
@@ -17,9 +20,12 @@ export default function LayerForm({
   onCancel,
   submitLabel = 'Create',
 }: Props) {
+  const { data: lookups } = useLookups();
   const [name, setName] = useState(initial?.name ?? '');
   const [dependsOn, setDependsOn] = useState<string[]>(initial?.dependsOn ?? []);
   const [defaultLanguage, setDefaultLanguage] = useState(initial?.defaultLanguage ?? 'en');
+  const [inputSchema, setInputSchema] = useState<InputSchema | undefined>(initial?.inputSchema);
+  const [outputSchema, setOutputSchema] = useState<OutputSchema | undefined>(initial?.outputSchema);
 
   // A layer cannot depend on itself; everything else is a candidate.
   const candidates = allLayers.map((l) => l.name).filter((n) => n !== initial?.name);
@@ -40,6 +46,8 @@ export default function LayerForm({
           name,
           dependsOn: dependsOn.length ? dependsOn : undefined,
           defaultLanguage: defaultLanguage.trim() || undefined,
+          inputSchema,
+          outputSchema,
         });
       }}
     >
@@ -88,6 +96,25 @@ export default function LayerForm({
         <p style={{ fontSize: 11, color: 'var(--text-muted)', margin: '4px 0 0' }}>
           Fallback locale used when a requested message language is missing.
         </p>
+      </div>
+
+      <div className="form-group">
+        <label>Input Schema</label>
+        <p style={{ fontSize: 11, color: 'var(--text-muted)', margin: '4px 0 0' }}>
+          Shared by every segment in this layer — a segment's rule field picker offers
+          exactly these fields, plus its own computed ones.
+        </p>
+        <InputSchemaEditor value={inputSchema} onChange={setInputSchema} />
+      </div>
+
+      <div className="form-group">
+        <label>Output Schema</label>
+        <p style={{ fontSize: 11, color: 'var(--text-muted)', margin: '4px 0 0' }}>
+          Declares the record every <code>rule</code> or <code>checklist</code> segment in
+          this layer emits with each reported item. Values are still authored per check on
+          each segment.
+        </p>
+        <OutputSchemaEditor value={outputSchema} onChange={setOutputSchema} lookups={lookups ?? []} />
       </div>
 
       <div className="form-row" style={{ justifyContent: 'flex-end' }}>
