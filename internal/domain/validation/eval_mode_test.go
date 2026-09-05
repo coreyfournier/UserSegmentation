@@ -48,6 +48,29 @@ func TestValidate_LegacyEvalKeyIsRejected(t *testing.T) {
 	}
 }
 
+// A legacy "eval" key lives on the layer's OutputSchema field, not on any
+// segment, so it must be caught even for a layer with zero segments —
+// reachable via CreateLayer, which starts a new layer with an empty
+// Segments slice, before any segment is added in the UI.
+func TestValidate_LegacyEvalKeyRejectedOnZeroSegmentLayer(t *testing.T) {
+	snap := &model.Snapshot{
+		Layers: []model.Layer{{
+			Name: "diagnostics",
+			OutputSchema: model.OutputSchema{
+				"field": {Type: model.FieldTypeString, LegacyEval: "template"},
+			},
+			Segments: []model.Segment{},
+		}},
+	}
+	err := ValidateSnapshot(snap)
+	if err == nil {
+		t.Fatal("expected a legacy-eval error even with zero segments")
+	}
+	if !strings.Contains(err.Error(), "diagnostics") || !strings.Contains(err.Error(), "field") || !strings.Contains(err.Error(), "eval") {
+		t.Fatalf("expected the error to name the layer and field and mention \"eval\", got %v", err)
+	}
+}
+
 func TestValidate_ObjectFieldValidatesWithNoEval(t *testing.T) {
 	// Previously an object field required eval: "expression" to be declared;
 	// now the mode is derived from the type, so an object field with no eval
@@ -56,6 +79,18 @@ func TestValidate_ObjectFieldValidatesWithNoEval(t *testing.T) {
 		Type: model.FieldTypeObject,
 	})); err != nil {
 		t.Fatalf("an object field should validate with no eval declared, got %v", err)
+	}
+}
+
+func TestValidate_ArrayFieldValidatesWithNoEval(t *testing.T) {
+	// array is not expressible as a literal or a template either, and used to
+	// carry the same expression-mode requirement as object; now the mode is
+	// derived from the type, so an array field with no eval anywhere on it is
+	// valid on its own.
+	if err := ValidateSnapshot(snapWithOutputField(model.OutputField{
+		Type: model.FieldTypeArray,
+	})); err != nil {
+		t.Fatalf("an array field should validate with no eval declared, got %v", err)
 	}
 }
 

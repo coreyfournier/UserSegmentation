@@ -26,6 +26,23 @@ func ValidateSnapshot(snap *model.Snapshot) error {
 			deps[d] = struct{}{}
 		}
 
+		// A legacy "eval" key lives on the layer's OutputSchema field, not on
+		// any one segment, so it is checked here, once per field — not inside
+		// the segment loop below, which would name the wrong owner (a
+		// segment, N times over for a layer with N segments) and would miss
+		// it entirely for a layer with zero segments (CreateLayer starts a
+		// new layer with none, which the UI reaches before any segment is
+		// added).
+		for name, f := range layer.OutputSchema {
+			if f.LegacyEval != "" {
+				errs = append(errs, fmt.Sprintf(
+					"layer %q output %q: \"eval\" is no longer declared — the mode is derived "+
+						"from the type, so a string is a template and everything else is an "+
+						"expression; remove it",
+					layer.Name, name))
+			}
+		}
+
 		for _, seg := range layer.Segments {
 			// An unknown strategy is silently skipped by the evaluator, so the
 			// segment would just never produce anything. Reject it at load.
@@ -430,7 +447,7 @@ func CheckRequiredOutputs(seg *model.Segment, schema model.OutputSchema, a *mode
 }
 
 // outputEnforcementExempt reports whether seg's own strategy exempts it from
-// output-schema binding beyond the lookup-existence and eval/type-shape
+// output-schema binding beyond the lookup-existence and expression-syntax
 // checks: static and percentage never populate Result.Outputs (only the rule
 // and checklist paths do), so nothing they declare on the segment itself is
 // binding — the same reasoning requiredOutputErrors already applies to
@@ -446,12 +463,13 @@ func outputEnforcementExempt(seg *model.Segment) bool {
 
 // validateOutputSchema checks a referenced lookup table exists, a lookup-bound
 // field's declared type matches the table's key type, every authored key is
-// actually declared, a legacy "eval" key is rejected (the mode is derived from
-// the type now), every non-string (i.e. expression-mode) field's authored
+// actually declared, every non-string (i.e. expression-mode) field's authored
 // value compiles as a syntactically valid expression, and every Required field
-// is actually authored. Lookup membership and order uniqueness remain the
-// author's invariants and are deliberately not checked. schema is the
-// enclosing layer's OutputSchema — the only place it is declared.
+// is actually authored. (A legacy "eval" key is a layer-level concern, checked
+// once per field in ValidateSnapshot's layer loop rather than here.) Lookup
+// membership and order uniqueness remain the author's invariants and are
+// deliberately not checked. schema is the enclosing layer's OutputSchema —
+// the only place it is declared.
 func validateOutputSchema(seg *model.Segment, schema model.OutputSchema, lookups map[string]model.LookupTable) []string {
 	var errs []string
 
@@ -476,13 +494,6 @@ func validateOutputSchema(seg *model.Segment, schema model.OutputSchema, lookups
 					"segment %q output %q: field type %q does not match lookup %q key type %q",
 					seg.ID, name, f.Type, f.Lookup, tbl.KeyType))
 			}
-		}
-		if f.LegacyEval != "" {
-			errs = append(errs, fmt.Sprintf(
-				"segment %q output %q: \"eval\" is no longer declared — the mode is derived "+
-					"from the type, so a string is a template and everything else is an "+
-					"expression; remove it",
-				seg.ID, name))
 		}
 		if !f.IsTemplate() {
 			errs = append(errs, validateOutputExpressionSyntax(seg, name)...)
