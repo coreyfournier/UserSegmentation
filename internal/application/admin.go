@@ -62,9 +62,20 @@ func (uc *AdminUseCase) CreateLayer(layer model.Layer) (*model.Snapshot, error) 
 	return uc.commitSnapshot(snap)
 }
 
-// UpdateLayer updates an existing layer's name, dependencies and default
-// language (preserving segments). Renaming cascades into any dependsOn edge
+// UpdateLayer updates an existing layer's name, dependencies, default
+// language, input schema and output schema (preserving segments). Every named
+// field is replaced wholesale with the incoming value, including the two
+// schemas: a layer whose inputSchema or outputSchema is absent from the
+// request has that schema cleared, not preserved. This matches how the other
+// fields here are already treated — a PUT replaces the whole object rather
+// than merging — and it is the shape the layer editor UI (which always sends
+// a complete layer) will rely on. Renaming cascades into any dependsOn edge
 // that pointed at the old name, so a depended-upon layer stays renameable.
+//
+// Replacing a layer's schemas can invalidate its own segments — a rule
+// reading a field the new schema no longer declares now fails validation.
+// commitSnapshot validates the whole snapshot before saving, so such an
+// update is rejected and the stored snapshot is left unchanged.
 func (uc *AdminUseCase) UpdateLayer(name string, updated model.Layer) (*model.Snapshot, error) {
 	uc.mu.Lock()
 	defer uc.mu.Unlock()
@@ -78,6 +89,8 @@ func (uc *AdminUseCase) UpdateLayer(name string, updated model.Layer) (*model.Sn
 	snap.Layers[idx].Name = updated.Name
 	snap.Layers[idx].DependsOn = updated.DependsOn
 	snap.Layers[idx].DefaultLanguage = updated.DefaultLanguage
+	snap.Layers[idx].InputSchema = updated.InputSchema
+	snap.Layers[idx].OutputSchema = updated.OutputSchema
 
 	if updated.Name != name {
 		for i := range snap.Layers {
