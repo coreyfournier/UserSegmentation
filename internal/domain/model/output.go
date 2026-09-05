@@ -1,19 +1,24 @@
 package model
 
-// EvalMode says how an output field's authored value becomes a value.
-//
-//	literal     the value is a constant
-//	template    the value is text with ${ ... } tokens, rendered to a string
-//	expression  the value is one whole expr-lang expression, keeping its type
-type EvalMode string
-
-const (
-	EvalLiteral    EvalMode = "literal"
-	EvalTemplate   EvalMode = "template"
-	EvalExpression EvalMode = "expression"
-)
-
 // OutputField declares one field a segment emits with each reported item.
+//
+// How the authored value becomes a value is derived from Type, not declared:
+// a string field is a template, every other type is an expression. Those were
+// once a separate axis, which made pairings like {object, template} writable
+// and therefore something validation had to reject. Deriving it makes them
+// unwritable.
+//
+// The derivation loses nothing. A template token is a full expression, so a
+// string can still be computed — ${ company.name + " Inc" } — and a template
+// with no tokens renders to itself, so constants still work. For a non-string,
+// a bare 3 or true is already a valid expression. It also removes a trap: in
+// expression mode an unquoted Critical is an identifier lookup that yields nil
+// with no error, which is exactly why string constants used to need a literal
+// mode.
+//
+// One thing is given up: a string constant cannot contain ${…}, because
+// renderTemplate has no escape. Message templates have always had this
+// limitation.
 //
 // Lookup names a table whose keys are the field's permitted values. A
 // lookup-bound field is emitted as {key, value} — plus order when the table sets
@@ -29,19 +34,24 @@ const (
 // halves are the only halves that behave alike: an input field's required-ness
 // cannot be checked at load, because config does not know the caller's context.
 type OutputField struct {
-	Type     FieldType `json:"type"`
-	Eval     EvalMode  `json:"eval,omitempty"`
-	Lookup   string    `json:"lookup,omitempty"`
-	Required bool      `json:"required,omitempty"`
+	Type   FieldType `json:"type"`
+	Lookup string    `json:"lookup,omitempty"`
+	// Required is the caller's contract: an error at snapshot load if no
+	// authoring path supplies it, a warning at evaluation if it is absent
+	// anyway.
+	Required bool `json:"required,omitempty"`
+	// LegacyEval exists only to catch config written when the mode was
+	// declared. It carries no behaviour; validation rejects any field where it
+	// is set. Without it the decoder would drop the key, and a string field
+	// that said eval:"expression" would silently start being rendered as a
+	// template — its value quietly changing meaning. Delete once no config in
+	// flight carries it.
+	LegacyEval string `json:"eval,omitempty"`
 }
 
-// EvalMode returns the declared mode, defaulting to literal.
-func (f OutputField) EvalMode() EvalMode {
-	if f.Eval == "" {
-		return EvalLiteral
-	}
-	return f.Eval
-}
+// IsTemplate reports whether this field's authored value is a ${…} template
+// rather than an expression. The single place the derivation lives.
+func (f OutputField) IsTemplate() bool { return f.Type == FieldTypeString }
 
 // OutputSchema maps output field names to their declarations.
 type OutputSchema map[string]OutputField
