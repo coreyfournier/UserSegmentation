@@ -184,13 +184,12 @@ export default function SegmentEditor() {
             {layer?.outputSchema && Object.keys(layer.outputSchema).length > 0 ? (
               <table className={styles.readonlyTable}>
                 <thead>
-                  <tr><th>Field</th><th>Eval</th><th>Type</th><th>Required</th></tr>
+                  <tr><th>Field</th><th>Type</th><th>Required</th></tr>
                 </thead>
                 <tbody>
                   {Object.entries(layer.outputSchema).map(([name, f]) => (
                     <tr key={name}>
                       <td>{name}</td>
-                      <td>{f.eval ?? 'literal'}</td>
                       <td>{f.type}</td>
                       <td>{f.required ? 'yes' : '—'}</td>
                     </tr>

@@ -36,16 +36,8 @@ export interface SchemaField {
 
 export type InputSchema = Record<string, SchemaField>;
 
-/**
- * How an output field's authored value is turned into the emitted value.
- * `literal` is the default when absent, matching the Go `EvalMode()` accessor.
- */
-export type EvalMode = 'literal' | 'template' | 'expression';
-
 export interface OutputField {
   type: FieldType;
-  /** Absent means `literal`. */
-  eval?: EvalMode;
   /** Id of a lookup table whose keys are this field's permitted values. */
   lookup?: string;
   /**

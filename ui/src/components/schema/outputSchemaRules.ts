@@ -1,6 +1,4 @@
 import type {
-  EvalMode,
-  FieldType,
   LookupTable,
   OutputField,
   OutputSchema,
@@ -12,51 +10,19 @@ import type {
 /**
  * The engine's rules for a valid output declaration, restated for the editor.
  *
- * These mirror validation the engine performs at snapshot load. Enforcing them
- * here is not belt-and-braces: it is the difference between an author being
- * told "a template always produces a string" while choosing the type, and
- * being handed a rejected save with a message about config they have already
- * moved on from.
+ * These mirror validation the engine performs at snapshot load.
  */
 
-/** `literal` is the default when `eval` is absent, matching the Go accessor. */
-export function evalModeOf(field: OutputField): EvalMode {
-  return field.eval ?? 'literal';
+/** A string field's value is a template; everything else is an expression. */
+export function isTemplateField(field: OutputField): boolean {
+  return field.type === 'string';
 }
 
-/** The eval modes, in the order they are offered. */
-export const EVAL_MODES: EvalMode[] = ['literal', 'template', 'expression'];
-
-/**
- * One line explaining each mode to an author choosing one.
- *
- * Lives here rather than in a component because two places declare fields —
- * the layer's schema editor and the inline declare on a rule's value editor —
- * and the same choice must read identically in both.
- */
-export const EVAL_MODE_HINT: Record<EvalMode, string> = {
-  literal: 'a constant, emitted as the declared type',
-  template: 'text with ${ ... } tokens, always a string',
-  expression: 'one whole expression, returning a typed value',
-};
-
-/**
- * Which declared types each mode can honour.
- *
- * A template concatenates text, so it can only ever produce a string. A
- * literal is authored as text and coerced, so it covers the scalars but
- * cannot express a collection. Only an expression returns an arbitrary typed
- * value.
- */
-export function allowedTypesForMode(mode: EvalMode): FieldType[] {
-  switch (mode) {
-    case 'template':
-      return ['string'];
-    case 'expression':
-      return ['string', 'number', 'boolean', 'array', 'object'];
-    default:
-      return ['string', 'number', 'boolean'];
-  }
+/** What to show in an empty value input, so the author knows what to type. */
+export function placeholderFor(field: OutputField): string {
+  return isTemplateField(field)
+    ? 'text, with ${ … } to interpolate'
+    : 'an expression — a bare 3 or true is fine';
 }
 
 /** Returns an error message, or null when the declaration is valid. */
@@ -65,15 +31,6 @@ export function validateOutputField(
   field: OutputField,
   lookups: LookupTable[],
 ): string | null {
-  const mode = evalModeOf(field);
-  const allowed = allowedTypesForMode(mode);
-  if (!allowed.includes(field.type)) {
-    if (mode === 'template') {
-      return `${name}: a template always produces a string, so the type must be "string", not "${field.type}"`;
-    }
-    return `${name}: the "${field.type}" type cannot be authored as a ${mode}, so it requires eval "expression"`;
-  }
-
   if (field.lookup) {
     const table = lookups.find((t) => t.id === field.lookup);
     if (!table) {
@@ -84,55 +41,6 @@ export function validateOutputField(
     }
   }
 
-  return null;
-}
-
-/**
- * Go's `strconv.ParseFloat` grammar, in its decimal forms.
- *
- * Deliberately NOT `Number()`. `Number()` is looser than ParseFloat in ways
- * that matter here: it accepts `" 42"`, `"42 "`, `"0x10"` and whitespace-only
- * strings (as 0), every one of which ParseFloat rejects. The engine calls
- * ParseFloat, so using `Number()` would let the editor bless a literal the
- * save then rejects — precisely the failure this module exists to prevent.
- *
- * It is marginally stricter than ParseFloat in one respect: Go accepts
- * underscore separators (`1_0`) and the Inf/NaN spellings. Both are
- * vanishingly rare in an authored constant, and stricter-in-the-editor is the
- * safe direction — the author simply types an ordinary number.
- */
-const DECIMAL_FLOAT = /^[+-]?(\d+(\.\d*)?|\.\d+)([eE][+-]?\d+)?$/;
-
-/**
- * Exactly the set `strconv.ParseBool` accepts. Not just "true"/"false":
- * accepting fewer spellings than the engine would reject a literal that loads
- * perfectly well.
- */
-const GO_BOOLS = new Set([
-  '1', 't', 'T', 'TRUE', 'true', 'True',
-  '0', 'f', 'F', 'FALSE', 'false', 'False',
-]);
-
-/**
- * Checks an authored literal against its declared type.
- *
- * Only literal mode is checked. An empty value means "not authored" — the
- * engine treats it that way too — so it is not an invalid literal.
- */
-export function validateLiteralValue(field: OutputField, raw: string): string | null {
-  if (evalModeOf(field) !== 'literal' || raw === '') return null;
-  // The regex settles syntax; isFinite settles magnitude. ParseFloat(_, 64)
-  // returns ErrRange for a syntactically valid literal that overflows a
-  // float64 — "1e999" parses to +Inf and errors — and the engine treats any
-  // non-nil error as a rejection. Underflow is not an error there ("1e-999"
-  // yields 0 with err nil), and Number() agrees on both, so this one extra
-  // condition matches Go exactly at the range boundary.
-  if (field.type === 'number' && (!DECIMAL_FLOAT.test(raw) || !Number.isFinite(Number(raw)))) {
-    return `"${raw}" does not parse as a number`;
-  }
-  if (field.type === 'boolean' && !GO_BOOLS.has(raw)) {
-    return `"${raw}" does not parse as a boolean — use true or false`;
-  }
   return null;
 }
 

@@ -25,9 +25,9 @@ execFileSync(
 writeFileSync(join(out, 'package.json'), '{"type":"module"}');
 
 const {
-  allowedTypesForMode,
+  isTemplateField,
+  placeholderFor,
   validateOutputField,
-  validateLiteralValue,
   supportsOutputSchema,
   fieldCoverage,
   outputValueRows,
@@ -37,65 +37,25 @@ const {
   pathToFileURL(join(out, 'components', 'schema', 'outputSchemaRules.js')).href
 );
 
-// A template always produces a string, so only string may be declared.
-assert.deepEqual(allowedTypesForMode('template'), ['string']);
+// A string field's value is a template; every other type is an expression.
+assert.equal(isTemplateField({ type: 'string' }), true);
+assert.equal(isTemplateField({ type: 'number' }), false);
+assert.equal(isTemplateField({ type: 'boolean' }), false);
+assert.equal(isTemplateField({ type: 'array' }), false);
+assert.equal(isTemplateField({ type: 'object' }), false);
 
-// A literal cannot express a collection.
-assert.deepEqual(allowedTypesForMode('literal'), ['string', 'number', 'boolean']);
-
-// An expression returns a typed value, so anything goes.
-assert.deepEqual(
-  allowedTypesForMode('expression'),
-  ['string', 'number', 'boolean', 'array', 'object'],
-);
-
-// Mode/type mismatches are rejected, with the mode named.
-assert.match(
-  validateOutputField('rank', { type: 'number', eval: 'template' }, []),
-  /template/,
-);
-assert.equal(validateOutputField('title', { type: 'string', eval: 'template' }, []), null);
-assert.match(validateOutputField('bag', { type: 'object' }, []), /expression/);
-assert.equal(validateOutputField('bag', { type: 'object', eval: 'expression' }, []), null);
+// The placeholder names the authoring shape for each: template vs expression.
+assert.match(placeholderFor({ type: 'string' }), /\$\{/);
+assert.match(placeholderFor({ type: 'number' }), /expression/);
+assert.match(placeholderFor({ type: 'boolean' }), /expression/);
+assert.match(placeholderFor({ type: 'array' }), /expression/);
+assert.match(placeholderFor({ type: 'object' }), /expression/);
 
 // A lookup-bound field must exist and must agree with the table's key type.
 const tables = [{ id: 'sev', name: 'severity', keyType: 'string', entries: [] }];
 assert.match(validateOutputField('s', { type: 'string', lookup: 'nope' }, tables), /nope/);
 assert.match(validateOutputField('s', { type: 'number', lookup: 'sev' }, tables), /keyType|key type/);
 assert.equal(validateOutputField('s', { type: 'string', lookup: 'sev' }, tables), null);
-
-// A literal must parse as its declared type, by Go's rules — not JS's.
-assert.equal(validateLiteralValue({ type: 'number' }, '3'), null);
-assert.equal(validateLiteralValue({ type: 'number' }, '-3.5'), null);
-assert.equal(validateLiteralValue({ type: 'number' }, '1e3'), null);
-assert.equal(validateLiteralValue({ type: 'number' }, '+7'), null);
-assert.match(validateLiteralValue({ type: 'number' }, 'high'), /number/);
-// Number() would accept all four of these; strconv.ParseFloat rejects them,
-// so the editor must too or the save fails after the editor said it was fine.
-assert.match(validateLiteralValue({ type: 'number' }, ' 42'), /number/);
-assert.match(validateLiteralValue({ type: 'number' }, '42 '), /number/);
-assert.match(validateLiteralValue({ type: 'number' }, '0x10'), /number/);
-assert.match(validateLiteralValue({ type: 'number' }, '  '), /number/);
-// Range matters too: ParseFloat(_, 64) errors with ErrRange on overflow, and
-// the engine treats any non-nil error as a rejection. Underflow is NOT an
-// error there, so 1e-999 must still be accepted.
-assert.match(validateLiteralValue({ type: 'number' }, '1e999'), /number/);
-assert.match(validateLiteralValue({ type: 'number' }, '-1e999'), /number/);
-assert.match(validateLiteralValue({ type: 'number' }, '1e309'), /number/);
-assert.equal(validateLiteralValue({ type: 'number' }, '1e-999'), null);
-assert.equal(validateLiteralValue({ type: 'number' }, '1e308'), null);
-// strconv.ParseBool accepts twelve spellings, not two.
-for (const ok of ['1', 't', 'T', 'TRUE', 'true', 'True', '0', 'f', 'F', 'FALSE', 'false', 'False']) {
-  assert.equal(validateLiteralValue({ type: 'boolean' }, ok), null, `boolean ${ok} should be accepted`);
-}
-assert.match(validateLiteralValue({ type: 'boolean' }, 'yes'), /boolean/);
-assert.match(validateLiteralValue({ type: 'boolean' }, 'TrUe'), /boolean/);
-assert.equal(validateLiteralValue({ type: 'string' }, 'anything'), null);
-// Only literal mode is checked — a template or expression is not a literal.
-assert.equal(validateLiteralValue({ type: 'number', eval: 'expression' }, 'a + b'), null);
-assert.equal(validateLiteralValue({ type: 'number', eval: 'template' }, '${x}'), null);
-// An empty value is "not authored", not an invalid literal.
-assert.equal(validateLiteralValue({ type: 'number' }, ''), null);
 
 // Strategies that emit no record cannot carry an output schema.
 assert.equal(supportsOutputSchema('checklist'), true);

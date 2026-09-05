@@ -1,7 +1,9 @@
 import { useState, useRef } from 'react';
-import type { EvalMode, FieldType, LookupTable, OutputField, OutputSchema } from '../../api/types';
-import { EVAL_MODES, EVAL_MODE_HINT, allowedTypesForMode, evalModeOf, validateLiteralValue, validateOutputField, type FieldCoverage } from './outputSchemaRules';
+import type { FieldType, LookupTable, OutputField, OutputSchema } from '../../api/types';
+import { validateOutputField, type FieldCoverage } from './outputSchemaRules';
 import styles from './OutputSchemaEditor.module.css';
+
+const FIELD_TYPES: FieldType[] = ['string', 'number', 'boolean', 'array', 'object'];
 
 interface Props {
   value?: OutputSchema;
@@ -19,7 +21,6 @@ export default function OutputSchemaEditor({ value, onChange, lookups, segmentOu
   const schema = value ?? {};
   const entries = Object.entries(schema);
   const [newField, setNewField] = useState('');
-  const [newMode, setNewMode] = useState<EvalMode>('literal');
   const [newType, setNewType] = useState<FieldType>('string');
   const addRowRef = useRef<HTMLTableRowElement>(null);
 
@@ -37,10 +38,6 @@ export default function OutputSchemaEditor({ value, onChange, lookups, segmentOu
 
   const patch = (field: string, partial: Partial<OutputField>) => {
     const merged: OutputField = { ...schema[field], ...partial };
-    // Changing the mode can invalidate the type, so snap it to something legal
-    // rather than leaving a declaration the engine will reject at load.
-    const allowed = allowedTypesForMode(evalModeOf(merged));
-    if (!allowed.includes(merged.type)) merged.type = allowed[0];
     // A lookup binding is only meaningful while the types agree.
     if (merged.lookup) {
       const table = lookups.find((t) => t.id === merged.lookup);
@@ -56,12 +53,10 @@ export default function OutputSchemaEditor({ value, onChange, lookups, segmentOu
     const name = newField.trim();
     if (!name || schema[name]) return;
     const field: OutputField = { type: newType };
-    if (newMode !== 'literal') field.eval = newMode;
     // Required deliberately defaults to false: declaring a field must never
     // block a save, or the fast authoring flow stops being usable.
     write({ ...schema, [name]: field });
     setNewField('');
-    setNewMode('literal');
     setNewType('string');
   };
 
@@ -78,19 +73,16 @@ export default function OutputSchemaEditor({ value, onChange, lookups, segmentOu
     }
   };
 
-  const newAllowed = allowedTypesForMode(newMode);
-
   return (
     <div>
       <table className={styles.table}>
         <thead>
           <tr>
-            <th>Field</th><th>Eval</th><th>Type</th><th>Lookup</th><th>Required</th><th>Segment value</th><th></th>
+            <th>Field</th><th>Type</th><th>Lookup</th><th>Required</th><th>Segment value</th><th></th>
           </tr>
         </thead>
         <tbody>
           {entries.map(([name, f]) => {
-            const mode = evalModeOf(f);
             const err = validateOutputField(name, f, lookups);
             const candidates = lookups.filter((t) => t.keyType === f.type);
             return (
@@ -103,37 +95,12 @@ export default function OutputSchemaEditor({ value, onChange, lookups, segmentOu
                 </td>
                 <td>
                   <select
-                    value={mode}
-                    onChange={(e) => patch(name, { eval: e.target.value as EvalMode })}
-                    title={EVAL_MODE_HINT[mode]}
-                    aria-label={`${name} eval mode`}
-                  >
-                    {EVAL_MODES.map((m) => <option key={m} value={m}>{m}</option>)}
-                  </select>
-                </td>
-                <td>
-                  <select
                     value={f.type}
                     onChange={(e) => patch(name, { type: e.target.value as FieldType })}
                     aria-label={`${name} type`}
                   >
-                    {/*
-                      Keep the current type in the list even when this mode
-                      disallows it. A schema hand-written as JSON — the only way
-                      to author one before this editor existed — can arrive with
-                      an illegal pairing, and a select whose value matches no
-                      option silently displays the first one instead. That would
-                      show "string" for a field that is really an object. The
-                      row's inline error says why it is invalid; the select
-                      should still tell the truth about what is stored.
-                    */}
-                    {(allowedTypesForMode(mode).includes(f.type)
-                      ? allowedTypesForMode(mode)
-                      : [f.type, ...allowedTypesForMode(mode)]
-                    ).map((t) => (
-                      <option key={t} value={t}>
-                        {allowedTypesForMode(mode).includes(t) ? t : `${t} — invalid for ${mode}`}
-                      </option>
+                    {FIELD_TYPES.map((t) => (
+                      <option key={t} value={t}>{t}</option>
                     ))}
                   </select>
                 </td>
@@ -174,17 +141,6 @@ export default function OutputSchemaEditor({ value, onChange, lookups, segmentOu
                       style={{ fontSize: 11 }}
                     />
                   )}
-                  {/* Same inline parse check the per-check inputs get. Without
-                      it a segment-level "high" on a number field looks fine
-                      until the save is rejected — the exact round trip this
-                      editor exists to avoid. */}
-                  {(() => {
-                    const raw = segmentOutputs?.[name] ?? '';
-                    const verr = raw ? validateLiteralValue(f, raw) : null;
-                    return verr ? (
-                      <div style={{ fontSize: 10, color: 'var(--danger)' }}>{verr}</div>
-                    ) : null;
-                  })()}
                   {coverage && (() => {
                     const c = coverage(name);
                     if (c.segmentLevel) {
@@ -225,24 +181,11 @@ export default function OutputSchemaEditor({ value, onChange, lookups, segmentOu
               <input value={newField} onChange={(e) => setNewField(e.target.value)} onKeyDown={handleKeyDown} placeholder="field name" />
             </td>
             <td>
-              <select
-                value={newMode}
-                onChange={(e) => {
-                  const m = e.target.value as EvalMode;
-                  setNewMode(m);
-                  const allowed = allowedTypesForMode(m);
-                  if (!allowed.includes(newType)) setNewType(allowed[0]);
-                }}
-              >
-                {EVAL_MODES.map((m) => <option key={m} value={m}>{m}</option>)}
-              </select>
-            </td>
-            <td>
               <select value={newType} onChange={(e) => setNewType(e.target.value as FieldType)}>
-                {newAllowed.map((t) => <option key={t} value={t}>{t}</option>)}
+                {FIELD_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
               </select>
             </td>
-            <td colSpan={3} style={{ fontSize: 10, color: 'var(--text-muted)' }}>{EVAL_MODE_HINT[newMode]}</td>
+            <td colSpan={3}></td>
             <td><button className="btn-primary btn-sm" onClick={add}>+</button></td>
           </tr>
         </tbody>

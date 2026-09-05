@@ -1,17 +1,15 @@
 import { useState } from 'react';
-import type { EvalMode, FieldType, OutputField, OutputSchema } from '../../api/types';
+import type { FieldType, OutputField, OutputSchema } from '../../api/types';
 import {
-  EVAL_MODES,
-  EVAL_MODE_HINT,
-  allowedTypesForMode,
   availableOutputFields,
-  evalModeOf,
   outputValueRows,
+  placeholderFor,
   renameOutputKey,
-  validateLiteralValue,
   type FieldCoverage,
 } from '../schema/outputSchemaRules';
 import styles from './OutputValuesEditor.module.css';
+
+const FIELD_TYPES: FieldType[] = ['string', 'number', 'boolean', 'array', 'object'];
 
 interface Props {
   outputs?: Record<string, string>;
@@ -26,12 +24,6 @@ interface Props {
   coverage?: (name: string) => FieldCoverage;
 }
 
-const PLACEHOLDER: Record<string, string> = {
-  literal: 'constant value',
-  template: 'text with ${ tokens }',
-  expression: 'one whole expression',
-};
-
 /**
  * Sentinel select value for "declare new…". Never collides with a real field
  * name — those come from JSON object keys, which cannot contain NUL.
@@ -43,9 +35,6 @@ export default function OutputValuesEditor({ outputs, schema, onChange, onDeclar
   // whichever triggers it first reveals the same name input below the grid.
   const [showDeclare, setShowDeclare] = useState(false);
   const [newName, setNewName] = useState('');
-  // Declaring inline must offer the same choices as the layer editor, or a
-  // field created here is always a string and has to be corrected there.
-  const [newMode, setNewMode] = useState<EvalMode>('literal');
   const [newType, setNewType] = useState<FieldType>('string');
 
   const set = (name: string, raw: string) => {
@@ -68,13 +57,9 @@ export default function OutputValuesEditor({ outputs, schema, onChange, onDeclar
     const name = newName.trim();
     if (!name || schema[name]) return;
     const field: OutputField = { type: newType };
-    // Omit eval when literal, matching the layer editor and the Go accessor,
-    // which both treat an absent mode as literal.
-    if (newMode !== 'literal') field.eval = newMode;
     // Required stays false so declaring a field mid-edit invalidates nothing.
     onDeclare(name, field);
     setNewName('');
-    setNewMode('literal');
     setNewType('string');
     // Collapse again, or the panel stays open for the life of the component
     // with no way to dismiss it.
@@ -96,7 +81,6 @@ export default function OutputValuesEditor({ outputs, schema, onChange, onDeclar
       {rows.length > 0 && (
         <div className={styles.grid}>
           {rows.map((row) => {
-            const err = row.field ? validateLiteralValue(row.field, row.value) : null;
             const options = availableOutputFields(schema, outputs, row.name);
             return (
               <div key={row.name} style={{ display: 'contents' }}>
@@ -106,7 +90,7 @@ export default function OutputValuesEditor({ outputs, schema, onChange, onDeclar
                     aria-label={`output field for ${row.name}`}
                     title={
                       row.field
-                        ? `${evalModeOf(row.field)} · ${row.field.type}${row.field.required ? ' · required' : ''}`
+                        ? `${row.field.type}${row.field.required ? ' · required' : ''}`
                         : 'not declared on the layer'
                     }
                     onChange={(e) => {
@@ -133,10 +117,9 @@ export default function OutputValuesEditor({ outputs, schema, onChange, onDeclar
                   <input
                     value={row.value}
                     onChange={(e) => set(row.name, e.target.value)}
-                    placeholder={row.field ? PLACEHOLDER[evalModeOf(row.field)] : undefined}
+                    placeholder={row.field ? placeholderFor(row.field) : undefined}
                     aria-label={`value for ${row.name}`}
                   />
-                  {err && <div className={styles.err}>{err}</div>}
                   {coverage && row.field && (() => {
                     const field = row.field;
                     const c = coverage(row.name);
@@ -225,28 +208,11 @@ export default function OutputValuesEditor({ outputs, schema, onChange, onDeclar
             style={{ fontSize: 11 }}
           />
           <select
-            value={newMode}
-            aria-label="new output field eval mode"
-            title={EVAL_MODE_HINT[newMode]}
-            onChange={(e) => {
-              const m = e.target.value as EvalMode;
-              setNewMode(m);
-              // Snap the type when the new mode cannot honour it, rather than
-              // declaring a pairing the engine rejects at load.
-              const allowed = allowedTypesForMode(m);
-              if (!allowed.includes(newType)) setNewType(allowed[0]);
-            }}
-          >
-            {EVAL_MODES.map((m) => (
-              <option key={m} value={m}>{m}</option>
-            ))}
-          </select>
-          <select
             value={newType}
             aria-label="new output field type"
             onChange={(e) => setNewType(e.target.value as FieldType)}
           >
-            {allowedTypesForMode(newMode).map((t) => (
+            {FIELD_TYPES.map((t) => (
               <option key={t} value={t}>{t}</option>
             ))}
           </select>
