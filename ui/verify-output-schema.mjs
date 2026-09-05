@@ -25,6 +25,7 @@ execFileSync(
 writeFileSync(join(out, 'package.json'), '{"type":"module"}');
 
 const {
+  FIELD_TYPES,
   isTemplateField,
   placeholderFor,
   validateOutputField,
@@ -36,6 +37,11 @@ const {
 } = await import(
   pathToFileURL(join(out, 'components', 'schema', 'outputSchemaRules.js')).href
 );
+
+// Pinned so the schema editor and the values editor — both of which import
+// this instead of declaring their own copy — stay in lockstep with each
+// other and with the engine's FieldType set.
+assert.deepEqual(FIELD_TYPES, ['string', 'number', 'boolean', 'array', 'object']);
 
 // A string field's value is a template; every other type is an expression.
 assert.equal(isTemplateField({ type: 'string' }), true);

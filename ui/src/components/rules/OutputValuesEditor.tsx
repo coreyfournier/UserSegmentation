@@ -2,14 +2,13 @@ import { useState } from 'react';
 import type { FieldType, OutputField, OutputSchema } from '../../api/types';
 import {
   availableOutputFields,
+  FIELD_TYPES,
   outputValueRows,
   placeholderFor,
   renameOutputKey,
   type FieldCoverage,
 } from '../schema/outputSchemaRules';
 import styles from './OutputValuesEditor.module.css';
-
-const FIELD_TYPES: FieldType[] = ['string', 'number', 'boolean', 'array', 'object'];
 
 interface Props {
   outputs?: Record<string, string>;

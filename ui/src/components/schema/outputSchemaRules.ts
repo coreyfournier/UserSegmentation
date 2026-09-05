@@ -1,4 +1,5 @@
 import type {
+  FieldType,
   LookupTable,
   OutputField,
   OutputSchema,
@@ -12,6 +13,10 @@ import type {
  *
  * These mirror validation the engine performs at snapshot load.
  */
+
+/** Every type an output field may declare, shared by the schema editor (which
+ *  declares fields) and the values editor (which declares one inline). */
+export const FIELD_TYPES: FieldType[] = ['string', 'number', 'boolean', 'array', 'object'];
 
 /** A string field's value is a template; everything else is an expression. */
 export function isTemplateField(field: OutputField): boolean {

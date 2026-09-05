@@ -1,9 +1,7 @@
 import { useState, useRef } from 'react';
 import type { FieldType, LookupTable, OutputField, OutputSchema } from '../../api/types';
-import { validateOutputField, type FieldCoverage } from './outputSchemaRules';
+import { FIELD_TYPES, validateOutputField, type FieldCoverage } from './outputSchemaRules';
 import styles from './OutputSchemaEditor.module.css';
-
-const FIELD_TYPES: FieldType[] = ['string', 'number', 'boolean', 'array', 'object'];
 
 interface Props {
   value?: OutputSchema;
@@ -185,7 +183,9 @@ export default function OutputSchemaEditor({ value, onChange, lookups, segmentOu
                 {FIELD_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
               </select>
             </td>
-            <td colSpan={3}></td>
+            <td colSpan={3} style={{ fontSize: 10, color: 'var(--text-muted)' }}>
+              a string's value is a template; every other type is an expression
+            </td>
             <td><button className="btn-primary btn-sm" onClick={add}>+</button></td>
           </tr>
         </tbody>
