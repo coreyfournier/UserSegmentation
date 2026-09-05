@@ -13,6 +13,7 @@ The design detail is in the sibling documents:
 | `2026-09-04-layer-schemas-plan.md` | moving both schemas onto the layer, 6 tasks |
 | `2026-09-04-output-field-picker-plan.md` | choosing a rule's output field from a dropdown, 2 tasks |
 | `2026-09-05-derive-eval-mode-plan.md` | dropping the eval mode, deriving it from the type, 4 tasks |
+| `2026-09-05-validate-templates-plan.md` | validating ${…} tokens against the schema, 3 tasks |
 | `.superpowers/sdd/balance-diagnostics-survey.md` | what the source service actually does, surveyed |
 | `README.md` § Production readiness | why this is a POC and what production needs |
 
