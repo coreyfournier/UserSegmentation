@@ -47,6 +47,9 @@ func (uc *AdminUseCase) CreateLookup(table model.LookupTable) (*model.Snapshot, 
 		return nil, fmt.Errorf("lookup name is required")
 	}
 	snap := uc.cloneSnapshot()
+	if clash := nameClash(snap.Lookups, table.Name, ""); clash != "" {
+		return nil, fmt.Errorf("a lookup named %q already exists (id %q)", table.Name, clash)
+	}
 
 	taken := make(map[string]bool, len(snap.Lookups))
 	for _, t := range snap.Lookups {
@@ -84,6 +87,10 @@ func (uc *AdminUseCase) UpdateLookup(id string, updated model.LookupTable) (*mod
 	}
 	if strings.TrimSpace(updated.Name) == "" {
 		return nil, fmt.Errorf("lookup name is required")
+	}
+	// Excluding this table's own id, so saving without renaming is not a clash.
+	if clash := nameClash(snap.Lookups, updated.Name, id); clash != "" {
+		return nil, fmt.Errorf("a lookup named %q already exists (id %q)", updated.Name, clash)
 	}
 	entries := updated.Entries
 	if entries == nil {
@@ -188,4 +195,26 @@ func uniqueSlug(base string, taken map[string]bool) string {
 			return candidate
 		}
 	}
+}
+
+// nameClash returns the id of an existing lookup whose name collides with the
+// one proposed, or "" when the name is free. exceptID is the table being
+// updated, so re-saving it without a rename is not a clash with itself.
+//
+// Comparison is trimmed and case-insensitive. Only the id is a reference — a
+// field binds to a lookup by id, and two tables named "severity" would work
+// perfectly well as far as the engine is concerned. But the author picks from
+// a dropdown that shows the name, so two identical entries are indistinguishable
+// there, and uniqueSlug quietly makes the ids differ so nothing else complains.
+func nameClash(tables []model.LookupTable, name, exceptID string) string {
+	want := strings.ToLower(strings.TrimSpace(name))
+	for _, t := range tables {
+		if t.ID == exceptID {
+			continue
+		}
+		if strings.ToLower(strings.TrimSpace(t.Name)) == want {
+			return t.ID
+		}
+	}
+	return ""
 }

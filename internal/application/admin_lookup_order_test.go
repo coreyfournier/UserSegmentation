@@ -68,3 +68,46 @@ func TestUpdateLookup_CustomOrderIsPreserved(t *testing.T) {
 		t.Fatal("description was not persisted")
 	}
 }
+
+// Two tables may not share a name. Only the id is a reference, so duplicates
+// work as far as the engine is concerned — but the author picks from a dropdown
+// showing the name, and uniqueSlug quietly makes the ids differ, so two entries
+// reading "severity" are indistinguishable there.
+func TestCreateLookup_RejectsDuplicateName(t *testing.T) {
+	uc, _, _ := newTestAdminUC()
+	base := model.LookupTable{Name: "severity", KeyType: model.FieldTypeString,
+		Entries: []model.LookupEntry{{Key: "Critical"}}}
+	if _, err := uc.CreateLookup(base); err != nil {
+		t.Fatalf("first create: %v", err)
+	}
+	if _, err := uc.CreateLookup(base); err == nil {
+		t.Fatal("a second lookup with the same name must be rejected")
+	}
+	// Case and surrounding space must not be a way around it.
+	if _, err := uc.CreateLookup(model.LookupTable{Name: "  Severity ", KeyType: model.FieldTypeString}); err == nil {
+		t.Fatal("a differently-cased duplicate must also be rejected")
+	}
+	if _, err := uc.CreateLookup(model.LookupTable{Name: "category", KeyType: model.FieldTypeString}); err != nil {
+		t.Fatalf("a genuinely new name must still be accepted: %v", err)
+	}
+}
+
+func TestUpdateLookup_NameClashRules(t *testing.T) {
+	uc, _, _ := newTestAdminUC()
+	a, err := uc.CreateLookup(model.LookupTable{Name: "severity", KeyType: model.FieldTypeString})
+	if err != nil {
+		t.Fatalf("create a: %v", err)
+	}
+	idA := a.Lookups[len(a.Lookups)-1].ID
+	if _, err := uc.CreateLookup(model.LookupTable{Name: "category", KeyType: model.FieldTypeString}); err != nil {
+		t.Fatalf("create b: %v", err)
+	}
+	// Re-saving a table under its own name is not a clash with itself.
+	if _, err := uc.UpdateLookup(idA, model.LookupTable{Name: "severity"}); err != nil {
+		t.Fatalf("re-saving under its own name must be allowed: %v", err)
+	}
+	// Renaming onto another table's name is.
+	if _, err := uc.UpdateLookup(idA, model.LookupTable{Name: "category"}); err == nil {
+		t.Fatal("renaming onto an existing name must be rejected")
+	}
+}
