@@ -7,16 +7,34 @@ import styles from './ComputedFieldsEditor.module.css';
 interface Props {
   value: ComputedField[];
   onChange: (defs: ComputedField[]) => void;
+  /** Called instead of applying a type change directly, so the owner can warn
+   *  when rules compare this field with an operator the new type does not
+   *  admit. The owner calls `apply` once the author confirms. */
+  onChangeType?: (field: string, next: FieldType, apply: () => void) => void;
 }
 
 const FIELD_TYPES: FieldType[] = ['string', 'number', 'boolean', 'array'];
 
 const empty = (): ComputedField => ({ name: '', type: 'number', formula: '' });
 
-export default function ComputedFieldsEditor({ value, onChange }: Props) {
+export default function ComputedFieldsEditor({ value, onChange, onChangeType }: Props) {
   const update = (idx: number, patch: Partial<ComputedField>) => {
     const next = value.map((d, i) => (i === idx ? { ...d, ...patch } : d));
     onChange(next);
+  };
+
+  // A retype can invalidate a rule that compares this field: an operator only
+  // admits certain types, and the engine refuses the whole snapshot when one
+  // does not. Retyping is legitimate and often the fix, so it is allowed — the
+  // owner just gets the chance to say what it will cost first.
+  const changeType = (idx: number, next: FieldType) => {
+    const def = value[idx];
+    if (!def || def.type === next) return;
+    if (onChangeType) {
+      onChangeType(def.name, next, () => update(idx, { type: next }));
+      return;
+    }
+    update(idx, { type: next });
   };
 
   const remove = (idx: number) => onChange(value.filter((_, i) => i !== idx));
@@ -82,7 +100,8 @@ export default function ComputedFieldsEditor({ value, onChange }: Props) {
                   <td>
                     <select
                       value={def.type}
-                      onChange={(e) => update(i, { type: e.target.value as FieldType })}
+                      onChange={(e) => changeType(i, e.target.value as FieldType)}
+                      aria-label={`${def.name || 'field'} type`}
                     >
                       {FIELD_TYPES.map((t) => (
                         <option key={t} value={t}>{t}</option>

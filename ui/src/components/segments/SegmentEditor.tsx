@@ -3,7 +3,7 @@ import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { useLayers, useUpdateLayer } from '../../api/layers';
 import { useLookups } from '../../api/lookups';
 import { useUpdateSegment } from '../../api/segments';
-import type { Segment, StrategyType, InputSchema, OutputField } from '../../api/types';
+import type { FieldType, Segment, StrategyType, InputSchema, OutputField } from '../../api/types';
 import { SUBJECT_KEY_FIELD } from '../../api/types';
 import StrategyPicker from './StrategyPicker';
 import StaticConfig from './StaticConfig';
@@ -19,6 +19,8 @@ import LayerTests from '../testing/LayerTests';
 import SplitPane from '../common/SplitPane';
 import OutputValuesEditor from '../rules/OutputValuesEditor';
 import { fieldCoverage, supportsOutputSchema } from '../schema/outputSchemaRules';
+import { describeBreak, segmentRetypeBreaks } from '../rules/operatorRules';
+import ConfirmDialog from '../common/ConfirmDialog';
 import ErrorBanner from '../common/ErrorBanner';
 import styles from './SegmentEditor.module.css';
 
@@ -28,6 +30,12 @@ export default function SegmentEditor() {
   const location = useLocation();
   // When the last save happened, so the button can confirm it landed.
   const [savedAt, setSavedAt] = useState<number | null>(null);
+  // A pending computed-field retype the author has been warned about but not
+  // yet confirmed. Holds the apply callback so confirming performs the exact
+  // change that was described, rather than one reconstructed from indices.
+  const [pendingComputedRetype, setPendingComputedRetype] = useState<
+    { field: string; next: FieldType; broken: string[]; apply: () => void } | null
+  >(null);
   const { data: layers } = useLayers();
   const { data: lookups } = useLookups();
   const updateSegment = useUpdateSegment();
@@ -139,6 +147,21 @@ export default function SegmentEditor() {
       if (def.name) merged[def.name] = { type: def.type, required: false };
     }
     return merged;
+  };
+
+  // Retyping a computed field can strand a rule that compares it: gte is legal
+  // on a number and not on a boolean, and the engine refuses the whole snapshot
+  // for it. A formula like "10 >= 1" is exactly how that happens — it reads as a
+  // comparison, so the field is easily left as the type dropdown's default and
+  // compared with gte, then later declared the boolean it always was. Without
+  // this the first sign is a save rejected over a rule the author never touched.
+  const handleComputedRetype = (field: string, next: FieldType, apply: () => void) => {
+    const broken = segmentRetypeBreaks(seg, field, next);
+    if (broken.length === 0) {
+      apply();
+      return;
+    }
+    setPendingComputedRetype({ field, next, broken: broken.map(describeBreak), apply });
   };
 
   const handleSave = () => {
@@ -378,6 +401,7 @@ export default function SegmentEditor() {
                 <ComputedFieldsEditor
                   value={seg.computed ?? []}
                   onChange={(c) => update({ computed: c })}
+                  onChangeType={handleComputedRetype}
                 />
                 <p style={{ fontSize: 11, color: 'var(--text-muted)', margin: '4px 0 0' }}>
                   Optional. Values derived before the rules run, available to rule
@@ -402,6 +426,7 @@ export default function SegmentEditor() {
               <ComputedFieldsEditor
                 value={seg.computed ?? []}
                 onChange={(c) => update({ computed: c })}
+                onChangeType={handleComputedRetype}
               />
               <p style={{ fontSize: 11, color: 'var(--text-muted)', margin: '4px 0 0' }}>
                 Computed fields are available to the checks and to their messages.
@@ -472,6 +497,25 @@ export default function SegmentEditor() {
       </div>
 
       </SplitPane>
+
+      <ConfirmDialog
+        open={!!pendingComputedRetype}
+        title="Change computed field type"
+        confirmLabel="Change type"
+        message={
+          pendingComputedRetype
+            ? `Changing "${pendingComputedRetype.field}" to ${pendingComputedRetype.next} leaves ` +
+              `${pendingComputedRetype.broken.length} condition(s) using an operator that type does ` +
+              `not allow, and the save will be refused until they are fixed — ` +
+              `${pendingComputedRetype.broken.join('; ')}.`
+            : ''
+        }
+        onConfirm={() => {
+          pendingComputedRetype?.apply();
+          setPendingComputedRetype(null);
+        }}
+        onCancel={() => setPendingComputedRetype(null)}
+      />
     </div>
   );
 }
