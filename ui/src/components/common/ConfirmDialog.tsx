@@ -14,8 +14,8 @@ export default function ConfirmDialog({ open, title, message, onConfirm, onCance
     <Modal open={open} onClose={onCancel} title={title}>
       <p className={styles.message}>{message}</p>
       <div className={styles.actions}>
-        <button className="btn-ghost" onClick={onCancel}>Cancel</button>
-        <button className="btn-danger" onClick={onConfirm}>Delete</button>
+        <button type="button" className="btn-ghost" onClick={onCancel}>Cancel</button>
+        <button type="button" className="btn-danger" onClick={onConfirm}>Delete</button>
       </div>
     </Modal>
   );

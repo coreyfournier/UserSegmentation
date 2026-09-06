@@ -170,7 +170,7 @@ export default function OutputSchemaEditor({ value, onChange, lookups, segmentOu
                     );
                   })()}
                 </td>
-                <td><button className="btn-danger btn-sm" onClick={() => remove(name)}>x</button></td>
+                <td><button type="button" className="btn-danger btn-sm" onClick={() => remove(name)}>x</button></td>
               </tr>
             );
           })}
@@ -186,7 +186,7 @@ export default function OutputSchemaEditor({ value, onChange, lookups, segmentOu
             <td colSpan={3} style={{ fontSize: 10, color: 'var(--text-muted)' }}>
               a string's value is a template; every other type is an expression
             </td>
-            <td><button className="btn-primary btn-sm" onClick={add}>+</button></td>
+            <td><button type="button" className="btn-primary btn-sm" onClick={add}>+</button></td>
           </tr>
         </tbody>
       </table>

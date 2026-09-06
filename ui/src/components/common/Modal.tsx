@@ -22,7 +22,7 @@ export default function Modal({ open, onClose, title, children }: Props) {
     <dialog ref={ref} className={styles.dialog} onClose={onClose}>
       <div className={styles.header}>
         <h3>{title}</h3>
-        <button className="btn-ghost btn-sm" onClick={onClose}>X</button>
+        <button type="button" className="btn-ghost btn-sm" onClick={onClose}>X</button>
       </div>
       <div className={styles.body}>{children}</div>
     </dialog>

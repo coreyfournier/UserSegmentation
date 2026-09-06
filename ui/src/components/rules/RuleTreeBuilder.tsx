@@ -96,8 +96,8 @@ export default function RuleTreeBuilder({
       </RuleDragContext.Provider>
       {!atCapacity && (
         <div className={styles.addButtons}>
-          <button className="btn-ghost btn-sm" onClick={addTopLevel}>+ Add Group</button>
-          <button className="btn-ghost btn-sm" onClick={addLeaf}>+ Add Check</button>
+          <button type="button" className="btn-ghost btn-sm" onClick={addTopLevel}>+ Add Group</button>
+          <button type="button" className="btn-ghost btn-sm" onClick={addLeaf}>+ Add Check</button>
         </div>
       )}
     </div>

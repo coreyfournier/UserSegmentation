@@ -62,14 +62,14 @@ export default function ComputedFieldsEditor({ value, onChange }: Props) {
                   />
                 </td>
                 <td>
-                  <button className="btn-danger btn-sm" onClick={() => remove(i)}>x</button>
+                  <button type="button" className="btn-danger btn-sm" onClick={() => remove(i)}>x</button>
                 </td>
               </tr>
             ))}
           </tbody>
         </table>
       )}
-      <button className="btn-ghost btn-sm" style={{ marginTop: 8 }} onClick={add}>
+      <button type="button" className="btn-ghost btn-sm" style={{ marginTop: 8 }} onClick={add}>
         + Add Computed Field
       </button>
       <FormulaReference />

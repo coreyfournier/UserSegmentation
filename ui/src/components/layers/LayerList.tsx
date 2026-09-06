@@ -79,7 +79,7 @@ export default function LayerList() {
     <div>
       <div className={styles.toolbar}>
         <h2>Layers</h2>
-        <button className="btn-primary" onClick={() => setShowCreate(true)}>
+        <button type="button" className="btn-primary" onClick={() => setShowCreate(true)}>
           + Add Layer
         </button>
       </div>

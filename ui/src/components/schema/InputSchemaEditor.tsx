@@ -77,7 +77,7 @@ export default function InputSchemaEditor({ value, onChange, onRemoveField }: Pr
                   style={{ width: 'auto' }}
                 />
               </td>
-              <td><button className="btn-danger btn-sm" onClick={() => remove(f)}>x</button></td>
+              <td><button type="button" className="btn-danger btn-sm" onClick={() => remove(f)}>x</button></td>
             </tr>
           ))}
           <tr ref={addRowRef} onBlur={handleRowBlur}>
@@ -90,7 +90,7 @@ export default function InputSchemaEditor({ value, onChange, onRemoveField }: Pr
             <td>
               <input type="checkbox" checked={newReq} onChange={(e) => setNewReq(e.target.checked)} style={{ width: 'auto' }} />
             </td>
-            <td><button className="btn-primary btn-sm" onClick={add}>+</button></td>
+            <td><button type="button" className="btn-primary btn-sm" onClick={add}>+</button></td>
           </tr>
         </tbody>
       </table>

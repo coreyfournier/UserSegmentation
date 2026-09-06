@@ -64,7 +64,7 @@ export default function PercentageConfig({ value, onChange }: Props) {
                   style={{ width: '80px' }}
                 />
               </td>
-              <td><button className="btn-danger btn-sm" onClick={() => removeBucket(i)}>x</button></td>
+              <td><button type="button" className="btn-danger btn-sm" onClick={() => removeBucket(i)}>x</button></td>
             </tr>
           ))}
           <tr>
@@ -78,7 +78,7 @@ export default function PercentageConfig({ value, onChange }: Props) {
                 style={{ width: '80px' }}
               />
             </td>
-            <td><button className="btn-primary btn-sm" onClick={addBucket}>+</button></td>
+            <td><button type="button" className="btn-primary btn-sm" onClick={addBucket}>+</button></td>
           </tr>
         </tbody>
       </table>

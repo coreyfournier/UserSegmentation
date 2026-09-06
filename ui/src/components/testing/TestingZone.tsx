@@ -105,7 +105,7 @@ export default function TestingZone() {
 
           {evaluate.error && <ErrorBanner message={(evaluate.error as Error).message} />}
 
-          <button
+          <button type="button"
             className="btn-primary"
             onClick={handleEvaluate}
             disabled={!subjectKey || evaluate.isPending}

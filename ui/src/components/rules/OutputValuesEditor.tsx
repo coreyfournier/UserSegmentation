@@ -215,7 +215,7 @@ export default function OutputValuesEditor({ outputs, schema, onChange, onDeclar
               <option key={t} value={t}>{t}</option>
             ))}
           </select>
-          <button
+          <button type="button"
             className="btn-secondary btn-sm"
             onClick={declare}
             disabled={!newName.trim() || !!schema[newName.trim()]}

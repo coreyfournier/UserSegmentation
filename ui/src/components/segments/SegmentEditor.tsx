@@ -393,8 +393,8 @@ export default function SegmentEditor() {
 
       {/* Footer */}
       <div className={styles.footer}>
-        <button className="btn-ghost" onClick={() => navigate('/layers')}>Cancel</button>
-        <button className="btn-primary" onClick={handleSave} disabled={updateSegment.isPending}>
+        <button type="button" className="btn-ghost" onClick={() => navigate('/layers')}>Cancel</button>
+        <button type="button" className="btn-primary" onClick={handleSave} disabled={updateSegment.isPending}>
           {updateSegment.isPending ? 'Saving...' : 'Save'}
         </button>
       </div>

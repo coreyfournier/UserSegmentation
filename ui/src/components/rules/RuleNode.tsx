@@ -99,7 +99,7 @@ export default function RuleNode({ rule, path, onChange, onDelete, index, total,
         )}
         {onMove && (
           <span className={styles.moveButtons}>
-            <button
+            <button type="button"
               className="btn-ghost btn-sm"
               onClick={() => onMove(-1)}
               disabled={index === 0}
@@ -108,7 +108,7 @@ export default function RuleNode({ rule, path, onChange, onDelete, index, total,
             >
               ▲
             </button>
-            <button
+            <button type="button"
               className="btn-ghost btn-sm"
               onClick={() => onMove(1)}
               disabled={total !== undefined && index !== undefined && index === total - 1}
@@ -173,7 +173,7 @@ export default function RuleNode({ rule, path, onChange, onDelete, index, total,
           />
           <span>enabled</span>
         </label>
-        <button className="btn-danger btn-sm" onClick={onDelete}>x</button>
+        <button type="button" className="btn-danger btn-sm" onClick={onDelete}>x</button>
       </div>
 
       {isLeaf && rule.condition && (
@@ -235,8 +235,8 @@ export default function RuleNode({ rule, path, onChange, onDelete, index, total,
             onDeclareOutput={onDeclareOutput}
           />
           <div className={styles.addButtons}>
-            <button className="btn-ghost btn-sm" onClick={addLeaf}>+ Add Check</button>
-            <button className="btn-ghost btn-sm" onClick={addGroup}>+ Add Group</button>
+            <button type="button" className="btn-ghost btn-sm" onClick={addLeaf}>+ Add Check</button>
+            <button type="button" className="btn-ghost btn-sm" onClick={addGroup}>+ Add Group</button>
           </div>
         </div>
       )}

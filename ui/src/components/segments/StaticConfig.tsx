@@ -46,14 +46,14 @@ export default function StaticConfig({ value, onChange }: Props) {
               <td>{k}</td>
               <td>{v}</td>
               <td>
-                <button className="btn-danger btn-sm" onClick={() => removeKey(k)}>x</button>
+                <button type="button" className="btn-danger btn-sm" onClick={() => removeKey(k)}>x</button>
               </td>
             </tr>
           ))}
           <tr>
             <td><input value={newKey} onChange={(e) => setNewKey(e.target.value)} placeholder="key" /></td>
             <td><input value={newVal} onChange={(e) => setNewVal(e.target.value)} placeholder="segment" /></td>
-            <td><button className="btn-primary btn-sm" onClick={addMapping}>+</button></td>
+            <td><button type="button" className="btn-primary btn-sm" onClick={addMapping}>+</button></td>
           </tr>
         </tbody>
       </table>

@@ -29,8 +29,8 @@ export default function LayerCard({ layer, onEdit, onDelete, onAddSegment }: Pro
         )}
         <span className={styles.count}>{layer.segments.length} segment(s)</span>
         <div className={styles.actions} onClick={(e) => e.stopPropagation()}>
-          <button className="btn-ghost btn-sm" onClick={onEdit}>edit</button>
-          <button className="btn-danger btn-sm" onClick={onDelete}>x</button>
+          <button type="button" className="btn-ghost btn-sm" onClick={onEdit}>edit</button>
+          <button type="button" className="btn-danger btn-sm" onClick={onDelete}>x</button>
         </div>
       </div>
       {expanded && (
@@ -47,7 +47,7 @@ export default function LayerCard({ layer, onEdit, onDelete, onAddSegment }: Pro
               </span>
               <span className={styles.strategy}>{seg.strategy}</span>
               <div className={styles.segActions}>
-                <button
+                <button type="button"
                   className="btn-ghost btn-sm"
                   onClick={() =>
                     navigate(`/layers/${encodeURIComponent(layer.name)}/segments/${encodeURIComponent(seg.id)}`)
@@ -55,7 +55,7 @@ export default function LayerCard({ layer, onEdit, onDelete, onAddSegment }: Pro
                 >
                   edit
                 </button>
-                <button
+                <button type="button"
                   className="btn-danger btn-sm"
                   onClick={() => setConfirmSeg(seg.id)}
                 >
@@ -64,7 +64,7 @@ export default function LayerCard({ layer, onEdit, onDelete, onAddSegment }: Pro
               </div>
             </div>
           ))}
-          <button className="btn-ghost btn-sm" onClick={onAddSegment}>
+          <button type="button" className="btn-ghost btn-sm" onClick={onAddSegment}>
             + Add Segment
           </button>
         </div>

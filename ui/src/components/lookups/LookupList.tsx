@@ -26,7 +26,7 @@ export default function LookupList() {
     <div>
       <div className={styles.toolbar}>
         <h2>Lookup Tables</h2>
-        <button className="btn-primary" onClick={() => setShowCreate(true)}>+ Add Lookup</button>
+        <button type="button" className="btn-primary" onClick={() => setShowCreate(true)}>+ Add Lookup</button>
       </div>
 
       {createLookup.error && <ErrorBanner message={(createLookup.error as Error).message} />}
@@ -44,8 +44,8 @@ export default function LookupList() {
             <span className={styles.count}>{t.entries?.length ?? 0} entries</span>
           </div>
           <div className={styles.actions}>
-            <button className="btn-ghost btn-sm" onClick={() => setEditing(t)}>Edit</button>
-            <button className="btn-danger btn-sm" onClick={() => setDeleting(t.id)}>Delete</button>
+            <button type="button" className="btn-ghost btn-sm" onClick={() => setEditing(t)}>Edit</button>
+            <button type="button" className="btn-danger btn-sm" onClick={() => setDeleting(t.id)}>Delete</button>
           </div>
         </div>
       ))}

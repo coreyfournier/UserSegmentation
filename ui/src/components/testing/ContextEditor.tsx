@@ -41,13 +41,13 @@ export default function ContextEditor({ value, onChange, schemas }: Props) {
   return (
     <div>
       <div className={styles.toggle}>
-        <button
+        <button type="button"
           className={mode === 'structured' ? 'btn-primary btn-sm' : 'btn-ghost btn-sm'}
           onClick={() => setMode('structured')}
         >
           Structured
         </button>
-        <button
+        <button type="button"
           className={mode === 'json' ? 'btn-primary btn-sm' : 'btn-ghost btn-sm'}
           onClick={() => {
             setJsonText(JSON.stringify(value, null, 2));

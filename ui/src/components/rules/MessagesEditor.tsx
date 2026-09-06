@@ -97,7 +97,7 @@ export default function MessagesEditor({ value, onChange, hint }: Props) {
                   placeholder="Message with ${variables} and ${formulas}"
                   aria-label="message text"
                 />
-                <button className="btn-danger btn-sm" onClick={() => remove(i)}>x</button>
+                <button type="button" className="btn-danger btn-sm" onClick={() => remove(i)}>x</button>
               </div>
             );
           })}
@@ -107,7 +107,7 @@ export default function MessagesEditor({ value, onChange, hint }: Props) {
               <code>en</code>) or this text is discarded on save.
             </p>
           )}
-          <button className="btn-ghost btn-sm" onClick={add}>+ Add message</button>
+          <button type="button" className="btn-ghost btn-sm" onClick={add}>+ Add message</button>
         </div>
       )}
     </div>
