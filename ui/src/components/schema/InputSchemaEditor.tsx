@@ -1,5 +1,6 @@
 import { useState, useRef } from 'react';
 import type { InputSchema, FieldType, LookupTable, SchemaField } from '../../api/types';
+import LookupLink from '../lookups/LookupLink';
 import styles from './InputSchemaEditor.module.css';
 
 interface Props {
@@ -126,6 +127,11 @@ export default function InputSchemaEditor({ value, onChange, lookups = [], onRem
                   <option value="">—</option>
                   {candidates.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
                 </select>
+                {sf.lookup && (
+                  <div style={{ fontSize: 10, marginTop: 2 }}>
+                    <LookupLink table={lookups.find((t) => t.id === sf.lookup)} />
+                  </div>
+                )}
               </td>
               <td>
                 <input

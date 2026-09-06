@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useLayers, useUpdateLayer } from '../../api/layers';
+import { useLookups } from '../../api/lookups';
 import { useUpdateSegment } from '../../api/segments';
 import type { Segment, StrategyType, InputSchema, OutputField } from '../../api/types';
 import StrategyPicker from './StrategyPicker';
@@ -13,6 +14,7 @@ import MessagesEditor from '../rules/MessagesEditor';
 import PredicateEditor from '../rules/PredicateEditor';
 import PromotionEditor from '../promotion/PromotionEditor';
 import EmittedFieldsReference from '../schema/EmittedFieldsReference';
+import LookupLink from '../lookups/LookupLink';
 import OutputValuesEditor from '../rules/OutputValuesEditor';
 import { fieldCoverage, supportsOutputSchema } from '../schema/outputSchemaRules';
 import ErrorBanner from '../common/ErrorBanner';
@@ -22,7 +24,10 @@ export default function SegmentEditor() {
   const { name: layerName, id: segId } = useParams<{ name: string; id: string }>();
   const navigate = useNavigate();
   const { data: layers } = useLayers();
+  const { data: lookups } = useLookups();
   const updateSegment = useUpdateSegment();
+  // Resolves a field's lookup id to the table, for the read-only schema tables.
+  const lookupById = (id?: string) => (id ? (lookups ?? []).find((t) => t.id === id) : undefined);
   const updateLayer = useUpdateLayer();
 
   const layer = layers?.find((l) => l.name === layerName);
@@ -148,13 +153,14 @@ export default function SegmentEditor() {
         {layer?.inputSchema && Object.keys(layer.inputSchema).length > 0 ? (
           <table className={styles.readonlyTable}>
             <thead>
-              <tr><th>Field</th><th>Type</th><th>Required</th></tr>
+              <tr><th>Field</th><th>Type</th><th>Lookup</th><th>Required</th></tr>
             </thead>
             <tbody>
               {Object.entries(layer.inputSchema).map(([f, sf]) => (
                 <tr key={f}>
                   <td>{f}</td>
                   <td>{sf.type}</td>
+                  <td><LookupLink table={lookupById(sf.lookup)} /></td>
                   <td>{sf.required ? 'yes' : '—'}</td>
                 </tr>
               ))}
@@ -184,13 +190,14 @@ export default function SegmentEditor() {
             {layer?.outputSchema && Object.keys(layer.outputSchema).length > 0 ? (
               <table className={styles.readonlyTable}>
                 <thead>
-                  <tr><th>Field</th><th>Type</th><th>Required</th></tr>
+                  <tr><th>Field</th><th>Type</th><th>Lookup</th><th>Required</th></tr>
                 </thead>
                 <tbody>
                   {Object.entries(layer.outputSchema).map(([name, f]) => (
                     <tr key={name}>
                       <td>{name}</td>
                       <td>{f.type}</td>
+                      <td><LookupLink table={lookupById(f.lookup)} /></td>
                       <td>{f.required ? 'yes' : '—'}</td>
                     </tr>
                   ))}

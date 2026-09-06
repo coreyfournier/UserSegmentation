@@ -1,6 +1,7 @@
 import { useState, useRef } from 'react';
 import type { FieldType, LookupTable, OutputField, OutputSchema } from '../../api/types';
 import { FIELD_TYPES, validateOutputField, type FieldCoverage } from './outputSchemaRules';
+import LookupLink from '../lookups/LookupLink';
 import styles from './OutputSchemaEditor.module.css';
 
 interface Props {
@@ -113,6 +114,11 @@ export default function OutputSchemaEditor({ value, onChange, lookups, segmentOu
                     <option value="">—</option>
                     {candidates.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
                   </select>
+                  {f.lookup && (
+                    <div style={{ fontSize: 10, marginTop: 2 }}>
+                      <LookupLink table={lookups.find((t) => t.id === f.lookup)} />
+                    </div>
+                  )}
                 </td>
                 <td>
                   <input
