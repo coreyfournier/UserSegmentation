@@ -281,3 +281,25 @@ func TestValidate_OutputExpressionRejectsUnknownIdentifier(t *testing.T) {
 	snap.Layers[0].Segments[0].Rules[0].Outputs = map[string]string{"cap": "MaxAllowed"}
 	expectValid(t, snap)
 }
+
+// A cross-layer reference in a template must validate. The evaluator injects
+// "layer:<name>" as a flat context key and ResolveField finds it before expr is
+// consulted, so the runtime renders it — measured: "Your tier is pro." with no
+// warnings. Rejecting it here on a colon parse error would block config that
+// works, which is worse than the gap this validation closes.
+func TestValidate_TemplateAcceptsLayerReference(t *testing.T) {
+	snap := &model.Snapshot{Layers: []model.Layer{
+		{Name: "base-tier", InputSchema: model.InputSchema{"plan": {Type: model.FieldTypeString}},
+			Segments: []model.Segment{{ID: "t", Strategy: model.StrategyRule,
+				Rules: []model.Rule{{RuleName: "r", SuccessEvent: "pro",
+					Condition: &model.Condition{Field: "plan", Operator: model.OpEq, Value: "pro"}}}}}},
+		{Name: "promos", DependsOn: []string{"base-tier"},
+			InputSchema: model.InputSchema{"country": {Type: model.FieldTypeString}},
+			Segments: []model.Segment{{ID: "p", Strategy: model.StrategyChecklist,
+				Rules: []model.Rule{{RuleName: "n", ErrorMessage: "Tier is ${layer:base-tier}.",
+					Condition: &model.Condition{Field: "country", Operator: model.OpEq, Value: "US"}}}}}},
+	}}
+	if err := ValidateSnapshot(snap); err != nil {
+		t.Fatalf("a layer reference in a template must validate, got: %v", err)
+	}
+}

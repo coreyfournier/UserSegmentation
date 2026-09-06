@@ -299,6 +299,17 @@ func validateTemplateTokens(where, tmpl string, schema model.InputSchema, env ma
 		if _, declared := schema[tok.expr]; declared {
 			continue
 		}
+		// A cross-layer reference resolves at evaluation the same way a field
+		// does: the evaluator injects "layer:<name>" as a flat context key, and
+		// ResolveField finds it before expr is ever consulted. Without this the
+		// check would reject "${layer:base-tier}" on a colon parse error while
+		// the runtime renders it perfectly — the false-rejection direction, and
+		// worse than the gap this validation closes. Whether the dependency is
+		// actually declared is validateRuleTree's job, which already reports it
+		// against dependsOn.
+		if strings.HasPrefix(tok.expr, "layer:") {
+			continue
+		}
 		if _, err := expr.Compile(tok.expr, opts...); err != nil {
 			errs = append(errs, fmt.Sprintf("%s: token %q: %v", where, "${"+tok.expr+"}", err))
 		}
