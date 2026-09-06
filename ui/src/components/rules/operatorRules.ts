@@ -73,3 +73,32 @@ export function layerRetypeBreaks(
 export function describeBreak(b: OperatorBreak): string {
   return `segment "${b.segment}" rule "${b.rule}" uses ${b.operator}`;
 }
+
+/** Every operator, in the order the picker lists them. */
+export const ALL_OPERATORS: Operator[] = [
+  'eq', 'neq', 'gt', 'gte', 'lt', 'lte', 'in', 'not_in', 'contains', 'in_lookup', 'not_in_lookup',
+  'is_null', 'is_null_or_empty',
+];
+
+/**
+ * The options an operator picker must offer, given what is currently stored.
+ *
+ * The invariant is that the list always contains `value`. Offering only the
+ * compatible operators is not enough, and the failure is worse than untidy: a
+ * select whose value matches no option displays the *first* one, so a stored
+ * gte on a boolean field reads as "eq". Worse, choosing eq then changes
+ * nothing the browser can see, so no change event fires and the stored gte
+ * cannot be corrected through the picker at all — the config keeps a value the
+ * UI insists is not there, until the engine refuses the save.
+ */
+export function operatorOptions(
+  value: Operator,
+  fieldType: FieldType | undefined,
+): { op: Operator; compatible: boolean }[] {
+  const compatible = ALL_OPERATORS.filter((op) => operatorSupports(op, fieldType));
+  if (compatible.includes(value)) {
+    return compatible.map((op) => ({ op, compatible: true }));
+  }
+  // The stranded value leads, so it is what the closed select displays.
+  return [{ op: value, compatible: false }, ...compatible.map((op) => ({ op, compatible: true }))];
+}

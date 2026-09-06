@@ -37,7 +37,7 @@ writeFileSync(
   readFileSync(emitted, 'utf8').replace("'../../api/types'", "'../../api/types.js'"),
 );
 
-const { operatorSupports, segmentRetypeBreaks, layerRetypeBreaks, describeBreak } =
+const { operatorSupports, segmentRetypeBreaks, layerRetypeBreaks, describeBreak, operatorOptions } =
   await import(pathToFileURL(join(out, 'components', 'rules', 'operatorRules.js')).href);
 
 // --- operatorSupports ---
@@ -116,3 +116,54 @@ assert.equal(layerRetypeBreaks([seg, nested], 'HasMaxFeeBeenReached', 'boolean')
 assert.equal(layerRetypeBreaks([], 'flag', 'boolean').length, 0);
 
 console.log('operator rules OK');
+
+// --- the picker's options -----------------------------------------------
+//
+// The bug this pins: a select whose value matches no option displays the first
+// one, so a stranded gte on a boolean field read as "eq" — and choosing "eq"
+// then changed nothing the browser could see, fired no event, and left the gte
+// in place. The config held a value the UI insisted was not there.
+
+const names = (opts) => opts.map((o) => o.op);
+
+// The reported case. gte must be present, must lead so the closed select shows
+// it, and must be marked.
+const stranded = operatorOptions('gte', 'boolean');
+assert.equal(names(stranded)[0], 'gte', 'the stranded value leads, so the select displays it');
+assert.equal(stranded[0].compatible, false);
+assert.ok(names(stranded).includes('eq'), 'the valid choices are still offered');
+assert.ok(stranded.slice(1).every((o) => o.compatible), 'only the stranded one is marked');
+
+// The invariant, over every operator and every type: the current value is
+// always offered, whether or not the type admits it. Without this the value is
+// unreachable through the picker.
+const TYPES = ['string', 'number', 'boolean', 'array', 'object', undefined];
+for (const t of TYPES) {
+  for (const op of ['eq', 'neq', 'gt', 'gte', 'lt', 'lte', 'in', 'not_in', 'contains',
+    'in_lookup', 'not_in_lookup', 'is_null', 'is_null_or_empty']) {
+    const opts = operatorOptions(op, t);
+    assert.ok(
+      names(opts).includes(op),
+      `operatorOptions(${op}, ${t}) must offer ${op} so it can be changed`,
+    );
+    // Never listed twice, or the select has two identical-valued options.
+    assert.equal(
+      names(opts).filter((o) => o === op).length,
+      1,
+      `operatorOptions(${op}, ${t}) must list ${op} once`,
+    );
+  }
+}
+
+// A compatible value is not marked and does not jump the queue.
+const fine = operatorOptions('eq', 'boolean');
+assert.ok(fine.every((o) => o.compatible));
+assert.equal(names(fine)[0], 'eq', 'eq is first for a boolean because it is first overall');
+const numeric = operatorOptions('gte', 'number');
+assert.ok(numeric.every((o) => o.compatible), 'gte on a number is ordinary');
+assert.equal(names(numeric)[0], 'eq', 'a compatible value does not lead the list');
+
+// An unknown field type constrains nothing, so every operator is offered.
+assert.equal(operatorOptions('gte', undefined).length, 13);
+
+console.log('operator picker options OK');

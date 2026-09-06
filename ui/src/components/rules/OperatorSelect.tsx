@@ -1,6 +1,5 @@
 import type { Operator, FieldType } from '../../api/types';
-import { OPERATOR_TYPES } from '../../api/types';
-import { operatorSupports } from './operatorRules';
+import { operatorOptions } from './operatorRules';
 
 interface Props {
   value: Operator;
@@ -8,26 +7,15 @@ interface Props {
   fieldType?: FieldType;
 }
 
-const ALL_OPS: Operator[] = [
-  'eq', 'neq', 'gt', 'gte', 'lt', 'lte', 'in', 'not_in', 'contains', 'in_lookup', 'not_in_lookup',
-  'is_null', 'is_null_or_empty',
-];
-
 export default function OperatorSelect({ value, onChange, fieldType }: Props) {
-  const ops = fieldType
-    ? ALL_OPS.filter((op) => OPERATOR_TYPES[op].includes(fieldType))
-    : ALL_OPS;
-
-  // An operator the field type no longer admits is kept in the list, marked.
-  //
-  // Filtering it out looks tidy and is a dead end: a select whose value is not
-  // among its options renders blank, so the condition shows nothing while the
-  // config still holds the operator — and the first sign of trouble is the
-  // engine refusing the save, naming a rule the author may not have touched.
-  // A field retyped after its rules were written is exactly how that happens:
-  // a formula like "10 >= 1" sits happily in a number field compared with gte
-  // until someone declares it the boolean it always was.
-  const incompatible = !operatorSupports(value, fieldType);
+  // The list always contains the current value, even when the field type does
+  // not admit it — see operatorOptions. Filtering it out looked tidy and made
+  // the stored value both invisible and uncorrectable: the select fell back to
+  // displaying its first option, so a stranded gte on a boolean field read as
+  // "eq", and choosing eq changed nothing the browser could see, so no event
+  // fired and the gte stayed. The only sign was the engine refusing the save.
+  const options = operatorOptions(value, fieldType);
+  const incompatible = options.some((o) => o.op === value && !o.compatible);
 
   return (
     <select
@@ -44,11 +32,10 @@ export default function OperatorSelect({ value, onChange, fieldType }: Props) {
           : undefined
       }
     >
-      {incompatible && (
-        <option value={value}>{value} — not valid for {fieldType}</option>
-      )}
-      {ops.map((op) => (
-        <option key={op} value={op}>{op}</option>
+      {options.map(({ op, compatible }) => (
+        <option key={op} value={op}>
+          {compatible ? op : `${op} — not valid for ${fieldType}`}
+        </option>
       ))}
     </select>
   );
