@@ -27,6 +27,29 @@ func ValidateSnapshot(snap *model.Snapshot) error {
 			deps[d] = struct{}{}
 		}
 
+		// An input field may bind to a lookup, declaring its domain so the
+		// condition editor can offer that table's keys. The two checks mirror
+		// the output side exactly: the table must exist, and its key type must
+		// agree with the field's, because a binding that cannot agree is a
+		// mistake rather than a risk an author is deliberately taking. Whether
+		// an incoming value is actually one of the keys stays unchecked, as it
+		// is everywhere else lookups are used.
+		for _, name := range sortedSchemaFields(layer.InputSchema) {
+			f := layer.InputSchema[name]
+			if f.Lookup == "" {
+				continue
+			}
+			tbl, ok := lookups[f.Lookup]
+			if !ok {
+				errs = append(errs, fmt.Sprintf(
+					"layer %q input %q: lookup %q does not exist", layer.Name, name, f.Lookup))
+			} else if f.Type != tbl.KeyType {
+				errs = append(errs, fmt.Sprintf(
+					"layer %q input %q: field type %q does not match lookup %q key type %q",
+					layer.Name, name, f.Type, tbl.Name, tbl.KeyType))
+			}
+		}
+
 		// A legacy "eval" key lives on the layer's OutputSchema field, not on
 		// any one segment, so it is checked here, once per field — not inside
 		// the segment loop below, which would name the wrong owner (a
@@ -944,4 +967,15 @@ func requiredOutputErrors(seg *model.Segment, name string) []string {
 		}
 	}
 	return errs
+}
+
+// sortedSchemaFields returns an input schema's field names in sorted order, so
+// diagnostics come out the same way twice — map iteration does not.
+func sortedSchemaFields(s model.InputSchema) []string {
+	names := make([]string, 0, len(s))
+	for n := range s {
+		names = append(names, n)
+	}
+	sort.Strings(names)
+	return names
 }

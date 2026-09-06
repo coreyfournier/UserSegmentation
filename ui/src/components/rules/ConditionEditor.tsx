@@ -25,6 +25,22 @@ export default function ConditionEditor({ value, onChange, schema, layerNames }:
   // Offer only tables whose key type matches the field's type (all if type unknown).
   const lookupOptions = (lookups ?? []).filter((t) => !fieldType || t.keyType === fieldType);
 
+  // A field bound to a lookup in the input schema has a known domain, so the
+  // value is picked from that table's keys rather than typed. Only for the
+  // operators that take exactly one value — `in`/`not_in` take a list, which a
+  // single select cannot express.
+  const boundTable = (lookups ?? []).find((t) => t.id === schema?.[value.field]?.lookup);
+  const takesOneValue = !isUnaryOp && !isLookupOp && value.operator !== 'in' && value.operator !== 'not_in';
+  const keyOptions = boundTable && takesOneValue ? boundTable.entries : undefined;
+  const currentKey = String(value.value ?? '');
+  // Keep a value the table does not (or no longer) list, so opening a rule
+  // written before the binding — or after an entry was removed — does not
+  // silently blank it on the next save.
+  const strayKey =
+    keyOptions && currentKey !== '' && !keyOptions.some((e) => String(e.key) === currentKey)
+      ? currentKey
+      : undefined;
+
   const formatValue = (v: unknown): string => {
     if (Array.isArray(v)) return v.join(', ');
     return String(v ?? '');
@@ -77,6 +93,23 @@ export default function ConditionEditor({ value, onChange, schema, layerNames }:
             {lookupOptions.map((t) => (
               <option key={t.id} value={t.id}>{t.name} ({t.keyType})</option>
             ))}
+          </select>
+        ) : keyOptions ? (
+          <select
+            value={currentKey}
+            onChange={(e) => onChange({ ...value, value: parseValue(e.target.value, value.operator as string) })}
+            aria-label={`${value.field} value`}
+            title={`Values come from the lookup table "${boundTable!.name}"`}
+          >
+            <option value="">— select value —</option>
+            {keyOptions.map((entry) => (
+              <option key={String(entry.key)} value={String(entry.key)}>
+                {entry.value ? `${String(entry.key)} — ${entry.value}` : String(entry.key)}
+              </option>
+            ))}
+            {strayKey !== undefined && (
+              <option value={strayKey}>{strayKey} (not in table)</option>
+            )}
           </select>
         ) : (
           <input

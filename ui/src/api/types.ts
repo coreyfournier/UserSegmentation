@@ -32,6 +32,13 @@ export type LayerStatus =
 export interface SchemaField {
   type: FieldType;
   required: boolean;
+  /**
+   * Id of a lookup table whose keys are this field's permitted values, exactly
+   * as `OutputField.lookup` is. It declares the field's domain so a condition
+   * offers the table's keys instead of a free-text box — a declaration, not
+   * enforcement: nothing checks an incoming value at evaluation.
+   */
+  lookup?: string;
 }
 
 export type InputSchema = Record<string, SchemaField>;

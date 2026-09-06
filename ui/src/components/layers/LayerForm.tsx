@@ -209,7 +209,17 @@ export default function LayerForm({
   };
 
   const applyRetype = (field: string, next: FieldType) =>
-    setInputSchema({ ...(inputSchema ?? {}), [field]: { ...(inputSchema ?? {})[field], type: next } });
+    setInputSchema((prev) => {
+      const schema = prev ?? {};
+      const merged = { ...schema[field], type: next };
+      // The retype path bypasses the editor's own patch(), so drop a lookup
+      // binding the new type can no longer agree with — the engine rejects a
+      // mismatched binding at load, and this is the one way to reach one.
+      if (merged.lookup && !(lookups ?? []).some((t) => t.id === merged.lookup && t.keyType === next)) {
+        delete merged.lookup;
+      }
+      return { ...schema, [field]: merged };
+    });
 
   const handleChangeInputFieldType = (field: string, next: FieldType) => {
     const broken = retypeBreakage(segments, field, next);
@@ -305,6 +315,7 @@ export default function LayerForm({
         <InputSchemaEditor
           value={inputSchema}
           onChange={setInputSchema}
+          lookups={lookups ?? []}
           onRemoveField={handleRemoveInputField}
           onChangeFieldType={handleChangeInputFieldType}
         />

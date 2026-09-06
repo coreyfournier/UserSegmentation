@@ -519,3 +519,63 @@ func TestCheckRequiredOutputs_OverrideOnStaticSegmentStillChecked(t *testing.T) 
 		t.Errorf("expected the warning to name %q, got %q", "category", got[0].Field)
 	}
 }
+
+// snapWithInputField mirrors snapWithOutputField for the input side: one layer
+// whose schema declares a single bound field, with a segment present so the
+// layer is not trivially empty.
+func snapWithInputField(f model.SchemaField) *model.Snapshot {
+	return &model.Snapshot{
+		Layers: []model.Layer{{
+			Name:        "diagnostics",
+			InputSchema: model.InputSchema{"tier": f},
+			Segments: []model.Segment{{
+				ID:       "employee",
+				Strategy: model.StrategyChecklist,
+				Rules: []model.Rule{{
+					RuleName:  "someCheck",
+					Condition: &model.Condition{Field: "tier", Operator: model.OpIsNull},
+				}},
+			}},
+		}},
+	}
+}
+
+// An input field's lookup binding is checked exactly as an output field's is:
+// the table has to exist.
+func TestValidate_InputLookupMustExist(t *testing.T) {
+	err := ValidateSnapshot(snapWithInputField(model.SchemaField{
+		Type:   model.FieldTypeString,
+		Lookup: "no-such-table",
+	}))
+	if err == nil || !strings.Contains(err.Error(), `input "tier": lookup "no-such-table" does not exist`) {
+		t.Fatalf("expected an unknown-lookup error, got %v", err)
+	}
+}
+
+func TestValidate_InputLookupTypeMismatch(t *testing.T) {
+	snap := snapWithInputField(model.SchemaField{
+		Type:   model.FieldTypeString,
+		Lookup: "vip-tiers",
+	})
+	snap.Lookups = []model.LookupTable{{
+		ID: "vip-tiers", Name: "VIP Tiers", KeyType: model.FieldTypeNumber,
+		Entries: []model.LookupEntry{{Key: 1.0}},
+	}}
+	if err := ValidateSnapshot(snap); err == nil || !strings.Contains(err.Error(), `input "tier": field type "string" does not match lookup`) {
+		t.Fatalf("expected a lookup type-mismatch error, got %v", err)
+	}
+
+	// Agreeing types validate. The condition is retyped alongside the field so
+	// the operator check does not fail for an unrelated reason.
+	snap.Layers[0].InputSchema["tier"] = model.SchemaField{Type: model.FieldTypeNumber, Lookup: "vip-tiers"}
+	if err := ValidateSnapshot(snap); err != nil {
+		t.Fatalf("expected a matching key type to validate, got %v", err)
+	}
+}
+
+// An unbound field is the common case and must stay untouched by the new check.
+func TestValidate_InputWithoutLookupIsUnaffected(t *testing.T) {
+	if err := ValidateSnapshot(snapWithInputField(model.SchemaField{Type: model.FieldTypeString})); err != nil {
+		t.Fatalf("expected an unbound input field to validate, got %v", err)
+	}
+}

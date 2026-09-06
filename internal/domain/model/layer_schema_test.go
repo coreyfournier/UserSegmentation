@@ -2,6 +2,7 @@ package model
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 )
 
@@ -42,5 +43,35 @@ func TestSegmentCapturesLegacySchemas(t *testing.T) {
 	}
 	if len(seg.LegacyOutputSchema) != 1 {
 		t.Errorf("legacy output schema not captured: %+v", seg)
+	}
+}
+
+// The lookup binding has to survive the JSON round trip in both directions —
+// a mistyped tag would drop it silently, leaving the editor's selection gone
+// on the next load with nothing to say it had been made.
+func TestInputSchemaFieldCarriesLookup(t *testing.T) {
+	var in InputSchema
+	if err := json.Unmarshal([]byte(`{"tier":{"type":"number","lookup":"vip-tiers"}}`), &in); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if in["tier"].Lookup != "vip-tiers" {
+		t.Fatalf("lookup lost on read: %+v", in["tier"])
+	}
+
+	b, err := json.Marshal(in)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	if !strings.Contains(string(b), `"lookup":"vip-tiers"`) {
+		t.Errorf("lookup lost on write: %s", b)
+	}
+
+	// Unbound is the common case, and omitempty keeps it out of the file.
+	b, err = json.Marshal(InputSchema{"age": {Type: FieldTypeNumber}})
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	if strings.Contains(string(b), "lookup") {
+		t.Errorf("expected an unbound field to omit lookup, got %s", b)
 	}
 }
