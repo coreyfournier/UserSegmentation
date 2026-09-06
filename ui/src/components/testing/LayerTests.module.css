@@ -167,10 +167,17 @@
   margin-bottom: 4px;
 }
 
+/* Drag-resizable rather than capped. A response is as long as it is, and a
+   fixed 220px window meant scrubbing a long one through a letterbox. `height`
+   rather than `max-height`, because a max-height is a ceiling the resize
+   handle cannot lift. `resize` needs a non-visible overflow, which the
+   scrolling already provides. */
 .pre {
   margin: 4px 0 0;
   font-size: 11px;
-  max-height: 220px;
+  height: 220px;
+  min-height: 60px;
+  resize: vertical;
   overflow: auto;
   background: var(--bg);
   padding: 8px;

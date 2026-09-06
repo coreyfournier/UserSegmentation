@@ -221,7 +221,7 @@ export default function LayerTests({ layerKey, schema }: Props) {
       ))}
 
       <details>
-        <summary className={styles.raw}>Raw response</summary>
+        <summary className={styles.raw}>Raw response — drag its lower edge to see more</summary>
         <pre className={styles.pre}>{JSON.stringify(r.response ?? r, null, 2)}</pre>
       </details>
     </div>
