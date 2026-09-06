@@ -14,6 +14,7 @@ func NewServer(
 	batchUC *application.BatchEvaluateUseCase,
 	reloadUC *application.ReloadUseCase,
 	adminUC *application.AdminUseCase,
+	searchUC *application.SearchUseCase,
 	store ports.SegmentStore,
 ) *http.Server {
 	mux := http.NewServeMux()
@@ -40,6 +41,7 @@ func NewServer(
 	mux.HandleFunc("DELETE /v1/admin/lookups/{id}", admin.DeleteLookup)
 	mux.HandleFunc("POST /v1/admin/import", admin.ImportSnapshot)
 	mux.HandleFunc("GET /v1/admin/export", admin.ExportSnapshot)
+	mux.Handle("GET /v1/admin/search", &SearchHandler{uc: searchUC})
 
 	handler := CORS(PanicRecovery(Timing(Logging(mux))))
 

@@ -19,6 +19,7 @@ import (
 	infraConfig "github.com/segmentation-service/segmentation/internal/infrastructure/config"
 	"github.com/segmentation-service/segmentation/internal/infrastructure/hash"
 	infraHTTP "github.com/segmentation-service/segmentation/internal/infrastructure/http"
+	"github.com/segmentation-service/segmentation/internal/infrastructure/search"
 	"github.com/segmentation-service/segmentation/internal/infrastructure/store"
 )
 
@@ -59,6 +60,10 @@ func main() {
 	batchUC := application.NewBatchEvaluateUseCase(evaluateUC)
 	reloadUC := application.NewReloadUseCase(fileSource, memStore)
 	adminUC := application.NewAdminUseCase(memStore, fileSource)
+	// The one line that changes when the config moves to a database: swap the
+	// snapshot scan for a store-backed Searcher. Nothing above or below it
+	// knows which is in use.
+	searchUC := application.NewSearchUseCase(search.NewSnapshotSearcher(memStore))
 
 	// Config watcher
 	watcher := infraConfig.NewWatcher(fileSource, memStore, *configPath, 500*time.Millisecond)
@@ -66,7 +71,7 @@ func main() {
 	defer watcher.Stop()
 
 	// HTTP server
-	srv := infraHTTP.NewServer(*addr, evaluateUC, batchUC, reloadUC, adminUC, memStore)
+	srv := infraHTTP.NewServer(*addr, evaluateUC, batchUC, reloadUC, adminUC, searchUC, memStore)
 
 	// Graceful shutdown
 	go func() {

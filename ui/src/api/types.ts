@@ -247,3 +247,19 @@ export interface LookupTable {
   customOrder?: boolean;
   entries: LookupEntry[];
 }
+
+/** One thing a search query matched. Mirrors model.SearchHit. */
+export interface SearchHit {
+  kind: 'layer' | 'segment';
+  layer: string;
+  segment?: string;
+  field: 'name' | 'id' | 'strategy';
+  value: string;
+}
+
+export interface SearchResult {
+  query: string;
+  hits: SearchHit[];
+  /** The store stopped at its limit and more matches exist. */
+  truncated: boolean;
+}

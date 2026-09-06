@@ -2,6 +2,8 @@ import { useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useLayers, useCreateLayer, useUpdateLayer, useDeleteLayer } from '../../api/layers';
 import { useCreateSegment, useUpdateSegment } from '../../api/segments';
+import { useSearch } from '../../api/search';
+import { useDebounced } from '../../utils/useDebounced';
 import type { Layer, Segment, StrategyType } from '../../api/types';
 import { STRATEGY_OPTIONS } from '../segments/StrategyPicker';
 import LayerRail from './LayerRail';
@@ -52,6 +54,12 @@ export default function LayerList() {
   const [newSegId, setNewSegId] = useState('');
   const [newSegStrategy, setNewSegStrategy] = useState<StrategyType>('static');
 
+  // Search runs on the server, not over the cached layer list: filtering here
+  // would work only for as long as the whole config fits in one response.
+  const [query, setQuery] = useState('');
+  const debouncedQuery = useDebounced(query);
+  const { data: searchResult } = useSearch(debouncedQuery);
+
   // "Edit on the layer" (SegmentEditor) links here with ?edit=<layer name> so
   // it opens that specific layer's editor rather than just the list. Derived
   // at render instead of synced into state via an effect — `editing` (an
@@ -76,16 +84,39 @@ export default function LayerList() {
   // execute. Purely presentational — the engine does its own topological sort.
   const sorted = sortByDependency(layers ?? []);
 
+  // Fold the server's flat hit list into what the rail draws: which layers to
+  // show, and which of their segments matched. A layer appears because it
+  // matched itself or because one of its segments did; only the segment hits
+  // are listed under it, since a layer-name match has nothing to point at.
+  //
+  // Held against the debounced query rather than what is typed, so the list
+  // does not narrow to nothing between a keystroke and its response.
+  const searching = debouncedQuery.trim().length > 0;
+  const matches = new Map<string, string[]>();
+  const matchedLayers = new Set<string>();
+  for (const hit of searchResult?.hits ?? []) {
+    matchedLayers.add(hit.layer);
+    if (hit.kind === 'segment' && hit.segment) {
+      matches.set(hit.layer, [...(matches.get(hit.layer) ?? []), hit.segment]);
+    }
+  }
+  const visible = searching ? sorted.filter((l) => matchedLayers.has(l.name)) : sorted;
+
   // Which layer the detail pane shows, in the URL so a reload, a back button
   // and a pasted link all land on the same one. Falls back to ?edit= — arriving
   // from a segment's "Edit on the layer" should show that layer behind the
   // modal, not an unrelated one — and then to the first layer, so the pane is
   // never empty while layers exist. A name that no longer resolves (deleted, or
   // renamed by the edit modal) falls through the same way.
+  // An explicit selection survives a search that filters it out of the rail —
+  // it was chosen deliberately, and clearing the box brings its row back. Only
+  // the fallback prefers a match, so searching with nothing selected lands on
+  // something the query found rather than on the first layer overall.
   const selectParam = searchParams.get('layer');
   const selected =
     sorted.find((l) => l.name === selectParam) ??
     sorted.find((l) => l.name === editParam) ??
+    visible[0] ??
     sorted[0] ??
     null;
 
@@ -125,7 +156,16 @@ export default function LayerList() {
         <p style={{ color: 'var(--text-muted)' }}>No layers yet.</p>
       ) : (
         <div className={styles.split}>
-          <LayerRail layers={sorted} selected={selected?.name ?? null} onSelect={select} />
+          <LayerRail
+            layers={visible}
+            selected={selected?.name ?? null}
+            onSelect={select}
+            query={query}
+            onQueryChange={setQuery}
+            matches={matches}
+            searching={searching}
+            truncated={!!searchResult?.truncated}
+          />
           {selected && (
             <LayerDetail
               // Keyed by name so switching layers remounts the pane. Without
