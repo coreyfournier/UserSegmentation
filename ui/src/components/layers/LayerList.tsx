@@ -4,7 +4,8 @@ import { useLayers, useCreateLayer, useUpdateLayer, useDeleteLayer } from '../..
 import { useCreateSegment, useUpdateSegment } from '../../api/segments';
 import type { Layer, Segment, StrategyType } from '../../api/types';
 import { STRATEGY_OPTIONS } from '../segments/StrategyPicker';
-import LayerCard from './LayerCard';
+import LayerRail from './LayerRail';
+import LayerDetail from './LayerDetail';
 import LayerForm from './LayerForm';
 import Modal from '../common/Modal';
 import ConfirmDialog from '../common/ConfirmDialog';
@@ -75,6 +76,38 @@ export default function LayerList() {
   // execute. Purely presentational — the engine does its own topological sort.
   const sorted = sortByDependency(layers ?? []);
 
+  // Which layer the detail pane shows, in the URL so a reload, a back button
+  // and a pasted link all land on the same one. Falls back to ?edit= — arriving
+  // from a segment's "Edit on the layer" should show that layer behind the
+  // modal, not an unrelated one — and then to the first layer, so the pane is
+  // never empty while layers exist. A name that no longer resolves (deleted, or
+  // renamed by the edit modal) falls through the same way.
+  const selectParam = searchParams.get('layer');
+  const selected =
+    sorted.find((l) => l.name === selectParam) ??
+    sorted.find((l) => l.name === editParam) ??
+    sorted[0] ??
+    null;
+
+  const select = (name: string) => {
+    const next = new URLSearchParams(searchParams);
+    next.set('layer', name);
+    setSearchParams(next, { replace: true });
+  };
+
+  // Selects a layer and closes the edit modal in one write. Both params live in
+  // the same URL, and each helper builds from this render's `searchParams` — so
+  // calling select() then closeEditModal() would rebuild from the pre-select
+  // snapshot and throw the selection away. Used after a save, which is also
+  // where the name may have just changed.
+  const selectAndCloseEdit = (name: string) => {
+    setEditing(null);
+    const next = new URLSearchParams(searchParams);
+    next.set('layer', name);
+    next.delete('edit');
+    setSearchParams(next, { replace: true });
+  };
+
   return (
     <div>
       <div className={styles.toolbar}>
@@ -88,28 +121,43 @@ export default function LayerList() {
       {updateLayer.error && <ErrorBanner message={(updateLayer.error as Error).message} />}
       {updateSegment.error && <ErrorBanner message={(updateSegment.error as Error).message} />}
 
-      {sorted.map((layer) => (
-        <LayerCard
-          key={layer.name}
-          layer={layer}
-          onEdit={() => setEditing(layer)}
-          onDelete={() => setDeleting(layer.name)}
-          onAddSegment={() => {
-            setAddSegTo(layer.name);
-            setNewSegId('');
-            setNewSegStrategy('static');
-          }}
-        />
-      ))}
-
-      {sorted.length === 0 && <p style={{ color: 'var(--text-muted)' }}>No layers yet.</p>}
+      {sorted.length === 0 ? (
+        <p style={{ color: 'var(--text-muted)' }}>No layers yet.</p>
+      ) : (
+        <div className={styles.split}>
+          <LayerRail layers={sorted} selected={selected?.name ?? null} onSelect={select} />
+          {selected && (
+            <LayerDetail
+              // Keyed by name so switching layers remounts the pane. Without
+              // it, a pending "delete segment" confirmation would carry over
+              // to whichever layer was selected next.
+              key={selected.name}
+              layer={selected}
+              onEdit={() => setEditing(selected)}
+              onDelete={() => setDeleting(selected.name)}
+              onAddSegment={() => {
+                setAddSegTo(selected.name);
+                setNewSegId('');
+                setNewSegStrategy('static');
+              }}
+            />
+          )}
+        </div>
+      )}
 
       {/* Create Layer Modal */}
       <Modal open={showCreate} onClose={() => setShowCreate(false)} title="Add Layer">
         <LayerForm
           allLayers={layers ?? []}
           onSubmit={(l) => {
-            createLayer.mutate(l, { onSuccess: () => setShowCreate(false) });
+            createLayer.mutate(l, {
+              onSuccess: () => {
+                setShowCreate(false);
+                // Show what was just created rather than leaving the pane on
+                // whatever was selected before.
+                if (l.name) select(l.name);
+              },
+            });
           }}
           onCancel={() => setShowCreate(false)}
         />
@@ -138,7 +186,9 @@ export default function LayerList() {
                   }
                 }
                 await updateLayer.mutateAsync({ name: layerName, layer: l });
-                closeEditModal();
+                // Follow a rename: the selection is held by name, so keeping
+                // the old one would silently bounce the pane to the first layer.
+                selectAndCloseEdit(l.name ?? layerName);
               } catch {
                 // Left open; updateLayer.error / updateSegment.error above
                 // render what failed so the author can retry or adjust.
