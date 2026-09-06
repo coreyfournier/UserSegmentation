@@ -35,8 +35,15 @@ func (h *AdminHandler) CreateLayer(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
 		return
 	}
-	if layer.Name == "" {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "name is required"})
+	// A caller that supplies only a friendly name gets a key derived from it,
+	// the way CreateLookup derives a table's id. An explicit key always wins.
+	if layer.Key == "" && layer.Name != "" {
+		layer.Key = model.DeriveLayerKey(layer.Name)
+	}
+	// Checked here as well as at load so a bad key is a 400 naming the problem
+	// rather than a 409 carrying a validation dump.
+	if msg := model.ValidateLayerKey(layer.Key); msg != "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": msg})
 		return
 	}
 	snap, err := h.uc.CreateLayer(layer)
@@ -47,9 +54,9 @@ func (h *AdminHandler) CreateLayer(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, snap)
 }
 
-// UpdateLayer handles PUT /v1/admin/layers/{name}.
+// UpdateLayer handles PUT /v1/admin/layers/{key}.
 func (h *AdminHandler) UpdateLayer(w http.ResponseWriter, r *http.Request) {
-	name := r.PathValue("name")
+	name := r.PathValue("key")
 	var layer model.Layer
 	if err := json.NewDecoder(r.Body).Decode(&layer); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
@@ -63,9 +70,9 @@ func (h *AdminHandler) UpdateLayer(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, snap)
 }
 
-// DeleteLayer handles DELETE /v1/admin/layers/{name}.
+// DeleteLayer handles DELETE /v1/admin/layers/{key}.
 func (h *AdminHandler) DeleteLayer(w http.ResponseWriter, r *http.Request) {
-	name := r.PathValue("name")
+	name := r.PathValue("key")
 	snap, err := h.uc.DeleteLayer(name)
 	if err != nil {
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": err.Error()})
@@ -74,16 +81,16 @@ func (h *AdminHandler) DeleteLayer(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, snap)
 }
 
-// ListSegments handles GET /v1/admin/layers/{name}/segments.
+// ListSegments handles GET /v1/admin/layers/{key}/segments.
 func (h *AdminHandler) ListSegments(w http.ResponseWriter, r *http.Request) {
-	name := r.PathValue("name")
+	key := r.PathValue("key")
 	snap := h.uc.GetSnapshot()
 	if snap == nil {
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": "no configuration loaded"})
 		return
 	}
 	for _, l := range snap.Layers {
-		if l.Name == name {
+		if l.Key == key {
 			writeJSON(w, http.StatusOK, l.Segments)
 			return
 		}
@@ -91,9 +98,9 @@ func (h *AdminHandler) ListSegments(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusNotFound, map[string]string{"error": "layer not found"})
 }
 
-// CreateSegment handles POST /v1/admin/layers/{name}/segments.
+// CreateSegment handles POST /v1/admin/layers/{key}/segments.
 func (h *AdminHandler) CreateSegment(w http.ResponseWriter, r *http.Request) {
-	name := r.PathValue("name")
+	name := r.PathValue("key")
 	var seg model.Segment
 	if err := json.NewDecoder(r.Body).Decode(&seg); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
@@ -115,9 +122,9 @@ func (h *AdminHandler) CreateSegment(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, snap)
 }
 
-// UpdateSegment handles PUT /v1/admin/layers/{name}/segments/{id}.
+// UpdateSegment handles PUT /v1/admin/layers/{key}/segments/{id}.
 func (h *AdminHandler) UpdateSegment(w http.ResponseWriter, r *http.Request) {
-	name := r.PathValue("name")
+	name := r.PathValue("key")
 	id := r.PathValue("id")
 	var seg model.Segment
 	if err := json.NewDecoder(r.Body).Decode(&seg); err != nil {
@@ -132,9 +139,9 @@ func (h *AdminHandler) UpdateSegment(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, snap)
 }
 
-// DeleteSegment handles DELETE /v1/admin/layers/{name}/segments/{id}.
+// DeleteSegment handles DELETE /v1/admin/layers/{key}/segments/{id}.
 func (h *AdminHandler) DeleteSegment(w http.ResponseWriter, r *http.Request) {
-	name := r.PathValue("name")
+	name := r.PathValue("key")
 	id := r.PathValue("id")
 	snap, err := h.uc.DeleteSegment(name, id)
 	if err != nil {
@@ -166,4 +173,32 @@ func (h *AdminHandler) ExportSnapshot(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, snap)
+}
+
+// PreviewRekey handles GET /v1/admin/layers/{key}/rekey-preview?to=<newKey>.
+//
+// Read-only: it reports what changing the key would rewrite so the editor can
+// show the blast radius before the author commits to it. Computed server-side
+// rather than in the browser because the references live across other layers'
+// rules and messages, and the rewrite that follows is server-side too — one
+// implementation, so the preview cannot drift from what actually happens.
+func (h *AdminHandler) PreviewRekey(w http.ResponseWriter, r *http.Request) {
+	key := r.PathValue("key")
+	to := r.URL.Query().Get("to")
+	if to == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "to is required"})
+		return
+	}
+
+	refs, err := h.uc.PreviewRekey(key, to)
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		return
+	}
+	// Never null: the UI counts this, and "no references" is a result rather
+	// than an absence.
+	if refs == nil {
+		refs = []application.RekeyRef{}
+	}
+	writeJSON(w, http.StatusOK, map[string]interface{}{"from": key, "to": to, "references": refs})
 }

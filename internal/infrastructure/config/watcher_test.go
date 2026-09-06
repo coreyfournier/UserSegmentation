@@ -26,7 +26,7 @@ func validSnapshot(version int) *model.Snapshot {
 	return &model.Snapshot{
 		Version: version,
 		Layers: []model.Layer{
-			{Name: "test", Segments: []model.Segment{}},
+			{Key: "test", Segments: []model.Segment{}},
 		},
 	}
 }
@@ -183,7 +183,7 @@ func TestReload_ValidationError(t *testing.T) {
 	bad := &model.Snapshot{
 		Version: 1,
 		Layers: []model.Layer{{
-			Name: "bad",
+			Key: "bad",
 			InputSchema: model.InputSchema{
 				"f": {Type: model.FieldTypeString, Required: true},
 			},
@@ -191,7 +191,7 @@ func TestReload_ValidationError(t *testing.T) {
 				ID: "s", Strategy: "rule",
 				Rules: []model.Rule{{
 					RuleName:     "r",
-					Condition:   &model.Condition{Field: "f", Operator: "gt", Value: 1},
+					Condition:    &model.Condition{Field: "f", Operator: "gt", Value: 1},
 					SuccessEvent: "x",
 				}},
 			}},

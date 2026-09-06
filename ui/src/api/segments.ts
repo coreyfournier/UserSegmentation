@@ -2,21 +2,21 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiFetch } from './client';
 import type { Segment, Snapshot } from './types';
 
-export function useSegments(layerName: string) {
+export function useSegments(layerKey: string) {
   return useQuery({
-    queryKey: ['segments', layerName],
+    queryKey: ['segments', layerKey],
     queryFn: () =>
-      apiFetch<Segment[]>(`/v1/admin/layers/${encodeURIComponent(layerName)}/segments`),
-    enabled: !!layerName,
+      apiFetch<Segment[]>(`/v1/admin/layers/${encodeURIComponent(layerKey)}/segments`),
+    enabled: !!layerKey,
   });
 }
 
 export function useCreateSegment() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ layerName, segment }: { layerName: string; segment: Segment }) =>
+    mutationFn: ({ layerKey, segment }: { layerKey: string; segment: Segment }) =>
       apiFetch<Snapshot>(
-        `/v1/admin/layers/${encodeURIComponent(layerName)}/segments`,
+        `/v1/admin/layers/${encodeURIComponent(layerKey)}/segments`,
         { method: 'POST', body: JSON.stringify(segment) }
       ),
     onSuccess: () => {
@@ -30,16 +30,16 @@ export function useUpdateSegment() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: ({
-      layerName,
+      layerKey,
       segId,
       segment,
     }: {
-      layerName: string;
+      layerKey: string;
       segId: string;
       segment: Segment;
     }) =>
       apiFetch<Snapshot>(
-        `/v1/admin/layers/${encodeURIComponent(layerName)}/segments/${encodeURIComponent(segId)}`,
+        `/v1/admin/layers/${encodeURIComponent(layerKey)}/segments/${encodeURIComponent(segId)}`,
         { method: 'PUT', body: JSON.stringify(segment) }
       ),
     onSuccess: () => {
@@ -52,9 +52,9 @@ export function useUpdateSegment() {
 export function useDeleteSegment() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ layerName, segId }: { layerName: string; segId: string }) =>
+    mutationFn: ({ layerKey, segId }: { layerKey: string; segId: string }) =>
       apiFetch<Snapshot>(
-        `/v1/admin/layers/${encodeURIComponent(layerName)}/segments/${encodeURIComponent(segId)}`,
+        `/v1/admin/layers/${encodeURIComponent(layerKey)}/segments/${encodeURIComponent(segId)}`,
         { method: 'DELETE' }
       ),
     onSuccess: () => {

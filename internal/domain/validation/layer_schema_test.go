@@ -12,7 +12,7 @@ import (
 func TestLayerSchema_RuleFieldDeclaredOnLayer(t *testing.T) {
 	snap := &model.Snapshot{
 		Layers: []model.Layer{{
-			Name:        "tier",
+			Key:         "tier",
 			InputSchema: model.InputSchema{"country": {Type: model.FieldTypeString}},
 			Segments: []model.Segment{{
 				ID:       "seg",
@@ -32,7 +32,7 @@ func TestLayerSchema_RuleFieldDeclaredOnLayer(t *testing.T) {
 func TestLayerSchema_RuleFieldUndeclaredOnLayer(t *testing.T) {
 	snap := &model.Snapshot{
 		Layers: []model.Layer{{
-			Name:        "tier",
+			Key:         "tier",
 			InputSchema: model.InputSchema{"country": {Type: model.FieldTypeString}},
 			Segments: []model.Segment{{
 				ID:       "seg",
@@ -55,7 +55,7 @@ func TestLayerSchema_RuleFieldUndeclaredOnLayer(t *testing.T) {
 func TestLayerSchema_ComputedFieldMergesWithLayerSchema(t *testing.T) {
 	snap := &model.Snapshot{
 		Layers: []model.Layer{{
-			Name:        "tier",
+			Key:         "tier",
 			InputSchema: model.InputSchema{"country": {Type: model.FieldTypeString}},
 			Segments: []model.Segment{{
 				ID:       "seg",
@@ -80,7 +80,7 @@ func TestLayerSchema_ComputedFieldMergesWithLayerSchema(t *testing.T) {
 func TestLayerSchema_EscapeHatchWhenNoInputSchemaAndNoComputed(t *testing.T) {
 	snap := &model.Snapshot{
 		Layers: []model.Layer{{
-			Name: "tier",
+			Key: "tier",
 			Segments: []model.Segment{{
 				ID:       "seg",
 				Strategy: model.StrategyRule,
@@ -101,7 +101,7 @@ func TestLayerSchema_EscapeHatchWhenNoInputSchemaAndNoComputed(t *testing.T) {
 func TestLayerSchema_LegacySegmentInputSchemaIsRejected(t *testing.T) {
 	snap := &model.Snapshot{
 		Layers: []model.Layer{{
-			Name: "tier",
+			Key: "tier",
 			Segments: []model.Segment{{
 				ID:                "seg",
 				Strategy:          model.StrategyRule,
@@ -122,7 +122,7 @@ func TestLayerSchema_LegacySegmentInputSchemaIsRejected(t *testing.T) {
 func TestLayerSchema_LegacySegmentOutputSchemaIsRejected(t *testing.T) {
 	snap := &model.Snapshot{
 		Layers: []model.Layer{{
-			Name: "tier",
+			Key: "tier",
 			Segments: []model.Segment{{
 				ID:                 "seg",
 				Strategy:           model.StrategyStatic,
@@ -145,7 +145,7 @@ func TestLayerSchema_LegacySegmentOutputSchemaIsRejected(t *testing.T) {
 func TestLayerSchema_RequiredOutputFieldEnforcedFromLayer(t *testing.T) {
 	snap := &model.Snapshot{
 		Layers: []model.Layer{{
-			Name:         "diagnostics",
+			Key:          "diagnostics",
 			InputSchema:  model.InputSchema{"x": {Type: model.FieldTypeString}},
 			OutputSchema: model.OutputSchema{"category": {Type: model.FieldTypeString, Required: true}},
 			Segments: []model.Segment{{
@@ -168,7 +168,7 @@ func TestLayerSchema_RequiredOutputFieldEnforcedFromLayer(t *testing.T) {
 func TestLayerSchema_UndeclaredOutputKeyRejectedFromLayer(t *testing.T) {
 	snap := &model.Snapshot{
 		Layers: []model.Layer{{
-			Name:         "diagnostics",
+			Key:          "diagnostics",
 			InputSchema:  model.InputSchema{"x": {Type: model.FieldTypeString}},
 			OutputSchema: model.OutputSchema{"category": {Type: model.FieldTypeString}},
 			Segments: []model.Segment{{
@@ -192,7 +192,7 @@ func TestLayerSchema_UndeclaredOutputKeyRejectedFromLayer(t *testing.T) {
 func TestLayerSchema_StaticSegmentExemptFromLayerOutputSchema(t *testing.T) {
 	snap := &model.Snapshot{
 		Layers: []model.Layer{{
-			Name: "tier",
+			Key: "tier",
 			OutputSchema: model.OutputSchema{
 				"category": {Type: model.FieldTypeString, Required: true},
 			},

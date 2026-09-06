@@ -9,7 +9,8 @@
     "lint": "eslint .",
     "preview": "vite preview",
     "verify:rules": "node verify-rule-tree.mjs",
-    "verify:output-schema": "node verify-output-schema.mjs"
+    "verify:output-schema": "node verify-output-schema.mjs",
+    "verify:layer-keys": "node verify-layer-keys.mjs"
   },
   "dependencies": {
     "@tanstack/react-query": "^5.90.21",

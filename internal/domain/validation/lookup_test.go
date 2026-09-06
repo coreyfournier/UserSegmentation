@@ -11,7 +11,7 @@ func snapWithLookup(t model.LookupTable, seg model.Segment) *model.Snapshot {
 	return &model.Snapshot{
 		Lookups: []model.LookupTable{t},
 		Layers: []model.Layer{{
-			Name:        "l",
+			Key:         "l",
 			InputSchema: model.InputSchema{"zip": {Type: model.FieldTypeString}},
 			Segments:    []model.Segment{seg},
 		}},

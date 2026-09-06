@@ -42,11 +42,11 @@ func ValidateSnapshot(snap *model.Snapshot) error {
 			tbl, ok := lookups[f.Lookup]
 			if !ok {
 				errs = append(errs, fmt.Sprintf(
-					"layer %q input %q: lookup %q does not exist", layer.Name, name, f.Lookup))
+					"layer %q input %q: lookup %q does not exist", layer.Key, name, f.Lookup))
 			} else if f.Type != tbl.KeyType {
 				errs = append(errs, fmt.Sprintf(
 					"layer %q input %q: field type %q does not match lookup %q key type %q",
-					layer.Name, name, f.Type, tbl.Name, tbl.KeyType))
+					layer.Key, name, f.Type, tbl.Name, tbl.KeyType))
 			}
 		}
 
@@ -63,7 +63,7 @@ func ValidateSnapshot(snap *model.Snapshot) error {
 					"layer %q output %q: \"eval\" is no longer declared — the mode is derived "+
 						"from the type, so a string is a template and everything else is an "+
 						"expression; remove it",
-					layer.Name, name))
+					layer.Key, name))
 			}
 		}
 
@@ -99,13 +99,13 @@ func ValidateSnapshot(snap *model.Snapshot) error {
 				errs = append(errs, fmt.Sprintf(
 					"segment %q: inputSchema is declared on the layer now, not the segment — "+
 						"move these %d field(s) to layer %q",
-					seg.ID, len(seg.LegacyInputSchema), layer.Name))
+					seg.ID, len(seg.LegacyInputSchema), layer.Key))
 			}
 			if len(seg.LegacyOutputSchema) > 0 {
 				errs = append(errs, fmt.Sprintf(
 					"segment %q: outputSchema is declared on the layer now, not the segment — "+
 						"move these %d field(s) to layer %q",
-					seg.ID, len(seg.LegacyOutputSchema), layer.Name))
+					seg.ID, len(seg.LegacyOutputSchema), layer.Key))
 			}
 
 			// Build the effective schema: layer's inputSchema fields + expression-defined fields.
@@ -138,7 +138,7 @@ func ValidateSnapshot(snap *model.Snapshot) error {
 			// way a rule's own messages are — see validateRuleTree.
 			if env != nil {
 				for _, lang := range sortedKeys(seg.DefaultMessages) {
-					where := fmt.Sprintf("layer %q segment %q defaultMessages[%s]", layer.Name, seg.ID, lang)
+					where := fmt.Sprintf("layer %q segment %q defaultMessages[%s]", layer.Key, seg.ID, lang)
 					errs = append(errs, validateTemplateTokens(where, seg.DefaultMessages[lang], effective, env)...)
 				}
 			}
@@ -149,7 +149,7 @@ func ValidateSnapshot(snap *model.Snapshot) error {
 
 			vc := ruleContext{
 				schema:  effective,
-				layer:   layer.Name,
+				layer:   layer.Key,
 				segment: seg.ID,
 				deps:    deps,
 				lookups: lookups,
@@ -202,7 +202,7 @@ func WarnMissingInputSchemas(snap *model.Snapshot) []string {
 		if affected > 0 {
 			warnings = append(warnings, fmt.Sprintf(
 				"layer %q: no inputSchema — rule fields are not validated for its %d segment(s)",
-				layer.Name, affected))
+				layer.Key, affected))
 		}
 	}
 	return warnings
@@ -422,28 +422,40 @@ func validateLayerGraph(layers []model.Layer) []string {
 
 	byName := make(map[string]struct{}, len(layers))
 	for _, l := range layers {
-		if l.Name == "" {
-			errs = append(errs, "layer with empty name")
+		// Config written before the key existed carries only a name. Say so
+		// outright, with the key it would derive, rather than reporting the
+		// generic "key is required" and leaving the author to guess the
+		// convention.
+		if l.Key == "" && l.Name != "" {
+			if derived := model.DeriveLayerKey(l.Name); derived != "" {
+				errs = append(errs, fmt.Sprintf(
+					"layer %q has no key — add \"key\": %q (the name is now the friendly label)",
+					l.Name, derived))
+				continue
+			}
+		}
+		if msg := model.ValidateLayerKey(l.Key); msg != "" {
+			errs = append(errs, fmt.Sprintf("layer %q: %s", l.Key, msg))
 			continue
 		}
-		if _, dup := byName[l.Name]; dup {
-			errs = append(errs, fmt.Sprintf("duplicate layer name %q", l.Name))
+		if _, dup := byName[l.Key]; dup {
+			errs = append(errs, fmt.Sprintf("duplicate layer key %q", l.Key))
 			continue
 		}
-		byName[l.Name] = struct{}{}
+		byName[l.Key] = struct{}{}
 	}
 
 	for _, l := range layers {
 		seen := make(map[string]struct{}, len(l.DependsOn))
 		for _, dep := range l.DependsOn {
 			switch {
-			case dep == l.Name:
-				errs = append(errs, fmt.Sprintf("layer %q depends on itself", l.Name))
+			case dep == l.Key:
+				errs = append(errs, fmt.Sprintf("layer %q depends on itself", l.Key))
 			case !contains(byName, dep):
-				errs = append(errs, fmt.Sprintf("layer %q depends on unknown layer %q", l.Name, dep))
+				errs = append(errs, fmt.Sprintf("layer %q depends on unknown layer %q", l.Key, dep))
 			}
 			if _, dup := seen[dep]; dup {
-				errs = append(errs, fmt.Sprintf("layer %q declares duplicate dependency %q", l.Name, dep))
+				errs = append(errs, fmt.Sprintf("layer %q declares duplicate dependency %q", l.Key, dep))
 			}
 			seen[dep] = struct{}{}
 		}
@@ -467,7 +479,7 @@ func contains(set map[string]struct{}, key string) bool {
 func findCycle(layers []model.Layer) []string {
 	deps := make(map[string][]string, len(layers))
 	for _, l := range layers {
-		deps[l.Name] = l.DependsOn
+		deps[l.Key] = l.DependsOn
 	}
 
 	const (
@@ -506,7 +518,7 @@ func findCycle(layers []model.Layer) []string {
 	}
 
 	for _, l := range layers {
-		if color[l.Name] == white && visit(l.Name) {
+		if color[l.Key] == white && visit(l.Key) {
 			return cycle
 		}
 	}

@@ -35,7 +35,7 @@ func graphEvaluator(extra map[string]strategy.Strategy) *Evaluator {
 
 func staticLayer(name, value string, dependsOn ...string) model.Layer {
 	return model.Layer{
-		Name:      name,
+		Key:       name,
 		DependsOn: dependsOn,
 		Segments: []model.Segment{{
 			ID:       name + "-seg",
@@ -49,7 +49,7 @@ func staticLayer(name, value string, dependsOn ...string) model.Layer {
 // field is not the required value.
 func checklistLayer(name, rule, field, want string, dependsOn ...string) model.Layer {
 	return model.Layer{
-		Name:      name,
+		Key:       name,
 		DependsOn: dependsOn,
 		Segments: []model.Segment{{
 			ID:       name + "-seg",
@@ -72,7 +72,7 @@ func evaluate(t *testing.T, e *Evaluator, snap *model.Snapshot, ctx map[string]i
 func TestGraph_DependencyOrderIgnoresDeclarationOrder(t *testing.T) {
 	snap := &model.Snapshot{Layers: []model.Layer{
 		{
-			Name:      "downstream",
+			Key:       "downstream",
 			DependsOn: []string{"upstream"},
 			Segments: []model.Segment{{
 				ID:       "s",
@@ -100,7 +100,7 @@ func TestGraph_DiamondDependency(t *testing.T) {
 		staticLayer("left", "l", "root"),
 		staticLayer("right", "x", "root"),
 		{
-			Name:      "join",
+			Key:       "join",
 			DependsOn: []string{"left", "right"},
 			Segments: []model.Segment{{
 				ID:       "s",
@@ -195,7 +195,7 @@ func TestGraph_SatisfiedGateReleasesDependents(t *testing.T) {
 func TestGraph_UnresolvedLayerSkipsDependents(t *testing.T) {
 	snap := &model.Snapshot{Layers: []model.Layer{
 		{
-			Name: "upstream",
+			Key: "upstream",
 			Segments: []model.Segment{{
 				ID:       "s",
 				Strategy: "rule",
@@ -227,7 +227,7 @@ func TestGraph_ChecklistInjectsNoContextValue(t *testing.T) {
 	snap := &model.Snapshot{Layers: []model.Layer{
 		checklistLayer("gate", "hasEIN", "ein", "12-3456789"),
 		{
-			Name:      "downstream",
+			Key:       "downstream",
 			DependsOn: []string{"gate"},
 			Segments: []model.Segment{{
 				ID:       "s",
@@ -255,7 +255,7 @@ func TestGraph_FilterEvaluatesDependencyClosureOnly(t *testing.T) {
 	snap := &model.Snapshot{Layers: []model.Layer{
 		staticLayer("upstream", "pro"),
 		{
-			Name:      "wanted",
+			Key:       "wanted",
 			DependsOn: []string{"upstream"},
 			Segments: []model.Segment{{
 				ID:       "s",
@@ -268,7 +268,7 @@ func TestGraph_FilterEvaluatesDependencyClosureOnly(t *testing.T) {
 				Default: "missed",
 			}},
 		},
-		{Name: "unrelated", Segments: []model.Segment{{ID: "s", Strategy: "counting"}}},
+		{Key: "unrelated", Segments: []model.Segment{{ID: "s", Strategy: "counting"}}},
 	}}
 
 	e := graphEvaluator(map[string]strategy.Strategy{"counting": unrelated})
@@ -308,7 +308,7 @@ func TestGraph_WhenDispatchSelectsSegment(t *testing.T) {
 	}
 
 	snap := &model.Snapshot{Layers: []model.Layer{{
-		Name: "payroll",
+		Key: "payroll",
 		Segments: []model.Segment{
 			typeSegment("precision", "Precision", "precisionAnchorDateWrong", "anchorDate", "2026-01-01"),
 			typeSegment("express", "Express", "expressEinWrong", "ein", "12-3456789"),
@@ -357,7 +357,7 @@ func TestGraph_WhenDispatchSelectsSegment(t *testing.T) {
 // document, and rules address it by path.
 func TestGraph_NestedEntityContext(t *testing.T) {
 	snap := &model.Snapshot{Layers: []model.Layer{{
-		Name: "employee-readiness",
+		Key: "employeeReadiness",
 		Segments: []model.Segment{{
 			ID:       "all",
 			Strategy: model.StrategyChecklist,
@@ -381,7 +381,7 @@ func TestGraph_NestedEntityContext(t *testing.T) {
 		"company":  map[string]interface{}{"productType": "Precision"},
 	}, nil)
 
-	lr := res.Layers["employee-readiness"]
+	lr := res.Layers["employeeReadiness"]
 	if lr.Status != model.StatusViolated {
 		t.Fatalf("expected violated, got %q", lr.Status)
 	}

@@ -61,17 +61,21 @@ export default function LayerRail({
       <nav aria-label="Layers">
         {layers.map((layer) => {
           const deps = layer.dependsOn ?? [];
-          const matched = matches.get(layer.name) ?? [];
+          const matched = matches.get(layer.key) ?? [];
           return (
-            <div key={layer.name}>
+            <div key={layer.key}>
               <button
                 type="button"
-                className={`${styles.row} ${layer.name === selected ? styles.active : ''}`}
-                onClick={() => onSelect(layer.name)}
-                aria-current={layer.name === selected ? 'true' : undefined}
-                title={deps.length ? `Runs after ${deps.join(', ')}` : undefined}
+                className={`${styles.row} ${layer.key === selected ? styles.active : ''}`}
+                onClick={() => onSelect(layer.key)}
+                aria-current={layer.key === selected ? 'true' : undefined}
+                title={deps.length ? `${layer.key} — runs after ${deps.join(", ")}` : layer.key}
               >
-                <span className={styles.name}>{layer.name}</span>
+                {/* The friendly name is what an author scans for; the key is
+                    what a response and a dependsOn edge carry. A layer with no
+                    name is shown by its key, which is then the only name it
+                    has — never a blank row. */}
+                <span className={styles.name}>{layer.name || layer.key}</span>
                 {deps.length > 0 && (
                   <span className={styles.dep} aria-label={`runs after ${deps.join(', ')}`}>↳</span>
                 )}
@@ -84,7 +88,7 @@ export default function LayerRail({
                   className={styles.segRow}
                   onClick={() =>
                     navigate(
-                      `/layers/${encodeURIComponent(layer.name)}/segments/${encodeURIComponent(segId)}`
+                      `/layers/${encodeURIComponent(layer.key)}/segments/${encodeURIComponent(segId)}`
                     )
                   }
                   title={`Open segment ${segId}`}

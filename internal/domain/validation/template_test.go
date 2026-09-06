@@ -13,7 +13,7 @@ import (
 func ruleSnapshot(schema model.InputSchema, computed []model.ComputedField, rule model.Rule) *model.Snapshot {
 	return &model.Snapshot{
 		Layers: []model.Layer{{
-			Name:        "layer",
+			Key:         "layer",
 			InputSchema: schema,
 			Segments: []model.Segment{{
 				ID:       "seg",
@@ -138,7 +138,7 @@ func TestValidate_Template_ComputedFieldTokenValidates(t *testing.T) {
 func TestValidate_Template_OutputFieldValueIsChecked(t *testing.T) {
 	snap := &model.Snapshot{
 		Layers: []model.Layer{{
-			Name:         "layer",
+			Key:          "layer",
 			InputSchema:  model.InputSchema{"name": {Type: model.FieldTypeString}},
 			OutputSchema: model.OutputSchema{"greeting": {Type: model.FieldTypeString}},
 			Segments: []model.Segment{{
@@ -187,7 +187,7 @@ func TestValidate_Template_MessagesEntryIsChecked(t *testing.T) {
 func TestValidate_Template_DefaultMessagesIsChecked(t *testing.T) {
 	snap := &model.Snapshot{
 		Layers: []model.Layer{{
-			Name:        "layer",
+			Key:         "layer",
 			InputSchema: model.InputSchema{"name": {Type: model.FieldTypeString}},
 			Segments: []model.Segment{{
 				ID:              "seg",
@@ -258,7 +258,7 @@ func TestValidate_Template_NestedRuleErrorMessageIsChecked(t *testing.T) {
 func TestValidate_OutputExpressionRejectsUnknownIdentifier(t *testing.T) {
 	snap := &model.Snapshot{
 		Layers: []model.Layer{{
-			Name:         "layer",
+			Key:          "layer",
 			InputSchema:  model.InputSchema{"MaxAllowed": {Type: model.FieldTypeNumber}},
 			OutputSchema: model.OutputSchema{"cap": {Type: model.FieldTypeNumber}},
 			Segments: []model.Segment{{
@@ -289,14 +289,14 @@ func TestValidate_OutputExpressionRejectsUnknownIdentifier(t *testing.T) {
 // works, which is worse than the gap this validation closes.
 func TestValidate_TemplateAcceptsLayerReference(t *testing.T) {
 	snap := &model.Snapshot{Layers: []model.Layer{
-		{Name: "base-tier", InputSchema: model.InputSchema{"plan": {Type: model.FieldTypeString}},
+		{Key: "baseTier", InputSchema: model.InputSchema{"plan": {Type: model.FieldTypeString}},
 			Segments: []model.Segment{{ID: "t", Strategy: model.StrategyRule,
 				Rules: []model.Rule{{RuleName: "r", SuccessEvent: "pro",
 					Condition: &model.Condition{Field: "plan", Operator: model.OpEq, Value: "pro"}}}}}},
-		{Name: "promos", DependsOn: []string{"base-tier"},
+		{Key: "promos", DependsOn: []string{"baseTier"},
 			InputSchema: model.InputSchema{"country": {Type: model.FieldTypeString}},
 			Segments: []model.Segment{{ID: "p", Strategy: model.StrategyChecklist,
-				Rules: []model.Rule{{RuleName: "n", ErrorMessage: "Tier is ${layer:base-tier}.",
+				Rules: []model.Rule{{RuleName: "n", ErrorMessage: "Tier is ${layer:baseTier}.",
 					Condition: &model.Condition{Field: "country", Operator: model.OpEq, Value: "US"}}}}}},
 	}}
 	if err := ValidateSnapshot(snap); err != nil {

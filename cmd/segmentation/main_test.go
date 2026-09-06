@@ -27,7 +27,7 @@ func (f *fakeConfigSource) Load() (*model.Snapshot, error) {
 func TestLoadAndValidate_RejectsSegmentLevelInputSchema(t *testing.T) {
 	snap := &model.Snapshot{
 		Layers: []model.Layer{{
-			Name: "tier",
+			Key: "tier",
 			Segments: []model.Segment{{
 				ID:                "seg",
 				Strategy:          model.StrategyRule,
@@ -48,7 +48,7 @@ func TestLoadAndValidate_RejectsSegmentLevelInputSchema(t *testing.T) {
 func TestLoadAndValidate_ValidConfigPasses(t *testing.T) {
 	snap := &model.Snapshot{
 		Layers: []model.Layer{{
-			Name:        "tier",
+			Key:         "tier",
 			InputSchema: model.InputSchema{"country": {Type: model.FieldTypeString}},
 			Segments: []model.Segment{{
 				ID:       "seg",
@@ -78,7 +78,7 @@ func TestLoadAndValidate_ValidConfigPasses(t *testing.T) {
 func TestLoadAndValidate_WarnsOnMissingInputSchemaWithRules(t *testing.T) {
 	snap := &model.Snapshot{
 		Layers: []model.Layer{{
-			Name: "tier",
+			Key: "tier",
 			Segments: []model.Segment{{
 				ID:       "seg",
 				Strategy: model.StrategyRule,

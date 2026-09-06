@@ -27,12 +27,21 @@ export default function LayerDetail({ layer, onEdit, onDelete, onAddSegment }: P
   const [confirmSeg, setConfirmSeg] = useState<string | null>(null);
 
   const openSegment = (segId: string) =>
-    navigate(`/layers/${encodeURIComponent(layer.name)}/segments/${encodeURIComponent(segId)}`);
+    navigate(`/layers/${encodeURIComponent(layer.key)}/segments/${encodeURIComponent(segId)}`);
 
   return (
     <div className={`card ${styles.pane}`}>
       <div className={styles.header}>
-        <h3 className={styles.name}>{layer.name}</h3>
+        <div className={styles.name}>
+          <h3 className={styles.heading}>{layer.name || layer.key}</h3>
+          {/* The key is always shown, even when it is also the heading: it is
+              what a consumer reads out of the response and what dependsOn and
+              layer: tokens name, so an author should never have to open the
+              editor to find out what it is. */}
+          <code className={styles.key} title="Stable key — the object name in the response">
+            {layer.key}
+          </code>
+        </div>
         <div className={styles.actions}>
           <button type="button" className="btn-ghost btn-sm" onClick={onEdit}>edit</button>
           <button type="button" className="btn-danger btn-sm" onClick={onDelete}>x</button>
@@ -74,7 +83,7 @@ export default function LayerDetail({ layer, onEdit, onDelete, onAddSegment }: P
         message={`Delete segment "${confirmSeg}"?`}
         onConfirm={() => {
           if (confirmSeg) {
-            deleteSeg.mutate({ layerName: layer.name, segId: confirmSeg });
+            deleteSeg.mutate({ layerKey: layer.key, segId: confirmSeg });
           }
           setConfirmSeg(null);
         }}

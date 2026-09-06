@@ -68,7 +68,7 @@ func TestDeleteLookup_BlockedWhenReferenced(t *testing.T) {
 		Lookups: []model.LookupTable{{ID: "zips", Name: "Zips", KeyType: model.FieldTypeString,
 			Entries: []model.LookupEntry{{Key: "90210"}}}},
 		Layers: []model.Layer{{
-			Name:        "l",
+			Key:         "l",
 			InputSchema: model.InputSchema{"zip": {Type: model.FieldTypeString}},
 			Segments: []model.Segment{{
 				ID: "seg", Strategy: "rule",

@@ -11,7 +11,7 @@ import (
 func snapWithOutputField(f model.OutputField) *model.Snapshot {
 	return &model.Snapshot{
 		Layers: []model.Layer{{
-			Name:         "diagnostics",
+			Key:          "diagnostics",
 			OutputSchema: model.OutputSchema{"field": f},
 			// "amount" is declared purely so the expression-syntax tests
 			// below (which compile "amount * 2" etc.) exercise syntax, not
@@ -138,7 +138,7 @@ func TestValidate_OutputSchemaExemptOnStaticAndPercentage(t *testing.T) {
 	for _, strat := range []string{model.StrategyStatic, model.StrategyPercentage} {
 		snap := &model.Snapshot{
 			Layers: []model.Layer{{
-				Name: "tier",
+				Key: "tier",
 				OutputSchema: model.OutputSchema{
 					"field": model.OutputField{Type: model.FieldTypeNumber, Lookup: "vip-tiers"},
 				},
@@ -461,7 +461,7 @@ func TestValidate_RequiredOutputExemptOnStaticAndPercentage(t *testing.T) {
 	for _, strat := range []string{model.StrategyStatic, model.StrategyPercentage} {
 		snap := &model.Snapshot{
 			Layers: []model.Layer{{
-				Name:         "tier",
+				Key:          "tier",
 				OutputSchema: model.OutputSchema{"field": required},
 				Segments: []model.Segment{{
 					ID:       "seg",
@@ -526,7 +526,7 @@ func TestCheckRequiredOutputs_OverrideOnStaticSegmentStillChecked(t *testing.T) 
 func snapWithInputField(f model.SchemaField) *model.Snapshot {
 	return &model.Snapshot{
 		Layers: []model.Layer{{
-			Name:        "diagnostics",
+			Key:         "diagnostics",
 			InputSchema: model.InputSchema{"tier": f},
 			Segments: []model.Segment{{
 				ID:       "employee",

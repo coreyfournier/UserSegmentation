@@ -21,7 +21,7 @@ export default function TestingZone() {
   const allSchemas: InputSchema[] = [];
   for (const layer of layers ?? []) {
     // When layers are selected, only show schemas for those; otherwise show all.
-    if (selectedLayers.length && !selectedLayers.includes(layer.name)) continue;
+    if (selectedLayers.length && !selectedLayers.includes(layer.key)) continue;
     if (layer.inputSchema) allSchemas.push(layer.inputSchema);
   }
 
@@ -66,14 +66,14 @@ export default function TestingZone() {
             <label>Layers (leave unchecked for all)</label>
             <div className={styles.checkboxes}>
               {(layers ?? []).map((l) => (
-                <label key={l.name} className={styles.checkbox}>
+                <label key={l.key} className={styles.checkbox}>
                   <input
                     type="checkbox"
-                    checked={selectedLayers.includes(l.name)}
-                    onChange={() => toggleLayer(l.name)}
+                    checked={selectedLayers.includes(l.key)}
+                    onChange={() => toggleLayer(l.key)}
                     style={{ width: 'auto' }}
                   />
-                  {l.name}
+                  {l.name || l.key}
                 </label>
               ))}
             </div>

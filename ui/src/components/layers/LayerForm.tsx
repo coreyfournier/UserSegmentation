@@ -1,5 +1,7 @@
 import { useState } from 'react';
 import { useLookups } from '../../api/lookups';
+import { useRekeyPreview } from '../../api/layers';
+import { deriveLayerKey, validateLayerKey } from './layerKeyRules';
 import type { FieldType, InputSchema, Layer, OutputSchema, Rule, Segment } from '../../api/types';
 import { OPERATOR_TYPES } from '../../api/types';
 import InputSchemaEditor from '../schema/InputSchemaEditor';
@@ -151,6 +153,23 @@ export default function LayerForm({
 }: Props) {
   const { data: lookups } = useLookups();
   const [name, setName] = useState(initial?.name ?? '');
+  const [key, setKey] = useState(initial?.key ?? '');
+  // While creating, the key follows the name until the author edits it by hand
+  // — the common case is a key derived from the name, and typing it twice is
+  // pointless. An existing layer's key never auto-follows: it is referenced,
+  // and changing it because someone fixed a typo in the label would be a trap.
+  const [keyIsManual, setKeyIsManual] = useState(!!initial);
+  const setKeyTouched = (v: string) => {
+    setKeyIsManual(true);
+    setKey(v);
+  };
+  const effectiveKey = keyIsManual ? key : deriveLayerKey(name);
+  const keyError = validateLayerKey(effectiveKey);
+  // Only an existing layer can have its key changed; a new one has no old key
+  // and nothing can reference it yet.
+  const keyChanged = !!initial?.key && !keyError && effectiveKey !== initial.key;
+  const rekey = useRekeyPreview(initial?.key ?? '', effectiveKey, keyChanged);
+  const refs = rekey.data?.references;
   const [dependsOn, setDependsOn] = useState<string[]>(initial?.dependsOn ?? []);
   const [defaultLanguage, setDefaultLanguage] = useState(initial?.defaultLanguage ?? 'en');
   const [inputSchema, setInputSchema] = useState<InputSchema | undefined>(initial?.inputSchema);
@@ -172,13 +191,13 @@ export default function LayerForm({
   >(null);
 
   // A layer cannot depend on itself; everything else is a candidate.
-  const candidates = allLayers.map((l) => l.name).filter((n) => n !== initial?.name);
+  const candidates = allLayers.map((l) => l.key).filter((k) => k !== initial?.key);
 
-  const toggleDependency = (layerName: string) => {
+  const toggleDependency = (depKey: string) => {
     setDependsOn((current) =>
-      current.includes(layerName)
-        ? current.filter((n) => n !== layerName)
-        : [...current, layerName]
+      current.includes(depKey)
+        ? current.filter((n) => n !== depKey)
+        : [...current, depKey]
     );
   };
 
@@ -247,9 +266,11 @@ export default function LayerForm({
     <form
       onSubmit={(e) => {
         e.preventDefault();
+        if (keyError) return;
         onSubmit(
           {
-            name,
+            key: effectiveKey,
+            name: name.trim() || undefined,
             dependsOn: dependsOn.length ? dependsOn : undefined,
             defaultLanguage: defaultLanguage.trim() || undefined,
             inputSchema,
@@ -260,8 +281,80 @@ export default function LayerForm({
       }}
     >
       <div className="form-group">
-        <label>Layer Name</label>
-        <input value={name} onChange={(e) => setName(e.target.value)} required />
+        <label>Name</label>
+        <input
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          placeholder="Balance Diagnosis"
+        />
+        <p style={{ fontSize: 11, color: 'var(--text-muted)', margin: '4px 0 0' }}>
+          The friendly label. Shown here and returned inside this layer&rsquo;s result
+          object. Nothing references it, so it can be changed freely.
+        </p>
+      </div>
+
+      <div className="form-group">
+        <label>Key</label>
+        <input
+          value={effectiveKey}
+          onChange={(e) => setKeyTouched(e.target.value)}
+          placeholder="balanceDiagnosis"
+          aria-invalid={!!keyError}
+          required
+        />
+        {keyError && (
+          <p style={{ fontSize: 11, color: 'var(--danger)', margin: '4px 0 0' }}>{keyError}</p>
+        )}
+        <p style={{ fontSize: 11, color: 'var(--text-muted)', margin: '4px 0 0' }}>
+          The stable identity: the object name in <code>layers</code> in the response, what{' '}
+          <code>dependsOn</code> holds, and what <code>layer:x</code> resolves. Letters, digits
+          and underscores only, and not a C# reserved word, so a generated client can use it as
+          a property name.
+        </p>
+        {keyChanged && (
+          <div
+            style={{
+              marginTop: 6,
+              padding: '8px 10px',
+              border: '1px solid var(--danger)',
+              borderRadius: 'var(--radius)',
+              fontSize: 11,
+            }}
+          >
+            <strong>
+              Changing the key from <code>{initial!.key}</code> to <code>{effectiveKey}</code>
+            </strong>
+            {rekey.isLoading && <div>Checking what references it…</div>}
+            {refs && refs.length > 0 && (
+              <>
+                <div style={{ margin: '4px 0 2px' }}>
+                  {refs.length} internal reference{refs.length === 1 ? '' : 's'} will be
+                  rewritten when you save:
+                </div>
+                <ul style={{ margin: 0, paddingLeft: 18 }}>
+                  {refs.map((r, i) => (
+                    <li key={i}>
+                      <code>
+                        {[r.layer, r.segment, r.rule].filter(Boolean).join(' / ')}
+                      </code>{' '}
+                      ({r.where})
+                    </li>
+                  ))}
+                </ul>
+              </>
+            )}
+            {refs && refs.length === 0 && (
+              <div style={{ margin: '4px 0 2px' }}>Nothing inside the config references it.</div>
+            )}
+            {/* Stated unconditionally: it is true whether or not anything
+                internal points at the old key, and it is the half of the blast
+                radius nothing here can measure. */}
+            <div style={{ marginTop: 4, color: 'var(--danger)' }}>
+              Any consumer reading <code>layers.{initial!.key}</code> out of the response will
+              break. That cannot be detected from here.
+            </div>
+          </div>
+        )}
       </div>
 
       <div className="form-group">
@@ -272,17 +365,17 @@ export default function LayerForm({
           </p>
         ) : (
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 4 }}>
-            {candidates.map((layerName) => (
+            {candidates.map((depKey) => (
               <label
-                key={layerName}
+                key={depKey}
                 style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12 }}
               >
                 <input
                   type="checkbox"
-                  checked={dependsOn.includes(layerName)}
-                  onChange={() => toggleDependency(layerName)}
+                  checked={dependsOn.includes(depKey)}
+                  onChange={() => toggleDependency(depKey)}
                 />
-                {layerName}
+                {depKey}
               </label>
             ))}
           </div>

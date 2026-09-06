@@ -20,7 +20,7 @@ import (
 func TestAdminUseCase_CreateLayer_PersistsSchemas(t *testing.T) {
 	uc, _, _ := newTestAdminUC()
 	snap, err := uc.CreateLayer(model.Layer{
-		Name:         "withSchemas",
+		Key:          "withSchemas",
 		InputSchema:  model.InputSchema{"age": {Type: model.FieldTypeNumber}},
 		OutputSchema: model.OutputSchema{"category": {Type: model.FieldTypeString}},
 	})
@@ -29,7 +29,7 @@ func TestAdminUseCase_CreateLayer_PersistsSchemas(t *testing.T) {
 	}
 	idx := -1
 	for i, l := range snap.Layers {
-		if l.Name == "withSchemas" {
+		if l.Key == "withSchemas" {
 			idx = i
 		}
 	}
@@ -49,8 +49,8 @@ func TestAdminUseCase_CreateLayer_PersistsSchemas(t *testing.T) {
 
 func TestLayerSchema_UpdateLayerCarriesSchemasThrough(t *testing.T) {
 	uc, _, _ := newTestAdminUC()
-	snap, err := uc.UpdateLayer("base", model.Layer{
-		Name:         "base",
+	snap, err := uc.UpdateLayer("baseLayer", model.Layer{
+		Key:          "baseLayer",
 		InputSchema:  model.InputSchema{"age": {Type: model.FieldTypeNumber}},
 		OutputSchema: model.OutputSchema{"category": {Type: model.FieldTypeString}},
 	})
@@ -80,9 +80,9 @@ func TestLayerSchema_UpdateLayerCarriesSchemasThrough(t *testing.T) {
 func TestLayerSchema_UpdateLayer_OmittedSchemaIsCleared(t *testing.T) {
 	uc, _, _ := newTestAdminUC()
 
-	// First give "base" both schemas.
-	_, err := uc.UpdateLayer("base", model.Layer{
-		Name:         "base",
+	// First give "baseLayer" both schemas.
+	_, err := uc.UpdateLayer("baseLayer", model.Layer{
+		Key:          "baseLayer",
 		InputSchema:  model.InputSchema{"age": {Type: model.FieldTypeNumber}},
 		OutputSchema: model.OutputSchema{"category": {Type: model.FieldTypeString}},
 	})
@@ -91,7 +91,7 @@ func TestLayerSchema_UpdateLayer_OmittedSchemaIsCleared(t *testing.T) {
 	}
 
 	// Now update again with a layer that omits both schemas.
-	snap, err := uc.UpdateLayer("base", model.Layer{Name: "base"})
+	snap, err := uc.UpdateLayer("baseLayer", model.Layer{Key: "baseLayer"})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -114,7 +114,7 @@ func TestLayerSchema_UpdateLayer_InvalidatingSegmentRuleIsRejected(t *testing.T)
 	uc, s, sink := newTestAdminUC()
 
 	_, err := uc.CreateLayer(model.Layer{
-		Name:        "hazard",
+		Key:         "hazard",
 		InputSchema: model.InputSchema{"age": {Type: model.FieldTypeNumber}},
 		Segments: []model.Segment{{
 			ID:       "seg1",
@@ -135,7 +135,7 @@ func TestLayerSchema_UpdateLayer_InvalidatingSegmentRuleIsRejected(t *testing.T)
 	// Replace the inputSchema with one that no longer declares "age" — the
 	// rule above now reads an undeclared field.
 	_, err = uc.UpdateLayer("hazard", model.Layer{
-		Name:        "hazard",
+		Key:         "hazard",
 		InputSchema: model.InputSchema{"country": {Type: model.FieldTypeString}},
 	})
 	if err == nil {
@@ -155,7 +155,7 @@ func TestLayerSchema_UpdateLayer_InvalidatingSegmentRuleIsRejected(t *testing.T)
 	}
 	var hazard *model.Layer
 	for i := range after.Layers {
-		if after.Layers[i].Name == "hazard" {
+		if after.Layers[i].Key == "hazard" {
 			hazard = &after.Layers[i]
 		}
 	}

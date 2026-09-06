@@ -23,6 +23,10 @@ func NewEvaluator(strategies map[string]strategy.Strategy) *Evaluator {
 
 // LayerResult holds the outcome for a single layer.
 type LayerResult struct {
+	// Name is the layer's friendly label, carried through so the response can
+	// put it inside the object its key addresses. Empty when the layer has
+	// none, in which case the key is the only name it has.
+	Name       string
 	Status     model.LayerStatus
 	Assignment *model.Assignment
 	Failures   []model.Failure
@@ -85,7 +89,7 @@ func (e *Evaluator) Evaluate(snap *model.Snapshot, subjectKey string, ctx map[st
 		layer := &ordered[i]
 
 		if scope != nil {
-			if _, ok := scope[layer.Name]; !ok {
+			if _, ok := scope[layer.Key]; !ok {
 				continue
 			}
 		}
@@ -94,29 +98,32 @@ func (e *Evaluator) Evaluate(snap *model.Snapshot, subjectKey string, ctx map[st
 		if blocker, blocked := blockedBy(layer, statuses); blocked {
 			lr = &LayerResult{Status: skippedStatus(layer)}
 			lr.Warnings = append(lr.Warnings, model.Warning{
-				Segment: layer.Name,
+				Segment: layer.Key,
 				Field:   blocker,
 				Message: fmt.Sprintf("layer skipped: dependency %q did not resolve", blocker),
 			})
 		} else {
 			lr = e.evaluateLayer(layer, subjectKey, evalCtx, languages, renderAll, lookups, now)
 		}
-		statuses[layer.Name] = lr.Status
+		statuses[layer.Key] = lr.Status
 
 		// Inject the resolved value for downstream layers. Assert layers resolve
 		// no value — dependents gate on status instead.
 		if lr.Assignment != nil && lr.Assignment.Segment != "" {
-			evalCtx["layer:"+layer.Name] = lr.Assignment.Segment
+			evalCtx["layer:"+layer.Key] = lr.Assignment.Segment
 		}
 
 		// Only include in output if it passes the filter
 		if filterSet != nil {
-			if _, ok := filterSet[layer.Name]; !ok {
+			if _, ok := filterSet[layer.Key]; !ok {
 				continue
 			}
 		}
 
-		result.Layers[layer.Name] = lr
+		// Set here rather than in each branch above, so neither the skipped
+		// path nor the evaluated one can forget it.
+		lr.Name = layer.Name
+		result.Layers[layer.Key] = lr
 		result.Warnings = append(result.Warnings, lr.Warnings...)
 	}
 
@@ -254,21 +261,21 @@ func topoSort(layers []model.Layer) ([]model.Layer, error) {
 
 	for i := range layers {
 		l := &layers[i]
-		if _, dup := byName[l.Name]; dup {
-			return nil, fmt.Errorf("duplicate layer name %q", l.Name)
+		if _, dup := byName[l.Key]; dup {
+			return nil, fmt.Errorf("duplicate layer key %q", l.Key)
 		}
-		byName[l.Name] = l
-		indegree[l.Name] = 0
+		byName[l.Key] = l
+		indegree[l.Key] = 0
 	}
 
 	for i := range layers {
 		l := &layers[i]
 		for _, dep := range l.DependsOn {
 			if _, ok := byName[dep]; !ok {
-				return nil, fmt.Errorf("layer %q depends on unknown layer %q", l.Name, dep)
+				return nil, fmt.Errorf("layer %q depends on unknown layer %q", l.Key, dep)
 			}
-			indegree[l.Name]++
-			dependents[dep] = append(dependents[dep], l.Name)
+			indegree[l.Key]++
+			dependents[dep] = append(dependents[dep], l.Key)
 		}
 	}
 
@@ -315,7 +322,7 @@ func dependencyClosure(layers []model.Layer, requested []string) map[string]stru
 
 	byName := make(map[string]*model.Layer, len(layers))
 	for i := range layers {
-		byName[layers[i].Name] = &layers[i]
+		byName[layers[i].Key] = &layers[i]
 	}
 
 	scope := make(map[string]struct{}, len(requested))

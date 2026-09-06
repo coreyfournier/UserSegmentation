@@ -11,7 +11,7 @@ func TestValidateSnapshot_ValidConfig(t *testing.T) {
 	snap := &model.Snapshot{
 		Layers: []model.Layer{
 			{
-				Name: "test",
+				Key: "test",
 				InputSchema: model.InputSchema{
 					"country": {Type: model.FieldTypeString, Required: true},
 					"age":     {Type: model.FieldTypeNumber, Required: false},
@@ -44,7 +44,7 @@ func TestValidateSnapshot_MissingField(t *testing.T) {
 	snap := &model.Snapshot{
 		Layers: []model.Layer{
 			{
-				Name:        "test",
+				Key:         "test",
 				InputSchema: model.InputSchema{"country": {Type: model.FieldTypeString}},
 				Segments: []model.Segment{
 					{
@@ -67,7 +67,7 @@ func TestValidateSnapshot_IncompatibleOperator(t *testing.T) {
 	snap := &model.Snapshot{
 		Layers: []model.Layer{
 			{
-				Name:        "test",
+				Key:         "test",
 				InputSchema: model.InputSchema{"name": {Type: model.FieldTypeString}},
 				Segments: []model.Segment{
 					{
@@ -86,27 +86,27 @@ func TestValidateSnapshot_IncompatibleOperator(t *testing.T) {
 	}
 }
 
-// crossLayerSnapshot builds a two-layer config where "test" reads "base-tier",
+// crossLayerSnapshot builds a two-layer config where "test" reads "baseTier",
 // declaring the dependency only when declared is true.
 func crossLayerSnapshot(declared bool) *model.Snapshot {
 	layer := model.Layer{
-		Name:        "test",
+		Key:         "test",
 		InputSchema: model.InputSchema{"country": {Type: model.FieldTypeString}},
 		Segments: []model.Segment{
 			{
 				ID:       "seg1",
 				Strategy: model.StrategyRule,
 				Rules: []model.Rule{
-					{RuleName: "cross", Condition: &model.Condition{Field: "layer:base-tier", Operator: model.OpEq, Value: "pro"}},
+					{RuleName: "cross", Condition: &model.Condition{Field: "layer:baseTier", Operator: model.OpEq, Value: "pro"}},
 				},
 			},
 		},
 	}
 	if declared {
-		layer.DependsOn = []string{"base-tier"}
+		layer.DependsOn = []string{"baseTier"}
 	}
 	return &model.Snapshot{
-		Layers: []model.Layer{{Name: "base-tier"}, layer},
+		Layers: []model.Layer{{Key: "baseTier"}, layer},
 	}
 }
 
@@ -131,9 +131,9 @@ func TestValidateSnapshot_CrossLayerRef_Undeclared(t *testing.T) {
 func TestValidateSnapshot_DependencyWithoutReference(t *testing.T) {
 	snap := &model.Snapshot{
 		Layers: []model.Layer{
-			{Name: "gate"},
+			{Key: "gate"},
 			{
-				Name:        "downstream",
+				Key:         "downstream",
 				DependsOn:   []string{"gate"},
 				InputSchema: model.InputSchema{"country": {Type: model.FieldTypeString}},
 				Segments: []model.Segment{

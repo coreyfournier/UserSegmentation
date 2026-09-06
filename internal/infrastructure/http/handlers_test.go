@@ -24,7 +24,7 @@ func setupTestServer() (*http.ServeMux, *store.Memory) {
 		Version: 1,
 		Layers: []model.Layer{
 			{
-				Name:  "base-tier",
+				Key: "baseTier",
 				Segments: []model.Segment{
 					{
 						ID:       "tier",
@@ -73,8 +73,8 @@ func TestEvaluateHandler_Success(t *testing.T) {
 
 	var resp application.EvaluateResponse
 	json.Unmarshal(w.Body.Bytes(), &resp)
-	if resp.Layers["base-tier"].Segment != "platinum" {
-		t.Errorf("expected platinum, got %s", resp.Layers["base-tier"].Segment)
+	if resp.Layers["baseTier"].Segment != "platinum" {
+		t.Errorf("expected platinum, got %s", resp.Layers["baseTier"].Segment)
 	}
 }
 

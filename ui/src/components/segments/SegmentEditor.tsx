@@ -21,7 +21,7 @@ import ErrorBanner from '../common/ErrorBanner';
 import styles from './SegmentEditor.module.css';
 
 export default function SegmentEditor() {
-  const { name: layerName, id: segId } = useParams<{ name: string; id: string }>();
+  const { key: layerKey, id: segId } = useParams<{ key: string; id: string }>();
   const navigate = useNavigate();
   const { data: layers } = useLayers();
   const { data: lookups } = useLookups();
@@ -30,14 +30,14 @@ export default function SegmentEditor() {
   const lookupById = (id?: string) => (id ? (lookups ?? []).find((t) => t.id === id) : undefined);
   const updateLayer = useUpdateLayer();
 
-  const layer = layers?.find((l) => l.name === layerName);
+  const layer = layers?.find((l) => l.key === layerKey);
   const original = layer?.segments.find((s) => s.id === segId);
   // A rule may only reference layers this one declares a dependency on, so the
   // picker offers exactly those — the UI cannot build a config validation rejects.
   const layerNames = layer?.dependsOn ?? [];
   // "Edit on the layer" must open this segment's own layer, not just the list —
   // LayerList reads this query param on mount and opens that layer's edit modal.
-  const editLayerHref = layerName ? `/layers?edit=${encodeURIComponent(layerName)}` : '/layers';
+  const editLayerHref = layerKey ? `/layers?edit=${encodeURIComponent(layerKey)}` : '/layers';
 
   const [seg, setSeg] = useState<Segment | null>(null);
   const segRef = useRef(seg);
@@ -59,8 +59,9 @@ export default function SegmentEditor() {
   const declareOutput = (name: string, field: OutputField) => {
     if (!layer) return;
     updateLayer.mutate({
-      name: layer.name,
+      key: layer.key,
       layer: {
+        key: layer.key,
         name: layer.name,
         dependsOn: layer.dependsOn,
         defaultLanguage: layer.defaultLanguage,
@@ -105,9 +106,9 @@ export default function SegmentEditor() {
   };
 
   const handleSave = () => {
-    if (!layerName || !segId || !segRef.current) return;
+    if (!layerKey || !segId || !segRef.current) return;
     updateSegment.mutate(
-      { layerName, segId, segment: segRef.current },
+      { layerKey, segId, segment: segRef.current },
       { onSuccess: () => navigate('/layers') }
     );
   };
@@ -118,7 +119,7 @@ export default function SegmentEditor() {
         <h2>
           <span className={styles.breadcrumb} onClick={() => navigate('/layers')}>Layers</span>
           {' / '}
-          <span className={styles.breadcrumb}>{layerName}</span>
+          <span className={styles.breadcrumb}>{layerKey}</span>
           {' / '}
           {seg.id}
         </h2>
@@ -144,7 +145,7 @@ export default function SegmentEditor() {
       <section id="input-schema" className={`card ${styles.section}`}>
         <h3>Input Schema</h3>
         <p className={styles.layerNote}>
-          Declared on layer <strong>{layerName}</strong> — every segment in it shares this
+          Declared on layer <strong>{layerKey}</strong> — every segment in it shares this
           schema.{' '}
           <button type="button" className="btn-ghost btn-sm" onClick={() => navigate(editLayerHref)}>
             Edit on the layer
@@ -181,7 +182,7 @@ export default function SegmentEditor() {
         {supportsOutputSchema(seg.strategy) ? (
           <>
             <p className={styles.layerNote}>
-              Declared on layer <strong>{layerName}</strong> — every segment in it shares this
+              Declared on layer <strong>{layerKey}</strong> — every segment in it shares this
               schema.{' '}
               <button type="button" className="btn-ghost btn-sm" onClick={() => navigate(editLayerHref)}>
                 Edit on the layer

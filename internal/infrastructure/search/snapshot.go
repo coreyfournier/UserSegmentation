@@ -53,15 +53,28 @@ func (s *SnapshotSearcher) Search(query string, limit int) (*model.SearchResult,
 	for i := range snap.Layers {
 		layers[i] = &snap.Layers[i]
 	}
-	sort.Slice(layers, func(i, j int) bool { return layers[i].Name < layers[j].Name })
+	sort.Slice(layers, func(i, j int) bool { return layers[i].Key < layers[j].Key })
 
 	for _, layer := range layers {
-		if strings.Contains(strings.ToLower(layer.Name), needle) {
+		// A layer is findable by either of the two names it has. Which one an
+		// author searches for depends on where they were looking: the friendly
+		// name in the UI, the key in a response, a dependsOn edge or a layer:
+		// token. Matching only one of them would make half of those searches
+		// fail for no reason visible to the author. The key wins when both
+		// match, so a layer is reported once.
+		field, value := "", ""
+		switch {
+		case strings.Contains(strings.ToLower(layer.Key), needle):
+			field, value = "key", layer.Key
+		case strings.Contains(strings.ToLower(layer.Name), needle):
+			field, value = "name", layer.Name
+		}
+		if field != "" {
 			if !appendHit(result, limit, model.SearchHit{
 				Kind:  "layer",
-				Layer: layer.Name,
-				Field: "name",
-				Value: layer.Name,
+				Layer: layer.Key,
+				Field: field,
+				Value: value,
 			}) {
 				return result, nil
 			}
@@ -83,7 +96,7 @@ func (s *SnapshotSearcher) Search(query string, limit int) (*model.SearchResult,
 			}
 			if !appendHit(result, limit, model.SearchHit{
 				Kind:    "segment",
-				Layer:   layer.Name,
+				Layer:   layer.Key,
 				Segment: seg.ID,
 				Field:   field,
 				Value:   value,

@@ -19,7 +19,7 @@ func newMessageEvaluator() *Evaluator {
 func TestEvaluator_RuleMessageRendered(t *testing.T) {
 	snap := &model.Snapshot{
 		Layers: []model.Layer{{
-			Name: "l",
+			Key: "l",
 			Segments: []model.Segment{{
 				ID: "s", Strategy: "rule",
 				Rules: []model.Rule{{
@@ -48,7 +48,7 @@ func TestEvaluator_RuleMessageRendered(t *testing.T) {
 func TestEvaluator_OverrideMessageRendered(t *testing.T) {
 	snap := &model.Snapshot{
 		Layers: []model.Layer{{
-			Name: "l",
+			Key: "l",
 			Segments: []model.Segment{{
 				ID: "s", Strategy: "static",
 				Static: &model.StaticConfig{Default: "normal"},
@@ -71,7 +71,7 @@ func TestEvaluator_OverrideMessageRendered(t *testing.T) {
 func TestEvaluator_DefaultMessageRendered(t *testing.T) {
 	snap := &model.Snapshot{
 		Layers: []model.Layer{{
-			Name: "l",
+			Key: "l",
 			Segments: []model.Segment{{
 				ID: "s", Strategy: "rule",
 				Rules: []model.Rule{{
@@ -94,7 +94,7 @@ func TestEvaluator_DefaultMessageRendered(t *testing.T) {
 func TestEvaluator_MessageUsesComputedField(t *testing.T) {
 	snap := &model.Snapshot{
 		Layers: []model.Layer{{
-			Name: "l",
+			Key: "l",
 			Segments: []model.Segment{{
 				ID: "s", Strategy: model.StrategyRule,
 				Computed: []model.ComputedField{
@@ -120,7 +120,7 @@ func TestEvaluator_MessageUsesComputedField(t *testing.T) {
 func TestEvaluator_MessageFallbackToLayerDefaultLanguage(t *testing.T) {
 	snap := &model.Snapshot{
 		Layers: []model.Layer{{
-			Name: "l", DefaultLanguage: "en",
+			Key: "l", DefaultLanguage: "en",
 			Segments: []model.Segment{{
 				ID: "s", Strategy: "rule",
 				Rules: []model.Rule{{
@@ -143,7 +143,7 @@ func TestEvaluator_MessageFallbackToLayerDefaultLanguage(t *testing.T) {
 func TestEvaluator_MessageRenderErrorProducesWarning(t *testing.T) {
 	snap := &model.Snapshot{
 		Layers: []model.Layer{{
-			Name: "l",
+			Key: "l",
 			Segments: []model.Segment{{
 				ID: "s", Strategy: "rule",
 				Rules: []model.Rule{{
@@ -175,7 +175,7 @@ func TestEvaluator_MessageRenderErrorProducesWarning(t *testing.T) {
 func TestEvaluator_NoMessagesWhenNoLanguagesRequested(t *testing.T) {
 	snap := &model.Snapshot{
 		Layers: []model.Layer{{
-			Name: "l",
+			Key: "l",
 			Segments: []model.Segment{{
 				ID: "s", Strategy: "rule",
 				Rules: []model.Rule{{
@@ -197,7 +197,7 @@ func TestEvaluator_NoMessagesWhenNoLanguagesRequested(t *testing.T) {
 func TestEvaluator_RenderAllReturnsAllLocales(t *testing.T) {
 	snap := &model.Snapshot{
 		Layers: []model.Layer{{
-			Name: "l",
+			Key: "l",
 			Segments: []model.Segment{{
 				ID: "s", Strategy: "rule",
 				Rules: []model.Rule{{

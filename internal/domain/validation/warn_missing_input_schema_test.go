@@ -14,7 +14,7 @@ import (
 func TestWarnMissingInputSchemas_WarnsWhenSegmentsCarryRules(t *testing.T) {
 	snap := &model.Snapshot{
 		Layers: []model.Layer{{
-			Name: "tier",
+			Key: "tier",
 			Segments: []model.Segment{{
 				ID:       "seg",
 				Strategy: model.StrategyRule,
@@ -41,7 +41,7 @@ func TestWarnMissingInputSchemas_WarnsWhenSegmentsCarryRules(t *testing.T) {
 func TestWarnMissingInputSchemas_SilentWhenLayerDeclaresInputSchema(t *testing.T) {
 	snap := &model.Snapshot{
 		Layers: []model.Layer{{
-			Name:        "tier",
+			Key:         "tier",
 			InputSchema: model.InputSchema{"country": {Type: model.FieldTypeString}},
 			Segments: []model.Segment{{
 				ID:       "seg",
@@ -61,12 +61,12 @@ func TestWarnMissingInputSchemas_SilentWhenLayerDeclaresInputSchema(t *testing.T
 
 // A layer with no inputSchema is also silent when none of its segments carry
 // a rule, override, or when predicate to leave unvalidated — matching the
-// shipped config's base-tier/transfer-fee layers, which rely on the escape
+// shipped config's baseTier/transfer-fee layers, which rely on the escape
 // hatch for segments that read no fields at all.
 func TestWarnMissingInputSchemas_SilentWhenNoSegmentHasRules(t *testing.T) {
 	snap := &model.Snapshot{
 		Layers: []model.Layer{{
-			Name: "tier",
+			Key: "tier",
 			Segments: []model.Segment{{
 				ID:       "seg",
 				Strategy: model.StrategyStatic,
@@ -87,7 +87,7 @@ func TestWarnMissingInputSchemas_SilentWhenNoSegmentHasRules(t *testing.T) {
 func TestWarnMissingInputSchemas_ExemptsSegmentWithComputedFields(t *testing.T) {
 	snap := &model.Snapshot{
 		Layers: []model.Layer{{
-			Name: "tier",
+			Key: "tier",
 			Segments: []model.Segment{{
 				ID:       "seg",
 				Strategy: model.StrategyRule,
@@ -113,7 +113,7 @@ func TestWarnMissingInputSchemas_ExemptsSegmentWithComputedFields(t *testing.T) 
 func TestWarnMissingInputSchemas_CountsOnlySegmentsWithRuleTrees(t *testing.T) {
 	snap := &model.Snapshot{
 		Layers: []model.Layer{{
-			Name: "tier",
+			Key: "tier",
 			Segments: []model.Segment{
 				{ID: "s1", Strategy: model.StrategyStatic, Static: &model.StaticConfig{Default: "x"}},
 				{

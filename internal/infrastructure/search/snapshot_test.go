@@ -16,13 +16,13 @@ func testSearcher(t *testing.T, snap *model.Snapshot) *SnapshotSearcher {
 
 func fixture() *model.Snapshot {
 	return &model.Snapshot{Layers: []model.Layer{
-		{Name: "ewa-risk", Segments: []model.Segment{
+		{Key: "ewaRisk", Name: "EWA Risk", Segments: []model.Segment{
 			{ID: "employee", Strategy: model.StrategyChecklist},
 		}},
-		{Name: "base-tier", Segments: []model.Segment{
+		{Key: "baseTier", Segments: []model.Segment{
 			{ID: "user-tier", Strategy: model.StrategyStatic},
 		}},
-		{Name: "experiments", Segments: []model.Segment{
+		{Key: "experiments", Segments: []model.Segment{
 			{ID: "checkout-flow", Strategy: model.StrategyPercentage},
 			{ID: "ewa-banner", Strategy: model.StrategyPercentage},
 		}},
@@ -46,7 +46,7 @@ func TestSearch_MatchesLayersAndSegments(t *testing.T) {
 	// ewa-risk's own segment, whose id is "employee".
 	got := hitKeys(res)
 	want := []string{
-		"layer:ewa-risk/ (name)",
+		"layer:ewaRisk/ (key)",
 		"segment:experiments/ewa-banner (id)",
 	}
 	if len(got) != len(want) {
@@ -60,9 +60,9 @@ func TestSearch_MatchesLayersAndSegments(t *testing.T) {
 }
 
 func TestSearch_IsCaseInsensitive(t *testing.T) {
-	res, _ := testSearcher(t, fixture()).Search("EWA-Risk", 0)
-	if len(res.Hits) != 1 || res.Hits[0].Layer != "ewa-risk" {
-		t.Fatalf("expected the ewa-risk layer, got %v", hitKeys(res))
+	res, _ := testSearcher(t, fixture()).Search("EWARISK", 0)
+	if len(res.Hits) != 1 || res.Hits[0].Layer != "ewaRisk" {
+		t.Fatalf("expected the ewaRisk layer, got %v", hitKeys(res))
 	}
 }
 

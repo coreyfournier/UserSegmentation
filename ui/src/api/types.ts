@@ -132,7 +132,10 @@ export interface Segment {
 }
 
 export interface Layer {
-  name: string;
+  /** Stable identity: the response key, what dependsOn holds, what layer:x resolves. */
+  key: string;
+  /** Friendly label. Optional, free-form, references nothing. */
+  name?: string;
   /**
    * Layers this one must follow. A rule referencing `layer:x` must declare x
    * here. If a dependency does not resolve, this layer is skipped rather than
@@ -253,7 +256,7 @@ export interface SearchHit {
   kind: 'layer' | 'segment';
   layer: string;
   segment?: string;
-  field: 'name' | 'id' | 'strategy';
+  field: 'key' | 'name' | 'id' | 'strategy';
   value: string;
 }
 

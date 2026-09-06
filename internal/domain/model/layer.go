@@ -6,7 +6,24 @@ import "time"
 // dependency graph. Execution order is derived from DependsOn, not from any
 // ordinal field.
 type Layer struct {
-	Name string `json:"name"`
+	// Key is the layer's stable identity: the key it occupies in the
+	// evaluation response, what DependsOn holds, what "layer:x" resolves, what
+	// a request filters on, and how the admin API addresses it.
+	//
+	// It is constrained to a C# identifier — letters, digits and underscores,
+	// not starting with a digit, and not a reserved word — because a consumer
+	// generates types from the response, and a key like "CT Rule" or
+	// "base-tier" cannot be a property name there.
+	//
+	// Changing it is allowed and is a deliberate act: every internal reference
+	// is rewritten in the same transaction (AdminUseCase.UpdateLayer), but no
+	// external consumer reading the old key can be reached from here.
+	Key string `json:"key"`
+	// Name is the friendly label, shown in the UI and emitted inside the
+	// layer's result object. Optional, free-form, and with no uniqueness rule:
+	// it identifies nothing, so two layers may share one. A layer without a
+	// name is shown and reported by its key.
+	Name string `json:"name,omitempty"`
 	// DependsOn names the layers that must resolve before this one runs. A rule
 	// referencing "layer:x" must declare x here. If any dependency does not
 	// resolve, this layer is skipped rather than evaluated against absent context.

@@ -24,51 +24,51 @@ func expectError(t *testing.T, snap *model.Snapshot, want string) {
 
 func TestGraph_UnknownDependency(t *testing.T) {
 	expectError(t, graphSnapshot(
-		model.Layer{Name: "b", DependsOn: []string{"missing"}},
+		model.Layer{Key: "b", DependsOn: []string{"missing"}},
 	), `depends on unknown layer "missing"`)
 }
 
 func TestGraph_SelfDependency(t *testing.T) {
 	expectError(t, graphSnapshot(
-		model.Layer{Name: "a", DependsOn: []string{"a"}},
+		model.Layer{Key: "a", DependsOn: []string{"a"}},
 	), "depends on itself")
 }
 
 func TestGraph_DuplicateLayerName(t *testing.T) {
 	expectError(t, graphSnapshot(
-		model.Layer{Name: "a"},
-		model.Layer{Name: "a"},
-	), `duplicate layer name "a"`)
+		model.Layer{Key: "a"},
+		model.Layer{Key: "a"},
+	), `duplicate layer key "a"`)
 }
 
 func TestGraph_DuplicateDependency(t *testing.T) {
 	expectError(t, graphSnapshot(
-		model.Layer{Name: "a"},
-		model.Layer{Name: "b", DependsOn: []string{"a", "a"}},
+		model.Layer{Key: "a"},
+		model.Layer{Key: "b", DependsOn: []string{"a", "a"}},
 	), "duplicate dependency")
 }
 
 func TestGraph_DirectCycle(t *testing.T) {
 	expectError(t, graphSnapshot(
-		model.Layer{Name: "a", DependsOn: []string{"b"}},
-		model.Layer{Name: "b", DependsOn: []string{"a"}},
+		model.Layer{Key: "a", DependsOn: []string{"b"}},
+		model.Layer{Key: "b", DependsOn: []string{"a"}},
 	), "cycle")
 }
 
 func TestGraph_IndirectCycle(t *testing.T) {
 	expectError(t, graphSnapshot(
-		model.Layer{Name: "a", DependsOn: []string{"c"}},
-		model.Layer{Name: "b", DependsOn: []string{"a"}},
-		model.Layer{Name: "c", DependsOn: []string{"b"}},
+		model.Layer{Key: "a", DependsOn: []string{"c"}},
+		model.Layer{Key: "b", DependsOn: []string{"a"}},
+		model.Layer{Key: "c", DependsOn: []string{"b"}},
 	), "cycle")
 }
 
 func TestGraph_AcyclicPasses(t *testing.T) {
 	snap := graphSnapshot(
-		model.Layer{Name: "root"},
-		model.Layer{Name: "left", DependsOn: []string{"root"}},
-		model.Layer{Name: "right", DependsOn: []string{"root"}},
-		model.Layer{Name: "join", DependsOn: []string{"left", "right"}},
+		model.Layer{Key: "root"},
+		model.Layer{Key: "left", DependsOn: []string{"root"}},
+		model.Layer{Key: "right", DependsOn: []string{"root"}},
+		model.Layer{Key: "join", DependsOn: []string{"left", "right"}},
 	)
 	if err := ValidateSnapshot(snap); err != nil {
 		t.Errorf("diamond should be valid, got: %v", err)
@@ -84,7 +84,7 @@ func TestGraph_FormulasAreCompiled(t *testing.T) {
 		Strategy: model.StrategyChecklist,
 		Computed: []model.ComputedField{{Name: "Broken", Type: model.FieldTypeNumber, Formula: "1 +"}},
 	}
-	expectError(t, graphSnapshot(model.Layer{Name: "gate", Segments: []model.Segment{seg}}), "formula")
+	expectError(t, graphSnapshot(model.Layer{Key: "gate", Segments: []model.Segment{seg}}), "formula")
 }
 
 // The When dispatch predicate is a rule tree and is checked like any other.
@@ -98,7 +98,7 @@ func TestGraph_WhenPredicateValidated(t *testing.T) {
 		},
 	}
 	layer := model.Layer{
-		Name:        "payroll",
+		Key:         "payroll",
 		InputSchema: model.InputSchema{"productType": {Type: model.FieldTypeString}},
 		Segments:    []model.Segment{seg},
 	}

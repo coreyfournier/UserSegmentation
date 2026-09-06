@@ -55,7 +55,7 @@ func TestValidate_LegacyEvalKeyIsRejected(t *testing.T) {
 func TestValidate_LegacyEvalKeyRejectedOnZeroSegmentLayer(t *testing.T) {
 	snap := &model.Snapshot{
 		Layers: []model.Layer{{
-			Name: "diagnostics",
+			Key: "diagnostics",
 			OutputSchema: model.OutputSchema{
 				"field": {Type: model.FieldTypeString, LegacyEval: "template"},
 			},

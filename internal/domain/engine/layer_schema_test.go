@@ -18,7 +18,7 @@ func TestLayerSchema_ChecklistFailureCarriesLayerOutputs(t *testing.T) {
 	snap := &model.Snapshot{
 		Layers: []model.Layer{
 			{
-				Name: "checks",
+				Key: "checks",
 				OutputSchema: model.OutputSchema{
 					"category": model.OutputField{Type: model.FieldTypeString},
 				},
@@ -61,7 +61,7 @@ func TestLayerSchema_RequiredOutputFieldMissingWarns(t *testing.T) {
 	snap := &model.Snapshot{
 		Layers: []model.Layer{
 			{
-				Name: "test",
+				Key: "test",
 				OutputSchema: model.OutputSchema{
 					"diagnosis": model.OutputField{Type: model.FieldTypeString, Required: true},
 				},
@@ -108,7 +108,7 @@ func TestLayerSchema_RequiredInputFieldMissingWarns(t *testing.T) {
 	snap := &model.Snapshot{
 		Layers: []model.Layer{
 			{
-				Name: "checks",
+				Key: "checks",
 				InputSchema: model.InputSchema{
 					"accountId": model.SchemaField{Type: model.FieldTypeString, Required: true},
 				},
@@ -153,7 +153,7 @@ func TestLayerSchema_DuplicateRequiredInputWarningCollapsedOnce(t *testing.T) {
 	snap := &model.Snapshot{
 		Layers: []model.Layer{
 			{
-				Name: "checks",
+				Key: "checks",
 				InputSchema: model.InputSchema{
 					"accountId": model.SchemaField{Type: model.FieldTypeString, Required: true},
 				},

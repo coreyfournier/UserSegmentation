@@ -24,7 +24,7 @@ func (m *mockSink) Save(snap *model.Snapshot) error {
 func newTestAdminUC() (*AdminUseCase, *store.Memory, *mockSink) {
 	s := store.NewMemory()
 	s.Swap(&model.Snapshot{Version: 1, Layers: []model.Layer{
-		{Name: "base", Segments: []model.Segment{
+		{Key: "baseLayer", Segments: []model.Segment{
 			{ID: "seg1", Strategy: "static", Static: &model.StaticConfig{Mappings: map[string]string{}, Default: "x"}},
 		}},
 	}})
@@ -47,7 +47,7 @@ func TestAdminUseCase_GetSnapshot(t *testing.T) {
 
 func TestAdminUseCase_CreateLayer(t *testing.T) {
 	uc, s, sink := newTestAdminUC()
-	snap, err := uc.CreateLayer(model.Layer{Name: "new"})
+	snap, err := uc.CreateLayer(model.Layer{Key: "newLayer"})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -68,7 +68,7 @@ func TestAdminUseCase_CreateLayer(t *testing.T) {
 
 func TestAdminUseCase_CreateLayer_Duplicate(t *testing.T) {
 	uc, _, _ := newTestAdminUC()
-	_, err := uc.CreateLayer(model.Layer{Name: "base"})
+	_, err := uc.CreateLayer(model.Layer{Key: "baseLayer"})
 	if err == nil || !strings.Contains(err.Error(), "already exists") {
 		t.Errorf("expected duplicate error, got %v", err)
 	}
@@ -76,12 +76,12 @@ func TestAdminUseCase_CreateLayer_Duplicate(t *testing.T) {
 
 func TestAdminUseCase_CreateLayer_NilSegments(t *testing.T) {
 	uc, _, _ := newTestAdminUC()
-	snap, err := uc.CreateLayer(model.Layer{Name: "empty"})
+	snap, err := uc.CreateLayer(model.Layer{Key: "empty"})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	for _, l := range snap.Layers {
-		if l.Name == "empty" {
+		if l.Key == "empty" {
 			if l.Segments == nil {
 				t.Error("segments should be initialized to empty slice, not nil")
 			}
@@ -95,12 +95,12 @@ func TestAdminUseCase_CreateLayer_NilSegments(t *testing.T) {
 
 func TestAdminUseCase_UpdateLayer(t *testing.T) {
 	uc, _, _ := newTestAdminUC()
-	snap, err := uc.UpdateLayer("base", model.Layer{Name: "renamed"})
+	snap, err := uc.UpdateLayer("baseLayer", model.Layer{Key: "renamed"})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if snap.Layers[0].Name != "renamed" {
-		t.Errorf("expected renamed, got %s", snap.Layers[0].Name)
+	if snap.Layers[0].Key != "renamed" {
+		t.Errorf("expected renamed, got %s", snap.Layers[0].Key)
 	}
 	// Segments should be preserved
 	if len(snap.Layers[0].Segments) != 1 {
@@ -110,7 +110,7 @@ func TestAdminUseCase_UpdateLayer(t *testing.T) {
 
 func TestAdminUseCase_UpdateLayer_NotFound(t *testing.T) {
 	uc, _, _ := newTestAdminUC()
-	_, err := uc.UpdateLayer("nonexistent", model.Layer{Name: "x"})
+	_, err := uc.UpdateLayer("nonexistent", model.Layer{Key: "x"})
 	if err == nil || !strings.Contains(err.Error(), "not found") {
 		t.Errorf("expected not found error, got %v", err)
 	}
@@ -120,7 +120,7 @@ func TestAdminUseCase_UpdateLayer_NotFound(t *testing.T) {
 
 func TestAdminUseCase_DeleteLayer(t *testing.T) {
 	uc, _, _ := newTestAdminUC()
-	snap, err := uc.DeleteLayer("base")
+	snap, err := uc.DeleteLayer("baseLayer")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -141,7 +141,7 @@ func TestAdminUseCase_DeleteLayer_NotFound(t *testing.T) {
 
 func TestAdminUseCase_CreateSegment(t *testing.T) {
 	uc, _, _ := newTestAdminUC()
-	snap, err := uc.CreateSegment("base", model.Segment{
+	snap, err := uc.CreateSegment("baseLayer", model.Segment{
 		ID: "seg2", Strategy: "static",
 		Static: &model.StaticConfig{Mappings: map[string]string{}, Default: "y"},
 	})
@@ -155,7 +155,7 @@ func TestAdminUseCase_CreateSegment(t *testing.T) {
 
 func TestAdminUseCase_CreateSegment_DuplicateID(t *testing.T) {
 	uc, _, _ := newTestAdminUC()
-	_, err := uc.CreateSegment("base", model.Segment{
+	_, err := uc.CreateSegment("baseLayer", model.Segment{
 		ID: "seg1", Strategy: "static",
 		Static: &model.StaticConfig{Mappings: map[string]string{}, Default: "y"},
 	})
@@ -176,7 +176,7 @@ func TestAdminUseCase_CreateSegment_LayerNotFound(t *testing.T) {
 
 func TestAdminUseCase_UpdateSegment(t *testing.T) {
 	uc, _, _ := newTestAdminUC()
-	snap, err := uc.UpdateSegment("base", "seg1", model.Segment{
+	snap, err := uc.UpdateSegment("baseLayer", "seg1", model.Segment{
 		Strategy: "static",
 		Static:   &model.StaticConfig{Mappings: map[string]string{}, Default: "updated"},
 	})
@@ -193,7 +193,7 @@ func TestAdminUseCase_UpdateSegment(t *testing.T) {
 
 func TestAdminUseCase_UpdateSegment_NotFound(t *testing.T) {
 	uc, _, _ := newTestAdminUC()
-	_, err := uc.UpdateSegment("base", "nonexistent", model.Segment{Strategy: "static"})
+	_, err := uc.UpdateSegment("baseLayer", "nonexistent", model.Segment{Strategy: "static"})
 	if err == nil || !strings.Contains(err.Error(), "not found") {
 		t.Errorf("expected not found error, got %v", err)
 	}
@@ -211,7 +211,7 @@ func TestAdminUseCase_UpdateSegment_LayerNotFound(t *testing.T) {
 
 func TestAdminUseCase_DeleteSegment(t *testing.T) {
 	uc, _, _ := newTestAdminUC()
-	snap, err := uc.DeleteSegment("base", "seg1")
+	snap, err := uc.DeleteSegment("baseLayer", "seg1")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -222,7 +222,7 @@ func TestAdminUseCase_DeleteSegment(t *testing.T) {
 
 func TestAdminUseCase_DeleteSegment_NotFound(t *testing.T) {
 	uc, _, _ := newTestAdminUC()
-	_, err := uc.DeleteSegment("base", "nonexistent")
+	_, err := uc.DeleteSegment("baseLayer", "nonexistent")
 	if err == nil || !strings.Contains(err.Error(), "not found") {
 		t.Errorf("expected not found error, got %v", err)
 	}
@@ -233,7 +233,7 @@ func TestAdminUseCase_DeleteSegment_NotFound(t *testing.T) {
 func TestAdminUseCase_ReplaceSnapshot(t *testing.T) {
 	uc, s, sink := newTestAdminUC()
 	newSnap := &model.Snapshot{Version: 5, Layers: []model.Layer{
-		{Name: "replaced", Segments: []model.Segment{}},
+		{Key: "replaced", Segments: []model.Segment{}},
 	}}
 	err := uc.ReplaceSnapshot(newSnap)
 	if err != nil {
@@ -253,7 +253,7 @@ func TestAdminUseCase_ReplaceSnapshot_ValidationError(t *testing.T) {
 	bad := &model.Snapshot{
 		Version: 1,
 		Layers: []model.Layer{{
-			Name: "bad",
+			Key: "bad",
 			InputSchema: model.InputSchema{
 				"age": {Type: model.FieldTypeString, Required: true},
 			},
@@ -261,7 +261,7 @@ func TestAdminUseCase_ReplaceSnapshot_ValidationError(t *testing.T) {
 				ID: "s", Strategy: "rule",
 				Rules: []model.Rule{{
 					RuleName:     "r",
-					Condition:   &model.Condition{Field: "age", Operator: "gt", Value: 18},
+					Condition:    &model.Condition{Field: "age", Operator: "gt", Value: 18},
 					SuccessEvent: "x",
 				}},
 			}},
@@ -277,8 +277,8 @@ func TestAdminUseCase_ReplaceSnapshot_ValidationError(t *testing.T) {
 
 func TestAdminUseCase_VersionIncrement(t *testing.T) {
 	uc, _, _ := newTestAdminUC()
-	snap1, _ := uc.CreateLayer(model.Layer{Name: "l1"})
-	snap2, _ := uc.CreateLayer(model.Layer{Name: "l2"})
+	snap1, _ := uc.CreateLayer(model.Layer{Key: "l1"})
+	snap2, _ := uc.CreateLayer(model.Layer{Key: "l2"})
 	if snap2.Version != snap1.Version+1 {
 		t.Errorf("expected version to increment: %d → %d", snap1.Version, snap2.Version)
 	}
@@ -289,7 +289,7 @@ func TestAdminUseCase_VersionIncrement(t *testing.T) {
 func TestAdminUseCase_CloneImmutability(t *testing.T) {
 	uc, s, _ := newTestAdminUC()
 	before := s.Get()
-	_, _ = uc.CreateLayer(model.Layer{Name: "new"})
+	_, _ = uc.CreateLayer(model.Layer{Key: "newLayer"})
 	after := s.Get()
 	// Original pointer should not have been mutated
 	if len(before.Layers) == len(after.Layers) {

@@ -31,7 +31,7 @@ func testSnapshot() *model.Snapshot {
 		Version: 1,
 		Layers: []model.Layer{
 			{
-				Name:  "tier",
+				Key: "tier",
 				Segments: []model.Segment{
 					{
 						ID:       "lookup",
@@ -115,7 +115,7 @@ func TestEvaluateUseCase_LayerFilter(t *testing.T) {
 	uc, s := newTestEvaluateUC()
 	snap := testSnapshot()
 	snap.Layers = append(snap.Layers, model.Layer{
-		Name: "extra",
+		Key:      "extra",
 		Segments: []model.Segment{{ID: "s1", Strategy: "static", Static: &model.StaticConfig{Default: "x"}}},
 	})
 	s.Swap(snap)
@@ -167,7 +167,7 @@ func TestEvaluateUseCase_OutputsWireFormat(t *testing.T) {
 		},
 		Layers: []model.Layer{
 			{
-				Name: "diagnostics",
+				Key: "diagnostics",
 				OutputSchema: model.OutputSchema{
 					"category":      {Type: model.FieldTypeString}, // literal
 					"description":   {Type: model.FieldTypeString},
@@ -193,7 +193,7 @@ func TestEvaluateUseCase_OutputsWireFormat(t *testing.T) {
 				},
 			},
 			{
-				Name: "tier",
+				Key: "tier",
 				OutputSchema: model.OutputSchema{
 					"tier": {Type: model.FieldTypeString},
 				},

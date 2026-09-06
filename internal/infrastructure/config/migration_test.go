@@ -26,9 +26,9 @@ func TestShippedConfig_LoadsAndValidates(t *testing.T) {
 	want := map[string][]string{
 		// Migrated from the removed `order` field: derived from real layer:
 		// references, so only these three edges exist.
-		"experiments": {"base-tier"},
-		"promotions":  {"base-tier"},
-		"features":    {"base-tier"},
+		"experiments": {"baseTier"},
+		"promotions":  {"baseTier"},
+		"features":    {"baseTier"},
 
 		// The progressive readiness gates.
 		"company-payroll-setup": {"company-identity"},

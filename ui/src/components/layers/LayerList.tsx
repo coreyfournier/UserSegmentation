@@ -26,14 +26,14 @@ function sortByDependency(layers: Layer[]): Layer[] {
 
   while (remaining.length > 0) {
     const index = remaining.findIndex((l) =>
-      (l.dependsOn ?? []).every((d) => placed.has(d) || !layers.some((x) => x.name === d))
+      (l.dependsOn ?? []).every((d) => placed.has(d) || !layers.some((x) => x.key === d))
     );
     if (index === -1) {
       out.push(...remaining); // cycle: show them anyway
       break;
     }
     const [next] = remaining.splice(index, 1);
-    placed.add(next.name);
+    placed.add(next.key);
     out.push(next);
   }
   return out;
@@ -66,7 +66,7 @@ export default function LayerList() {
   // explicit click on a card) always wins once set, and closing clears both.
   const [searchParams, setSearchParams] = useSearchParams();
   const editParam = searchParams.get('edit');
-  const editingFromQuery = editParam ? layers?.find((l) => l.name === editParam) ?? null : null;
+  const editingFromQuery = editParam ? layers?.find((l) => l.key === editParam) ?? null : null;
   const activeEditing = editing ?? editingFromQuery;
   const closeEditModal = () => {
     setEditing(null);
@@ -100,7 +100,7 @@ export default function LayerList() {
       matches.set(hit.layer, [...(matches.get(hit.layer) ?? []), hit.segment]);
     }
   }
-  const visible = searching ? sorted.filter((l) => matchedLayers.has(l.name)) : sorted;
+  const visible = searching ? sorted.filter((l) => matchedLayers.has(l.key)) : sorted;
 
   // Which layer the detail pane shows, in the URL so a reload, a back button
   // and a pasted link all land on the same one. Falls back to ?edit= — arriving
@@ -114,15 +114,15 @@ export default function LayerList() {
   // something the query found rather than on the first layer overall.
   const selectParam = searchParams.get('layer');
   const selected =
-    sorted.find((l) => l.name === selectParam) ??
-    sorted.find((l) => l.name === editParam) ??
+    sorted.find((l) => l.key === selectParam) ??
+    sorted.find((l) => l.key === editParam) ??
     visible[0] ??
     sorted[0] ??
     null;
 
-  const select = (name: string) => {
+  const select = (key: string) => {
     const next = new URLSearchParams(searchParams);
-    next.set('layer', name);
+    next.set('layer', key);
     setSearchParams(next, { replace: true });
   };
 
@@ -131,10 +131,10 @@ export default function LayerList() {
   // calling select() then closeEditModal() would rebuild from the pre-select
   // snapshot and throw the selection away. Used after a save, which is also
   // where the name may have just changed.
-  const selectAndCloseEdit = (name: string) => {
+  const selectAndCloseEdit = (key: string) => {
     setEditing(null);
     const next = new URLSearchParams(searchParams);
-    next.set('layer', name);
+    next.set('layer', key);
     next.delete('edit');
     setSearchParams(next, { replace: true });
   };
@@ -158,7 +158,7 @@ export default function LayerList() {
         <div className={styles.split}>
           <LayerRail
             layers={visible}
-            selected={selected?.name ?? null}
+            selected={selected?.key ?? null}
             onSelect={select}
             query={query}
             onQueryChange={setQuery}
@@ -171,12 +171,12 @@ export default function LayerList() {
               // Keyed by name so switching layers remounts the pane. Without
               // it, a pending "delete segment" confirmation would carry over
               // to whichever layer was selected next.
-              key={selected.name}
+              key={selected.key}
               layer={selected}
               onEdit={() => setEditing(selected)}
-              onDelete={() => setDeleting(selected.name)}
+              onDelete={() => setDeleting(selected.key)}
               onAddSegment={() => {
-                setAddSegTo(selected.name);
+                setAddSegTo(selected.key);
                 setNewSegId('');
                 setNewSegStrategy('static');
               }}
@@ -195,7 +195,7 @@ export default function LayerList() {
                 setShowCreate(false);
                 // Show what was just created rather than leaving the pane on
                 // whatever was selected before.
-                if (l.name) select(l.name);
+                if (l.key) select(l.key);
               },
             });
           }}
@@ -218,17 +218,17 @@ export default function LayerList() {
               // would reject the very schema change that orphaned it. They
               // are saved under the layer's current name — a rename, if any,
               // is part of the layer PUT that follows.
-              const layerName = activeEditing.name;
+              const layerKey = activeEditing.key;
               try {
                 if (changedSegments?.length) {
                   for (const seg of changedSegments) {
-                    await updateSegment.mutateAsync({ layerName, segId: seg.id, segment: seg });
+                    await updateSegment.mutateAsync({ layerKey, segId: seg.id, segment: seg });
                   }
                 }
-                await updateLayer.mutateAsync({ name: layerName, layer: l });
+                await updateLayer.mutateAsync({ key: layerKey, layer: l });
                 // Follow a rename: the selection is held by name, so keeping
                 // the old one would silently bounce the pane to the first layer.
-                selectAndCloseEdit(l.name ?? layerName);
+                selectAndCloseEdit(l.key ?? layerKey);
               } catch {
                 // Left open; updateLayer.error / updateSegment.error above
                 // render what failed so the author can retry or adjust.
@@ -278,7 +278,7 @@ export default function LayerList() {
               }),
             };
             createSegment.mutate(
-              { layerName: addSegTo, segment: seg },
+              { layerKey: addSegTo, segment: seg },
               { onSuccess: () => setAddSegTo(null) }
             );
           }}

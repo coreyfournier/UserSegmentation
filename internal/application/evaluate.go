@@ -42,8 +42,8 @@ func (uc *EvaluateUseCase) Execute(req EvaluateRequest) (*EvaluateResponse, erro
 		DurationUS:  time.Since(start).Microseconds(),
 	}
 
-	for name, lr := range result.Layers {
-		dto := LayerResultDTO{Status: string(lr.Status)}
+	for key, lr := range result.Layers {
+		dto := LayerResultDTO{Name: lr.Name, Status: string(lr.Status)}
 		if a := lr.Assignment; a != nil {
 			dto.Segment = a.Segment
 			dto.Strategy = a.Strategy
@@ -60,7 +60,7 @@ func (uc *EvaluateUseCase) Execute(req EvaluateRequest) (*EvaluateResponse, erro
 				Outputs:  f.Outputs,
 			})
 		}
-		resp.Layers[name] = dto
+		resp.Layers[key] = dto
 	}
 
 	for _, w := range result.Warnings {

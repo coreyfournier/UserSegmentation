@@ -37,7 +37,7 @@ func TestRequiredOutput_MissingFromFindingWarns(t *testing.T) {
 	snap := &model.Snapshot{
 		Layers: []model.Layer{
 			{
-				Name: "checks",
+				Key: "checks",
 				OutputSchema: model.OutputSchema{
 					"category": model.OutputField{Type: model.FieldTypeString, Required: true},
 				},
@@ -86,7 +86,7 @@ func TestRequiredOutput_PresentProducesNoWarning(t *testing.T) {
 	snap := &model.Snapshot{
 		Layers: []model.Layer{
 			{
-				Name: "checks",
+				Key: "checks",
 				OutputSchema: model.OutputSchema{
 					"category": model.OutputField{Type: model.FieldTypeString, Required: true},
 				},
@@ -142,7 +142,7 @@ func TestRequiredOutput_OverrideOutputExpressionFailsWarns(t *testing.T) {
 	snap := &model.Snapshot{
 		Layers: []model.Layer{
 			{
-				Name: "test",
+				Key: "test",
 				OutputSchema: model.OutputSchema{
 					"category": model.OutputField{Type: model.FieldTypeString, Required: true},
 				},
@@ -200,7 +200,7 @@ func TestRequiredOutput_OverrideAuthoredOutputNoWarning(t *testing.T) {
 	snap := &model.Snapshot{
 		Layers: []model.Layer{
 			{
-				Name: "test",
+				Key: "test",
 				OutputSchema: model.OutputSchema{
 					"category": model.OutputField{Type: model.FieldTypeString, Required: true},
 				},
@@ -252,7 +252,7 @@ func TestRequiredOutput_ChecklistSatisfiedNoWarning(t *testing.T) {
 	snap := &model.Snapshot{
 		Layers: []model.Layer{
 			{
-				Name: "checks",
+				Key: "checks",
 				OutputSchema: model.OutputSchema{
 					"category": model.OutputField{Type: model.FieldTypeString, Required: true},
 				},
@@ -300,7 +300,7 @@ func TestRequiredOutput_ChecklistUnevaluableNoWarning(t *testing.T) {
 	snap := &model.Snapshot{
 		Layers: []model.Layer{
 			{
-				Name: "checks",
+				Key: "checks",
 				OutputSchema: model.OutputSchema{
 					"category": model.OutputField{Type: model.FieldTypeString, Required: true},
 				},
@@ -352,7 +352,7 @@ func TestRequiredOutput_FailedExpressionNamesTheField(t *testing.T) {
 	snap := &model.Snapshot{
 		Layers: []model.Layer{
 			{
-				Name: "test",
+				Key: "test",
 				OutputSchema: model.OutputSchema{
 					"diagnosis": model.OutputField{Type: model.FieldTypeString},
 				},
@@ -408,7 +408,7 @@ func TestRequiredOutput_MultipleMissingFieldsAreSortedDeterministically(t *testi
 	snap := &model.Snapshot{
 		Layers: []model.Layer{
 			{
-				Name: "checks",
+				Key: "checks",
 				OutputSchema: model.OutputSchema{
 					"zulu":  model.OutputField{Type: model.FieldTypeString, Required: true},
 					"alpha": model.OutputField{Type: model.FieldTypeString, Required: true},

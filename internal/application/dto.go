@@ -27,6 +27,10 @@ type EvaluateResponse struct {
 // satisfied/violated/unevaluable; every other strategy reports
 // resolved/unresolved/skipped.
 type LayerResultDTO struct {
+	// Name is the layer's friendly label, inside the object its stable key
+	// addresses. Omitted when the layer has none — the key is then the only
+	// name it has, and an empty string would read as one it does not.
+	Name     string                 `json:"name,omitempty"`
 	Status   string                 `json:"status"`
 	Segment  string                 `json:"segment,omitempty"`
 	Strategy string                 `json:"strategy,omitempty"`
