@@ -192,7 +192,8 @@ func TestLayerSchema_UndeclaredOutputKeyRejectedFromLayer(t *testing.T) {
 func TestLayerSchema_StaticSegmentExemptFromLayerOutputSchema(t *testing.T) {
 	snap := &model.Snapshot{
 		Layers: []model.Layer{{
-			Key: "tier",
+			Key:         "tier",
+			InputSchema: model.InputSchema{model.SubjectKeyField: {Type: model.FieldTypeString}},
 			OutputSchema: model.OutputSchema{
 				"category": {Type: model.FieldTypeString, Required: true},
 			},

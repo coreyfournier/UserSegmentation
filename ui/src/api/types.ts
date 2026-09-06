@@ -20,6 +20,11 @@ export type StrategyType = 'static' | 'rule' | 'percentage' | 'checklist';
  * Checklist layers report satisfied/violated/unevaluable; every other strategy
  * reports the neutral resolution vocabulary. Status is always authoritative —
  * never infer the outcome from `failures.length`.
+ *
+ * One deliberate crossing: `unevaluable` also comes back from any strategy that
+ * could not run for want of a required input — today, a static or percentage
+ * segment whose subjectKey is absent from context. It means the same thing in
+ * both places, so it was widened rather than given a second name.
  */
 export type LayerStatus =
   | 'satisfied'
@@ -184,8 +189,12 @@ export interface Warning {
   message: string;
 }
 
+/**
+ * No subject_key. The subject key is an ordinary context field named
+ * `subjectKey`, read only by the static and percentage strategies and declared
+ * in the input schema of any layer whose segments use them.
+ */
 export interface EvaluateRequest {
-  subject_key: string;
   context: Record<string, unknown>;
   layers?: string[];
   languages?: string[];
@@ -193,7 +202,6 @@ export interface EvaluateRequest {
 }
 
 export interface EvaluateResponse {
-  subject_key: string;
   layers: Record<string, LayerResult>;
   warnings?: Warning[];
   evaluated_at: string;
@@ -266,3 +274,11 @@ export interface SearchResult {
   /** The store stopped at its limit and more matches exist. */
   truncated: boolean;
 }
+
+/**
+ * The context field the static and percentage strategies key off. Mirrors
+ * model.SubjectKeyField — the name is fixed, and a layer holding either
+ * strategy must declare it in its input schema or the engine refuses the
+ * snapshot.
+ */
+export const SUBJECT_KEY_FIELD = 'subjectKey';

@@ -139,6 +139,9 @@ func TestValidate_OutputSchemaExemptOnStaticAndPercentage(t *testing.T) {
 		snap := &model.Snapshot{
 			Layers: []model.Layer{{
 				Key: "tier",
+				// Both strategies under test read the subject key, so the layer
+				// has to declare it whatever else is being exercised here.
+				InputSchema: model.InputSchema{model.SubjectKeyField: {Type: model.FieldTypeString}},
 				OutputSchema: model.OutputSchema{
 					"field": model.OutputField{Type: model.FieldTypeNumber, Lookup: "vip-tiers"},
 				},
@@ -462,6 +465,7 @@ func TestValidate_RequiredOutputExemptOnStaticAndPercentage(t *testing.T) {
 		snap := &model.Snapshot{
 			Layers: []model.Layer{{
 				Key:          "tier",
+				InputSchema:  model.InputSchema{model.SubjectKeyField: {Type: model.FieldTypeString}},
 				OutputSchema: model.OutputSchema{"field": required},
 				Segments: []model.Segment{{
 					ID:       "seg",

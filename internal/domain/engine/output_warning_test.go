@@ -59,7 +59,7 @@ func TestRequiredOutput_MissingFromFindingWarns(t *testing.T) {
 	}
 
 	e := requiredOutputEvaluator()
-	result := e.Evaluate(snap, "user", map[string]interface{}{"totalHours": 0}, nil, nil, false, time.Now())
+	result := e.Evaluate(snap, map[string]interface{}{"subjectKey": "user", "totalHours": 0}, nil, nil, false, time.Now())
 
 	lr, ok := result.Layers["checks"]
 	if !ok {
@@ -109,7 +109,7 @@ func TestRequiredOutput_PresentProducesNoWarning(t *testing.T) {
 	}
 
 	e := requiredOutputEvaluator()
-	result := e.Evaluate(snap, "user", map[string]interface{}{"totalHours": 0}, nil, nil, false, time.Now())
+	result := e.Evaluate(snap, map[string]interface{}{"subjectKey": "user", "totalHours": 0}, nil, nil, false, time.Now())
 
 	lr, ok := result.Layers["checks"]
 	if !ok {
@@ -166,7 +166,7 @@ func TestRequiredOutput_OverrideOutputExpressionFailsWarns(t *testing.T) {
 	}
 
 	e := requiredOutputEvaluator()
-	result := e.Evaluate(snap, "user", map[string]interface{}{"plan": "enterprise"}, nil, nil, false, time.Now())
+	result := e.Evaluate(snap, map[string]interface{}{"subjectKey": "user", "plan": "enterprise"}, nil, nil, false, time.Now())
 
 	lr, ok := result.Layers["test"]
 	if !ok {
@@ -224,7 +224,7 @@ func TestRequiredOutput_OverrideAuthoredOutputNoWarning(t *testing.T) {
 	}
 
 	e := requiredOutputEvaluator()
-	result := e.Evaluate(snap, "user", map[string]interface{}{"plan": "enterprise"}, nil, nil, false, time.Now())
+	result := e.Evaluate(snap, map[string]interface{}{"subjectKey": "user", "plan": "enterprise"}, nil, nil, false, time.Now())
 
 	lr, ok := result.Layers["test"]
 	if !ok {
@@ -274,7 +274,7 @@ func TestRequiredOutput_ChecklistSatisfiedNoWarning(t *testing.T) {
 	}
 
 	e := requiredOutputEvaluator()
-	result := e.Evaluate(snap, "user", map[string]interface{}{"totalHours": 40}, nil, nil, false, time.Now())
+	result := e.Evaluate(snap, map[string]interface{}{"subjectKey": "user", "totalHours": 40}, nil, nil, false, time.Now())
 
 	lr, ok := result.Layers["checks"]
 	if !ok {
@@ -325,7 +325,7 @@ func TestRequiredOutput_ChecklistUnevaluableNoWarning(t *testing.T) {
 	}
 
 	e := requiredOutputEvaluator()
-	result := e.Evaluate(snap, "user", map[string]interface{}{}, nil, nil, false, time.Now())
+	result := e.Evaluate(snap, map[string]interface{}{"subjectKey": "user"}, nil, nil, false, time.Now())
 
 	lr, ok := result.Layers["checks"]
 	if !ok {
@@ -375,7 +375,7 @@ func TestRequiredOutput_FailedExpressionNamesTheField(t *testing.T) {
 	}
 
 	e := requiredOutputEvaluator()
-	result := e.Evaluate(snap, "user", map[string]interface{}{"plan": "enterprise"}, nil, nil, false, time.Now())
+	result := e.Evaluate(snap, map[string]interface{}{"subjectKey": "user", "plan": "enterprise"}, nil, nil, false, time.Now())
 
 	lr, ok := result.Layers["test"]
 	if !ok {
@@ -432,7 +432,7 @@ func TestRequiredOutput_MultipleMissingFieldsAreSortedDeterministically(t *testi
 	}
 
 	e := requiredOutputEvaluator()
-	result := e.Evaluate(snap, "user", map[string]interface{}{"totalHours": 0}, nil, nil, false, time.Now())
+	result := e.Evaluate(snap, map[string]interface{}{"subjectKey": "user", "totalHours": 0}, nil, nil, false, time.Now())
 
 	lr, ok := result.Layers["checks"]
 	if !ok {

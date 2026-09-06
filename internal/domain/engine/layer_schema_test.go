@@ -41,7 +41,7 @@ func TestLayerSchema_ChecklistFailureCarriesLayerOutputs(t *testing.T) {
 	}
 
 	e := requiredOutputEvaluator()
-	result := e.Evaluate(snap, "user", map[string]interface{}{"totalHours": 0}, nil, nil, false, time.Now())
+	result := e.Evaluate(snap, map[string]interface{}{"subjectKey": "user", "totalHours": 0}, nil, nil, false, time.Now())
 
 	lr, ok := result.Layers["checks"]
 	if !ok {
@@ -84,7 +84,7 @@ func TestLayerSchema_RequiredOutputFieldMissingWarns(t *testing.T) {
 	}
 
 	e := requiredOutputEvaluator()
-	result := e.Evaluate(snap, "user", map[string]interface{}{"plan": "enterprise"}, nil, nil, false, time.Now())
+	result := e.Evaluate(snap, map[string]interface{}{"subjectKey": "user", "plan": "enterprise"}, nil, nil, false, time.Now())
 
 	lr, ok := result.Layers["test"]
 	if !ok {
@@ -124,7 +124,7 @@ func TestLayerSchema_RequiredInputFieldMissingWarns(t *testing.T) {
 	}
 
 	e := requiredOutputEvaluator()
-	result := e.Evaluate(snap, "user", map[string]interface{}{}, nil, nil, false, time.Now())
+	result := e.Evaluate(snap, map[string]interface{}{"subjectKey": "user"}, nil, nil, false, time.Now())
 
 	lr, ok := result.Layers["checks"]
 	if !ok {
@@ -182,7 +182,7 @@ func TestLayerSchema_DuplicateRequiredInputWarningCollapsedOnce(t *testing.T) {
 	}
 
 	e := requiredOutputEvaluator()
-	result := e.Evaluate(snap, "user", map[string]interface{}{"plan": "other"}, nil, nil, false, time.Now())
+	result := e.Evaluate(snap, map[string]interface{}{"subjectKey": "user", "plan": "other"}, nil, nil, false, time.Now())
 
 	lr, ok := result.Layers["checks"]
 	if !ok {

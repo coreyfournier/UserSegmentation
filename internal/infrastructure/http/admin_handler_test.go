@@ -28,11 +28,15 @@ func newTestAdmin() (*AdminHandler, *mockStore) {
 	store := &mockStore{snap: &model.Snapshot{
 		Version: 1,
 		Layers: []model.Layer{
-			{Key: "testLayer", Segments: []model.Segment{
-				{ID: "seg-1", Strategy: "static", Static: &model.StaticConfig{
-					Mappings: map[string]string{}, Default: "default",
+			{Key: "testLayer",
+				// Required by the static segment below: that strategy reads the
+				// subject key from context.
+				InputSchema: model.InputSchema{model.SubjectKeyField: {Type: model.FieldTypeString}},
+				Segments: []model.Segment{
+					{ID: "seg-1", Strategy: "static", Static: &model.StaticConfig{
+						Mappings: map[string]string{}, Default: "default",
+					}},
 				}},
-			}},
 		},
 	}}
 	uc := application.NewAdminUseCase(store, &mockSink{})

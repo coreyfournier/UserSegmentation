@@ -31,21 +31,21 @@ func TestShippedConfig_LoadsAndValidates(t *testing.T) {
 		"features":    {"baseTier"},
 
 		// The progressive readiness gates.
-		"company-payroll-setup": {"company-identity"},
-		"employee-readiness":    {"company-payroll-setup"},
+		"companyPayrollSetup": {"companyIdentity"},
+		"employeeReadiness":   {"companyPayrollSetup"},
 	}
 
 	for _, layer := range snap.Layers {
-		expected, shouldHaveDeps := want[layer.Name]
+		expected, shouldHaveDeps := want[layer.Key]
 		switch {
 		case !shouldHaveDeps && len(layer.DependsOn) > 0:
-			t.Errorf("layer %q should have no dependencies, got %v", layer.Name, layer.DependsOn)
+			t.Errorf("layer %q should have no dependencies, got %v", layer.Key, layer.DependsOn)
 		case shouldHaveDeps && len(layer.DependsOn) != len(expected):
-			t.Errorf("layer %q: expected %v, got %v", layer.Name, expected, layer.DependsOn)
+			t.Errorf("layer %q: expected %v, got %v", layer.Key, expected, layer.DependsOn)
 		case shouldHaveDeps:
 			for i, dep := range expected {
 				if layer.DependsOn[i] != dep {
-					t.Errorf("layer %q: expected %v, got %v", layer.Name, expected, layer.DependsOn)
+					t.Errorf("layer %q: expected %v, got %v", layer.Key, expected, layer.DependsOn)
 					break
 				}
 			}

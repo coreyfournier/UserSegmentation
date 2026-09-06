@@ -11,7 +11,6 @@ export default function TestingZone() {
   const { data: layers } = useLayers();
   const evaluate = useEvaluate();
 
-  const [subjectKey, setSubjectKey] = useState('');
   const [selectedLayers, setSelectedLayers] = useState<string[]>([]);
   const [context, setContext] = useState<Record<string, unknown>>({});
   const [languages, setLanguages] = useState('');
@@ -38,7 +37,6 @@ export default function TestingZone() {
       .filter(Boolean);
     evaluate.mutate(
       {
-        subject_key: subjectKey,
         context,
         layers: selectedLayers.length ? selectedLayers : undefined,
         languages: langs.length ? langs : undefined,
@@ -53,15 +51,10 @@ export default function TestingZone() {
       <h2>Testing Zone</h2>
       <div className={styles.grid}>
         <div className={styles.input}>
-          <div className="form-group">
-            <label>Subject Key</label>
-            <input
-              value={subjectKey}
-              onChange={(e) => setSubjectKey(e.target.value)}
-              placeholder="user-123"
-            />
-          </div>
-
+          {/* No Subject Key box. The subject key is an ordinary context field
+              named subjectKey now, so it appears in the context editor below
+              for any selected layer that declares it — and does not appear at
+              all for layers that never read one. */}
           <div className="form-group">
             <label>Layers (leave unchecked for all)</label>
             <div className={styles.checkboxes}>
@@ -108,7 +101,7 @@ export default function TestingZone() {
           <button type="button"
             className="btn-primary"
             onClick={handleEvaluate}
-            disabled={!subjectKey || evaluate.isPending}
+            disabled={evaluate.isPending}
           >
             {evaluate.isPending ? 'Evaluating...' : 'Evaluate'}
           </button>

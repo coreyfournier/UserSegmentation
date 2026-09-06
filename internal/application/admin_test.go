@@ -24,9 +24,13 @@ func (m *mockSink) Save(snap *model.Snapshot) error {
 func newTestAdminUC() (*AdminUseCase, *store.Memory, *mockSink) {
 	s := store.NewMemory()
 	s.Swap(&model.Snapshot{Version: 1, Layers: []model.Layer{
-		{Key: "baseLayer", Segments: []model.Segment{
-			{ID: "seg1", Strategy: "static", Static: &model.StaticConfig{Mappings: map[string]string{}, Default: "x"}},
-		}},
+		{Key: "baseLayer",
+			// A static segment reads the subject key from context, so the layer
+			// has to declare it — validation refuses the snapshot otherwise.
+			InputSchema: model.InputSchema{model.SubjectKeyField: {Type: model.FieldTypeString}},
+			Segments: []model.Segment{
+				{ID: "seg1", Strategy: "static", Static: &model.StaticConfig{Mappings: map[string]string{}, Default: "x"}},
+			}},
 	}})
 	sink := &mockSink{}
 	uc := NewAdminUseCase(s, sink)
@@ -95,7 +99,12 @@ func TestAdminUseCase_CreateLayer_NilSegments(t *testing.T) {
 
 func TestAdminUseCase_UpdateLayer(t *testing.T) {
 	uc, _, _ := newTestAdminUC()
-	snap, err := uc.UpdateLayer("baseLayer", model.Layer{Key: "renamed"})
+	snap, err := uc.UpdateLayer("baseLayer", model.Layer{
+		Key: "renamed",
+		// Resent because a PUT replaces the schema, and the layer's static
+		// segment requires subjectKey to stay declared.
+		InputSchema: model.InputSchema{model.SubjectKeyField: {Type: model.FieldTypeString}},
+	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

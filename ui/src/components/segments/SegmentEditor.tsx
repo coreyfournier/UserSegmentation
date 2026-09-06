@@ -4,6 +4,7 @@ import { useLayers, useUpdateLayer } from '../../api/layers';
 import { useLookups } from '../../api/lookups';
 import { useUpdateSegment } from '../../api/segments';
 import type { Segment, StrategyType, InputSchema, OutputField } from '../../api/types';
+import { SUBJECT_KEY_FIELD } from '../../api/types';
 import StrategyPicker from './StrategyPicker';
 import StaticConfig from './StaticConfig';
 import PercentageConfig from './PercentageConfig';
@@ -71,7 +72,38 @@ export default function SegmentEditor() {
     });
   };
 
+  // Static and percentage read the subject key from context, and the engine
+  // refuses a snapshot where the layer does not declare it. Declaring it here
+  // is the same convenience as declareOutput above — the field lives on the
+  // layer, so picking the strategy patches the layer rather than local state.
+  //
+  // Deliberately an immediate write, matching declareOutput: the alternative is
+  // staging it until the segment is saved, and a save that fails validation
+  // because of a field the author was never shown is worse than a layer write
+  // they can see in the read-only schema table above.
+  const ensureSubjectKey = (strategy: StrategyType) => {
+    if (strategy !== 'static' && strategy !== 'percentage') return;
+    if (!layer || layer.inputSchema?.[SUBJECT_KEY_FIELD]) return;
+    updateLayer.mutate({
+      key: layer.key,
+      layer: {
+        key: layer.key,
+        name: layer.name,
+        dependsOn: layer.dependsOn,
+        defaultLanguage: layer.defaultLanguage,
+        inputSchema: {
+          ...(layer.inputSchema ?? {}),
+          // Required so an absent value is reported by the existing
+          // missing-input warning as well as by the strategy's own check.
+          [SUBJECT_KEY_FIELD]: { type: 'string', required: true },
+        },
+        outputSchema: layer.outputSchema,
+      },
+    });
+  };
+
   const switchStrategy = (strategy: StrategyType) => {
+    ensureSubjectKey(strategy);
     setSeg((prev) => {
       if (!prev) return prev;
       const next: Partial<Segment> = { strategy };

@@ -65,7 +65,15 @@ func checklistLayer(name, rule, field, want string, dependsOn ...string) model.L
 
 func evaluate(t *testing.T, e *Evaluator, snap *model.Snapshot, ctx map[string]interface{}, filter []string) *EvalResult {
 	t.Helper()
-	return e.Evaluate(snap, "subject", ctx, filter, nil, false, time.Now())
+	// The subject key is an ordinary context field now. Supplied here so these
+	// graph tests keep exercising ordering and gating rather than tripping over
+	// a missing one, exactly as they did when it was a parameter.
+	withSubject := make(map[string]interface{}, len(ctx)+1)
+	for k, v := range ctx {
+		withSubject[k] = v
+	}
+	withSubject[model.SubjectKeyField] = "subject"
+	return e.Evaluate(snap, withSubject, filter, nil, false, time.Now())
 }
 
 // Declaration order on disk must not matter — dependsOn decides execution.

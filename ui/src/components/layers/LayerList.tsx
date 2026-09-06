@@ -5,6 +5,7 @@ import { useCreateSegment, useUpdateSegment } from '../../api/segments';
 import { useSearch } from '../../api/search';
 import { useDebounced } from '../../utils/useDebounced';
 import type { Layer, Segment, StrategyType } from '../../api/types';
+import { SUBJECT_KEY_FIELD } from '../../api/types';
 import { STRATEGY_OPTIONS } from '../segments/StrategyPicker';
 import LayerRail from './LayerRail';
 import LayerDetail from './LayerDetail';
@@ -254,9 +255,35 @@ export default function LayerList() {
       {/* Add Segment Modal */}
       <Modal open={!!addSegTo} onClose={() => setAddSegTo(null)} title={`Add Segment to ${addSegTo}`}>
         <form
-          onSubmit={(e) => {
+          onSubmit={async (e) => {
             e.preventDefault();
             if (!addSegTo) return;
+            // Creating a static or percentage segment in a layer that does not
+            // declare subjectKey would be refused by validation, so the field
+            // is declared first and awaited — the segment POST validates the
+            // whole snapshot, and would fail if the two raced.
+            const target = sorted.find((l) => l.key === addSegTo);
+            const needsKey = newSegStrategy === 'static' || newSegStrategy === 'percentage';
+            if (target && needsKey && !target.inputSchema?.[SUBJECT_KEY_FIELD]) {
+              try {
+                await updateLayer.mutateAsync({
+                  key: target.key,
+                  layer: {
+                    key: target.key,
+                    name: target.name,
+                    dependsOn: target.dependsOn,
+                    defaultLanguage: target.defaultLanguage,
+                    inputSchema: {
+                      ...(target.inputSchema ?? {}),
+                      [SUBJECT_KEY_FIELD]: { type: 'string', required: true },
+                    },
+                    outputSchema: target.outputSchema,
+                  },
+                });
+              } catch {
+                return; // updateLayer.error is rendered above.
+              }
+            }
             const seg: Segment = {
               id: newSegId,
               strategy: newSegStrategy,

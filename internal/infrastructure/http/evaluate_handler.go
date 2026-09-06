@@ -18,10 +18,6 @@ func (h *EvaluateHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
 		return
 	}
-	if req.SubjectKey == "" {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "subject_key is required"})
-		return
-	}
 
 	resp, err := h.uc.Execute(req)
 	if err != nil {

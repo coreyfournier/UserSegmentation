@@ -29,7 +29,6 @@ func (uc *BatchEvaluateUseCase) Execute(req BatchEvaluateRequest) (*BatchEvaluat
 			resp, err := uc.evaluateUC.Execute(u)
 			if err != nil {
 				results[idx] = EvaluateResponse{
-					SubjectKey: u.SubjectKey,
 					Layers:     make(map[string]LayerResultDTO),
 				}
 				return

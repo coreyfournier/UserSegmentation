@@ -92,6 +92,24 @@ func ValidateSnapshot(snap *model.Snapshot) error {
 					model.StatusSatisfied, model.StatusViolated, model.StatusUnevaluable))
 			}
 
+			// The static and percentage strategies read the subject key from
+			// context, so the layer has to declare it. This is what makes the
+			// fixed field name safe: deleting the field from the schema is a
+			// load error naming the segment that needed it, rather than a
+			// runtime unevaluable discovered by a caller.
+			//
+			// Checked against the layer's schema alone, not the effective one:
+			// a computed field is derived during evaluation from the very
+			// context this field must already be in, so satisfying it with a
+			// computed field is circular.
+			if seg.Strategy == model.StrategyStatic || seg.Strategy == model.StrategyPercentage {
+				if _, declared := layer.InputSchema[model.SubjectKeyField]; !declared {
+					errs = append(errs, fmt.Sprintf(
+						"layer %q segment %q: the %s strategy reads %q, so the layer's inputSchema must declare it",
+						layer.Key, seg.ID, seg.Strategy, model.SubjectKeyField))
+				}
+			}
+
 			// Schemas live on the layer. A segment still carrying one is config
 			// written against the old shape; rejecting it beats decoding it to
 			// nothing and silently disabling rule-field validation.
@@ -708,14 +726,26 @@ func validateOutputSchema(seg *model.Segment, schema model.OutputSchema, lookups
 					seg.ID, name, f.Type, f.Lookup, tbl.KeyType))
 			}
 		}
-		if f.IsTemplate() {
-			// Same escape hatch as everywhere else a token is checked: with no
-			// declared inputSchema there is nothing to check a token against.
-			if env != nil {
-				errs = append(errs, validateOutputTemplateTokens(seg, name, inSchema, env)...)
+		// A value authored on an exempt segment is never resolved — static and
+		// percentage do not populate Result.Outputs at all — so checking it is
+		// checking dead config, exactly as for the name and lookup rules above.
+		//
+		// Worth stating why this guard appeared late: whether these ran at all
+		// used to depend on env, which is nil for a layer declaring no input
+		// schema, so an exempt segment was checked or not by accident. Since a
+		// static or percentage segment now requires its layer to declare
+		// subjectKey, env is never nil for one, and the accident would have
+		// become the rule.
+		if !outputEnforcementExempt(seg) {
+			if f.IsTemplate() {
+				// Same escape hatch as everywhere else a token is checked: with
+				// no declared inputSchema there is nothing to check against.
+				if env != nil {
+					errs = append(errs, validateOutputTemplateTokens(seg, name, inSchema, env)...)
+				}
+			} else {
+				errs = append(errs, validateOutputExpressionSyntax(seg, name, env)...)
 			}
-		} else {
-			errs = append(errs, validateOutputExpressionSyntax(seg, name, env)...)
 		}
 		if f.Required {
 			errs = append(errs, requiredOutputErrors(seg, name)...)

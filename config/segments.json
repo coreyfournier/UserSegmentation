@@ -1,8 +1,9 @@
 {
-  "version": 133,
-  "last_modified": "2026-08-24T00:59:28.693865327Z",
+  "version": 166,
+  "last_modified": "2026-09-06T13:02:24.2057661Z",
   "layers": [
     {
+      "key": "baseTier",
       "name": "base-tier",
       "segments": [
         {
@@ -16,9 +17,16 @@
             "default": "standard"
           }
         }
-      ]
+      ],
+      "inputSchema": {
+        "subjectKey": {
+          "type": "string",
+          "required": true
+        }
+      }
     },
     {
+      "key": "ctRule",
       "name": "CT Rule",
       "segments": [
         {
@@ -54,14 +62,27 @@
           "type": "string",
           "required": true
         }
+      },
+      "outputSchema": {
+        "Fee": {
+          "type": "string"
+        }
       }
     },
     {
+      "key": "riskRating",
       "name": "Risk Rating",
       "segments": [
         {
           "id": "IsRisky",
           "strategy": "rule",
+          "computed": [
+            {
+              "name": "RiskRating",
+              "type": "number",
+              "formula": "(PayCheckRaiting * .5) + (CompanyRating * .8)"
+            }
+          ],
           "rules": [
             {
               "ruleName": "RiskEval",
@@ -79,14 +100,7 @@
               ]
             }
           ],
-          "default": "false",
-          "computed": [
-            {
-              "name": "RiskRating",
-              "type": "number",
-              "formula": "(PayCheckRaiting * .5) + (CompanyRating * .8)"
-            }
-          ]
+          "default": "false"
         }
       ],
       "inputSchema": {
@@ -101,6 +115,7 @@
       }
     },
     {
+      "key": "dSDsd",
       "name": "dSDsd",
       "segments": [
         {
@@ -110,9 +125,10 @@
       ]
     },
     {
+      "key": "experiments",
       "name": "experiments",
       "dependsOn": [
-        "base-tier"
+        "baseTier"
       ],
       "segments": [
         {
@@ -137,19 +153,26 @@
               "enabled": true,
               "successEvent": "control",
               "condition": {
-                "field": "layer:base-tier",
+                "field": "layer:baseTier",
                 "operator": "eq",
                 "value": "platinum"
               }
             }
           ]
         }
-      ]
+      ],
+      "inputSchema": {
+        "subjectKey": {
+          "type": "string",
+          "required": true
+        }
+      }
     },
     {
+      "key": "promotions",
       "name": "promotions",
       "dependsOn": [
-        "base-tier"
+        "baseTier"
       ],
       "segments": [
         {
@@ -166,7 +189,7 @@
                 {
                   "ruleName": "tier-check",
                   "condition": {
-                    "field": "layer:base-tier",
+                    "field": "layer:baseTier",
                     "operator": "in",
                     "value": [
                       "pro",
@@ -207,9 +230,10 @@
       }
     },
     {
+      "key": "features",
       "name": "features",
       "dependsOn": [
-        "base-tier"
+        "baseTier"
       ],
       "segments": [
         {
@@ -233,7 +257,7 @@
                 {
                   "ruleName": "is-pro-tier",
                   "condition": {
-                    "field": "layer:base-tier",
+                    "field": "layer:baseTier",
                     "operator": "in",
                     "value": [
                       "pro",
@@ -249,11 +273,24 @@
       ]
     },
     {
+      "key": "ctFeeOverride",
       "name": "ct-fee-override",
       "segments": [
         {
           "id": "ct-fee",
           "strategy": "rule",
+          "computed": [
+            {
+              "name": "CTTotal",
+              "type": "number",
+              "formula": "sum(map(filter(Employees, {.State == \"CT\"}), {.TransferSpendThisMonth}))"
+            },
+            {
+              "name": "TransferFee",
+              "type": "number",
+              "formula": "CTTotal \u003e 30.0 ? 0.0 : (CTTotal + 4.0 \u003e 30.0 ? 30.0 - CTTotal : 4.0)"
+            }
+          ],
           "rules": [
             {
               "ruleName": "fee-waived",
@@ -274,19 +311,7 @@
               }
             }
           ],
-          "default": "fee-standard",
-          "computed": [
-            {
-              "name": "CTTotal",
-              "type": "number",
-              "formula": "sum(map(filter(Employees, {.State == \"CT\"}), {.TransferSpendThisMonth}))"
-            },
-            {
-              "name": "TransferFee",
-              "type": "number",
-              "formula": "CTTotal > 30.0 ? 0.0 : (CTTotal + 4.0 > 30.0 ? 30.0 - CTTotal : 4.0)"
-            }
-          ]
+          "default": "fee-standard"
         }
       ],
       "inputSchema": {
@@ -297,11 +322,24 @@
       }
     },
     {
+      "key": "ewaEligibility",
       "name": "ewa-eligibility",
       "segments": [
         {
           "id": "ewa-eligibility",
           "strategy": "rule",
+          "computed": [
+            {
+              "name": "MaxAllowed",
+              "type": "number",
+              "formula": "min(EarnedWages * 0.5, StateCap)"
+            },
+            {
+              "name": "Eligible",
+              "type": "boolean",
+              "formula": "DaysWorked \u003e= 14 \u0026\u0026 RequestedAmount \u003c= MaxAllowed"
+            }
+          ],
           "rules": [
             {
               "ruleName": "ineligible-tenure",
@@ -322,19 +360,7 @@
               }
             }
           ],
-          "default": "eligible",
-          "computed": [
-            {
-              "name": "MaxAllowed",
-              "type": "number",
-              "formula": "min(EarnedWages * 0.5, StateCap)"
-            },
-            {
-              "name": "Eligible",
-              "type": "boolean",
-              "formula": "DaysWorked >= 14 && RequestedAmount <= MaxAllowed"
-            }
-          ]
+          "default": "eligible"
         }
       ],
       "inputSchema": {
@@ -357,32 +383,12 @@
       }
     },
     {
+      "key": "ewaRisk",
       "name": "ewa-risk",
       "segments": [
         {
           "id": "ewa-risk",
           "strategy": "rule",
-          "rules": [
-            {
-              "ruleName": "below-minimum",
-              "successEvent": "decline",
-              "condition": {
-                "field": "Offered",
-                "operator": "lt",
-                "value": 1
-              }
-            },
-            {
-              "ruleName": "risk-limited",
-              "successEvent": "approve-risk-ceiling",
-              "condition": {
-                "field": "BindingLimit",
-                "operator": "eq",
-                "value": "risk-ceiling"
-              }
-            }
-          ],
-          "default": "approve-net-pay-cap",
           "computed": [
             {
               "name": "Z",
@@ -417,9 +423,30 @@
             {
               "name": "BindingLimit",
               "type": "string",
-              "formula": "RiskCeiling < NetPayCap ? \"risk-ceiling\" : \"net-pay-cap\""
+              "formula": "RiskCeiling \u003c NetPayCap ? \"risk-ceiling\" : \"net-pay-cap\""
             }
-          ]
+          ],
+          "rules": [
+            {
+              "ruleName": "below-minimum",
+              "successEvent": "decline",
+              "condition": {
+                "field": "Offered",
+                "operator": "lt",
+                "value": 1
+              }
+            },
+            {
+              "ruleName": "risk-limited",
+              "successEvent": "approve-risk-ceiling",
+              "condition": {
+                "field": "BindingLimit",
+                "operator": "eq",
+                "value": "risk-ceiling"
+              }
+            }
+          ],
+          "default": "approve-net-pay-cap"
         }
       ],
       "inputSchema": {
@@ -454,20 +481,12 @@
       }
     },
     {
+      "key": "transferFee",
       "name": "transfer-fee",
       "segments": [
         {
           "id": "july4-promo",
           "strategy": "rule",
-          "default": "july4-promo",
-          "defaultMessages": {
-            "en": "Happy 4th of July! Your transfer fee has been reduced from $${BaseFee} to $${Fee}.",
-            "es": "\u00c2\u00a1Feliz 4 de Julio! Su tarifa de transferencia se ha reducido de $${BaseFee} a $${Fee}."
-          },
-          "promotion": {
-            "effective_from": "2026-07-04T00:00:00Z",
-            "effective_until": "2026-07-31T23:59:59Z"
-          },
           "computed": [
             {
               "name": "BaseFee",
@@ -479,28 +498,38 @@
               "type": "number",
               "formula": "4.0"
             }
-          ]
+          ],
+          "default": "july4-promo",
+          "defaultMessages": {
+            "en": "Happy 4th of July! Your transfer fee has been reduced from $${BaseFee} to $${Fee}.",
+            "es": "Â¡Feliz 4 de Julio! Su tarifa de transferencia se ha reducido de $${BaseFee} a $${Fee}."
+          },
+          "promotion": {
+            "effective_from": "2026-07-04T00:00:00Z",
+            "effective_until": "2026-07-31T23:59:59Z"
+          }
         },
         {
           "id": "standard",
           "strategy": "rule",
-          "default": "standard",
-          "defaultMessages": {
-            "en": "Your standard transfer fee is $${Fee}.",
-            "es": "Su tarifa de transferencia est\u00c3\u00a1ndar es $${Fee}."
-          },
           "computed": [
             {
               "name": "Fee",
               "type": "number",
               "formula": "5.0"
             }
-          ]
+          ],
+          "default": "standard",
+          "defaultMessages": {
+            "en": "Your standard transfer fee is $${Fee}.",
+            "es": "Su tarifa de transferencia estÃ¡ndar es $${Fee}."
+          }
         }
       ],
       "defaultLanguage": "en"
     },
     {
+      "key": "companyIdentity",
       "name": "company-identity",
       "segments": [
         {
@@ -538,9 +567,10 @@
       }
     },
     {
+      "key": "companyPayrollSetup",
       "name": "company-payroll-setup",
       "dependsOn": [
-        "company-identity"
+        "companyIdentity"
       ],
       "segments": [
         {
@@ -554,6 +584,13 @@
             }
           },
           "strategy": "checklist",
+          "computed": [
+            {
+              "name": "PayPeriodDatesValid",
+              "type": "boolean",
+              "formula": "company.periodEnd != '' \u0026\u0026 company.checkDate \u003e company.periodEnd"
+            }
+          ],
           "rules": [
             {
               "ruleName": "payFrequencyUnsupportedForPrecision",
@@ -597,13 +634,6 @@
                   }
                 }
               ]
-            }
-          ],
-          "computed": [
-            {
-              "name": "PayPeriodDatesValid",
-              "type": "boolean",
-              "formula": "company.periodEnd != '' && company.checkDate > company.periodEnd"
             }
           ]
         },
@@ -662,9 +692,10 @@
       }
     },
     {
+      "key": "employeeReadiness",
       "name": "employee-readiness",
       "dependsOn": [
-        "company-payroll-setup"
+        "companyPayrollSetup"
       ],
       "segments": [
         {
@@ -731,6 +762,7 @@
       }
     },
     {
+      "key": "companyValidation",
       "name": "CompanyValidation",
       "segments": [
         {
@@ -747,27 +779,28 @@
           "rules": [
             {
               "ruleName": "EmailContact",
-              "messages": {
-                "en": "Contact email is required for deduction emails"
-              },
               "condition": {
                 "field": "EmailContact",
                 "operator": "is_null_or_empty"
+              },
+              "messages": {
+                "en": "Contact email is required for deduction emails"
               }
             },
             {
               "ruleName": "DefaultPayRate",
-              "messages": {
-                "en": "Default pay rate is required"
-              },
               "condition": {
                 "field": "DefaultPayRate",
                 "operator": "is_null"
+              },
+              "messages": {
+                "en": "Default pay rate is required"
               }
             }
           ]
         }
       ],
+      "defaultLanguage": "en",
       "inputSchema": {
         "DefaultPayRate": {
           "type": "number",
@@ -781,11 +814,11 @@
           "type": "string",
           "required": false
         }
-      },
-      "defaultLanguage": "en"
+      }
     },
     {
-      "name": "T&A Gates",
+      "key": "tAGates",
+      "name": "T\u0026A Gates",
       "segments": [
         {
           "id": "Gate 1",
@@ -830,6 +863,7 @@
           ]
         }
       ],
+      "defaultLanguage": "en",
       "inputSchema": {
         "HasDepositAccount": {
           "type": "boolean",
@@ -839,8 +873,299 @@
           "type": "string",
           "required": true
         }
+      }
+    },
+    {
+      "key": "balanceDiagnosis",
+      "name": "Balance Diagnosis",
+      "segments": [
+        {
+          "id": "CheckEmployeeSyncFailed",
+          "strategy": "rule",
+          "rules": [
+            {
+              "ruleName": "CheckEmployeeSyncFailed",
+              "condition": {
+                "field": "EmployeeStatus",
+                "operator": "eq",
+                "value": "Failed"
+              },
+              "messages": {
+                "en": "We're seeing a sync issue between your employer's payroll system and Tapcheck that's affecting all employees. Our integrations team is looking into it."
+              },
+              "outputs": {
+                "Description": "Company Health reports employee sync status as Failed. The result code is '${ResultCode}'.",
+                "Signals": "[{Name: \"EmployeeStatus\", Value: EmployeeStatus}, {Name: \"EmployeeCount\", Value: EmployeeCount}, {Name: \"EmployeeReason\", Value: EmployeeReason}]",
+                "TechnicalExplanation": "Company Health Service sets EmployeeStatus via PayrollEmployeesLoadedEvent — Failed means the payroll-to-Tapcheck employee sync pipeline failed. This affects ALL employees at the company because no employee records can be updated."
+              }
+            }
+          ],
+          "default": "Good"
+        }
+      ],
+      "defaultLanguage": "en",
+      "inputSchema": {
+        "EmployeeCount": {
+          "type": "number",
+          "required": false
+        },
+        "EmployeeId": {
+          "type": "number",
+          "required": false
+        },
+        "EmployeeReason": {
+          "type": "string",
+          "required": false
+        },
+        "EmployeeStatus": {
+          "type": "string",
+          "required": false
+        },
+        "GrossPay": {
+          "type": "number",
+          "required": false
+        },
+        "NetPay": {
+          "type": "string",
+          "required": false
+        },
+        "PayCycleId": {
+          "type": "number",
+          "required": false
+        },
+        "ResultCode": {
+          "type": "string",
+          "required": false,
+          "lookup": "balanceresultcode"
+        },
+        "UserEmployerIds": {
+          "type": "array",
+          "required": false
+        }
       },
-      "defaultLanguage": "en"
+      "outputSchema": {
+        "Category": {
+          "type": "string",
+          "lookup": "diagnosticcategory"
+        },
+        "Description": {
+          "type": "string"
+        },
+        "DiagnosisResolution": {
+          "type": "string",
+          "lookup": "resolutiontype"
+        },
+        "DiagnosisType": {
+          "type": "string",
+          "lookup": "diagnosistype"
+        },
+        "Severity": {
+          "type": "string",
+          "lookup": "severity"
+        },
+        "Signals": {
+          "type": "array"
+        },
+        "TechnicalExplanation": {
+          "type": "string"
+        }
+      }
+    }
+  ],
+  "lookups": [
+    {
+      "id": "balanceeffectivelimit",
+      "name": "BalanceEffectiveLimit",
+      "keyType": "string",
+      "entries": [
+        {
+          "key": "None",
+          "order": 0
+        },
+        {
+          "key": "AccessibleWage",
+          "order": 1
+        },
+        {
+          "key": "PreviousTransfers",
+          "order": 2
+        },
+        {
+          "key": "DailyTransferAmountLimit",
+          "order": 3
+        },
+        {
+          "key": "TransferCountLimit",
+          "order": 4
+        },
+        {
+          "key": "UserDailyLimit",
+          "order": 5
+        },
+        {
+          "key": "PersonalizationWorkflow",
+          "order": 6
+        },
+        {
+          "key": "RegulatoryWorkflow",
+          "order": 7
+        },
+        {
+          "key": "GlobalTransferLimit",
+          "order": 8
+        },
+        {
+          "key": "PostTransferBalanceCap",
+          "order": 9
+        }
+      ]
+    },
+    {
+      "id": "balanceresultcode",
+      "name": "BalanceResultCode",
+      "keyType": "string",
+      "entries": [
+        {
+          "key": "Unknown",
+          "order": 0
+        },
+        {
+          "key": "BalanceAvailable",
+          "order": 1
+        },
+        {
+          "key": "NoBalanceAvailable",
+          "order": 2
+        },
+        {
+          "key": "NoDaysWorked",
+          "order": 3
+        },
+        {
+          "key": "GrossPayIsZero",
+          "order": 4
+        },
+        {
+          "key": "NetPayIsZero",
+          "order": 5
+        },
+        {
+          "key": "OutsideAvailableBalanceWindow",
+          "order": 6
+        }
+      ]
+    },
+    {
+      "id": "diagnosistype",
+      "name": "DiagnosisType",
+      "keyType": "string",
+      "entries": [
+        {
+          "key": "BalanceCalculationError",
+          "order": 0
+        },
+        {
+          "key": "NoPayDataAvailable",
+          "order": 1
+        },
+        {
+          "key": "NoDaysWorkedYet",
+          "order": 2
+        },
+        {
+          "key": "OutsideAvailableBalanceWindow",
+          "order": 3
+        },
+        {
+          "key": "NetPayIsZero",
+          "order": 4
+        },
+        {
+          "key": "AccessibleWageZeroDespiteDays",
+          "order": 5
+        }
+      ]
+    },
+    {
+      "id": "severity",
+      "name": "Severity",
+      "keyType": "string",
+      "entries": [
+        {
+          "key": "Info",
+          "order": 0
+        },
+        {
+          "key": "Warning",
+          "order": 1
+        },
+        {
+          "key": "Critical",
+          "order": 2
+        }
+      ]
+    },
+    {
+      "id": "diagnosticcategory",
+      "name": "DiagnosticCategory",
+      "keyType": "string",
+      "entries": [
+        {
+          "key": "BalanceCalculationError",
+          "order": 0
+        },
+        {
+          "key": "BalanceAvailability",
+          "order": 1
+        },
+        {
+          "key": "BalanceEffectiveLimit",
+          "order": 2
+        },
+        {
+          "key": "DataSync",
+          "order": 3
+        },
+        {
+          "key": "MissingEntity",
+          "order": 4
+        },
+        {
+          "key": "ConfigurationIssue",
+          "order": 5
+        },
+        {
+          "key": "EmployeeAccountStatus",
+          "order": 6
+        }
+      ]
+    },
+    {
+      "id": "resolutiontype",
+      "name": "ResolutionType",
+      "keyType": "string",
+      "entries": [
+        {
+          "key": "SelfService",
+          "order": 0
+        },
+        {
+          "key": "ContactEmployer",
+          "order": 1
+        },
+        {
+          "key": "NoActionRequired",
+          "order": 2
+        },
+        {
+          "key": "EscalateToOperations",
+          "order": 3
+        },
+        {
+          "key": "EscalateToEngineering",
+          "order": 4
+        }
+      ]
     }
   ]
 }

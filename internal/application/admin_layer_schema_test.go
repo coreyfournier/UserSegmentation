@@ -50,8 +50,13 @@ func TestAdminUseCase_CreateLayer_PersistsSchemas(t *testing.T) {
 func TestLayerSchema_UpdateLayerCarriesSchemasThrough(t *testing.T) {
 	uc, _, _ := newTestAdminUC()
 	snap, err := uc.UpdateLayer("baseLayer", model.Layer{
-		Key:          "baseLayer",
-		InputSchema:  model.InputSchema{"age": {Type: model.FieldTypeNumber}},
+		Key: "baseLayer",
+		// subjectKey rides along because a PUT replaces the schema wholesale
+		// and the layer holds a static segment that requires it.
+		InputSchema: model.InputSchema{
+			"age":                 {Type: model.FieldTypeNumber},
+			model.SubjectKeyField: {Type: model.FieldTypeString},
+		},
 		OutputSchema: model.OutputSchema{"category": {Type: model.FieldTypeString}},
 	})
 	if err != nil {
@@ -80,9 +85,17 @@ func TestLayerSchema_UpdateLayerCarriesSchemasThrough(t *testing.T) {
 func TestLayerSchema_UpdateLayer_OmittedSchemaIsCleared(t *testing.T) {
 	uc, _, _ := newTestAdminUC()
 
-	// First give "baseLayer" both schemas.
-	_, err := uc.UpdateLayer("baseLayer", model.Layer{
-		Key:          "baseLayer",
+	// A layer of its own, with no segment that needs a declared field. The
+	// shared fixture's layer holds a static segment, whose strategy requires
+	// the layer to declare subjectKey — so clearing its input schema is
+	// correctly refused, and would test the refusal rather than the clearing.
+	if _, err := uc.CreateLayer(model.Layer{Key: "clearable"}); err != nil {
+		t.Fatalf("unexpected error creating the layer: %v", err)
+	}
+
+	// First give it both schemas.
+	_, err := uc.UpdateLayer("clearable", model.Layer{
+		Key:          "clearable",
 		InputSchema:  model.InputSchema{"age": {Type: model.FieldTypeNumber}},
 		OutputSchema: model.OutputSchema{"category": {Type: model.FieldTypeString}},
 	})
@@ -91,11 +104,16 @@ func TestLayerSchema_UpdateLayer_OmittedSchemaIsCleared(t *testing.T) {
 	}
 
 	// Now update again with a layer that omits both schemas.
-	snap, err := uc.UpdateLayer("baseLayer", model.Layer{Key: "baseLayer"})
+	snap, err := uc.UpdateLayer("clearable", model.Layer{Key: "clearable"})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	got := snap.Layers[0]
+	var got model.Layer
+	for _, l := range snap.Layers {
+		if l.Key == "clearable" {
+			got = l
+		}
+	}
 	if len(got.InputSchema) != 0 {
 		t.Errorf("expected an omitted inputSchema to clear the stored one, got %+v", got.InputSchema)
 	}

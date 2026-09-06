@@ -44,7 +44,7 @@ type EvalResult struct {
 // Execution order comes from each layer's DependsOn edges, not from any ordinal
 // field. When filterLayers is set, only those layers and everything they
 // transitively depend on are evaluated; the rest never run.
-func (e *Evaluator) Evaluate(snap *model.Snapshot, subjectKey string, ctx map[string]interface{}, filterLayers []string, languages []string, renderAll bool, now time.Time) *EvalResult {
+func (e *Evaluator) Evaluate(snap *model.Snapshot, ctx map[string]interface{}, filterLayers []string, languages []string, renderAll bool, now time.Time) *EvalResult {
 	result := &EvalResult{
 		Layers: make(map[string]*LayerResult, len(snap.Layers)),
 	}
@@ -103,7 +103,7 @@ func (e *Evaluator) Evaluate(snap *model.Snapshot, subjectKey string, ctx map[st
 				Message: fmt.Sprintf("layer skipped: dependency %q did not resolve", blocker),
 			})
 		} else {
-			lr = e.evaluateLayer(layer, subjectKey, evalCtx, languages, renderAll, lookups, now)
+			lr = e.evaluateLayer(layer, evalCtx, languages, renderAll, lookups, now)
 		}
 		statuses[layer.Key] = lr.Status
 
@@ -130,8 +130,12 @@ func (e *Evaluator) Evaluate(snap *model.Snapshot, subjectKey string, ctx map[st
 	return result
 }
 
-func (e *Evaluator) evaluateLayer(layer *model.Layer, subjectKey string, ctx map[string]interface{}, languages []string, renderAll bool, lookups map[string]model.LookupTable, now time.Time) *LayerResult {
+func (e *Evaluator) evaluateLayer(layer *model.Layer, ctx map[string]interface{}, languages []string, renderAll bool, lookups map[string]model.LookupTable, now time.Time) *LayerResult {
 	lr := &LayerResult{Status: unresolvedStatus(layer)}
+
+	// Resolved once for the layer: it comes from the context, which does not
+	// change between this layer's segments.
+	subjectKey, hasSubjectKey := resolveSubjectKey(ctx)
 
 	// Layer default language for message fallback; empty means English.
 	defaultLang := layer.DefaultLanguage
@@ -155,6 +159,29 @@ func (e *Evaluator) evaluateLayer(layer *model.Layer, subjectKey string, ctx map
 
 		// Check required fields and collect warnings
 		lr.Warnings = append(lr.Warnings, validation.CheckRequiredFields(seg, layer.InputSchema, ctx)...)
+
+		// A static or percentage segment cannot be evaluated without a subject
+		// key, and both fail quietly rather than loudly if it is missing:
+		// static falls through to its default, percentage hashes the empty
+		// string and puts every such subject in one bucket. Checked here, once,
+		// before dispatch — so the strategies stay ignorant of the policy and
+		// there is one place it can be wrong.
+		if needsSubjectKey(seg) && !hasSubjectKey {
+			lr.Status = model.StatusUnevaluable
+			// The field is normally declared required, so CheckRequiredFields
+			// just reported it too. Two warnings for one cause is noise, and
+			// the specific one strictly contains the generic one — it names
+			// the strategy and says the segment did not run.
+			lr.Warnings = dropRequiredFieldWarning(lr.Warnings, seg.ID, model.SubjectKeyField)
+			lr.Warnings = append(lr.Warnings, model.Warning{
+				Segment: seg.ID,
+				Field:   model.SubjectKeyField,
+				Message: fmt.Sprintf(
+					"the %s strategy needs %q, which is absent from context; the segment was not evaluated",
+					seg.Strategy, model.SubjectKeyField),
+			})
+			continue
+		}
 
 		evalCtx := &strategy.EvalContext{
 			SubjectKey:      subjectKey,

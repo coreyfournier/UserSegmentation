@@ -33,10 +33,9 @@ func (uc *EvaluateUseCase) Execute(req EvaluateRequest) (*EvaluateResponse, erro
 		ctx = make(map[string]interface{})
 	}
 
-	result := uc.evaluator.Evaluate(snap, req.SubjectKey, ctx, req.Layers, req.Languages, req.RenderAll, now)
+	result := uc.evaluator.Evaluate(snap, ctx, req.Layers, req.Languages, req.RenderAll, now)
 
 	resp := &EvaluateResponse{
-		SubjectKey:  req.SubjectKey,
 		Layers:      make(map[string]LayerResultDTO, len(result.Layers)),
 		EvaluatedAt: now.UTC().Format(time.RFC3339Nano),
 		DurationUS:  time.Since(start).Microseconds(),

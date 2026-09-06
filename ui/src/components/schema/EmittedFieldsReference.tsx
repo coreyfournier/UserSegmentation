@@ -17,7 +17,6 @@ const PER_LAYER = [
 ];
 
 const PER_RESPONSE = [
-  ['subject_key', 'the subject that was evaluated'],
   ['warnings', 'required inputs missing from context, render errors, absent required outputs'],
   ['evaluated_at', 'RFC3339 timestamp'],
   ['duration_us', 'evaluation time in microseconds'],
