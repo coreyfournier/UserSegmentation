@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useLookups } from '../../api/lookups';
-import type { InputSchema, Layer, OutputSchema, Segment } from '../../api/types';
+import type { FieldType, InputSchema, Layer, OutputSchema, Rule, Segment } from '../../api/types';
+import { OPERATOR_TYPES } from '../../api/types';
 import InputSchemaEditor from '../schema/InputSchemaEditor';
 import OutputSchemaEditor from '../schema/OutputSchemaEditor';
 import ConfirmDialog from '../common/ConfirmDialog';
@@ -102,6 +103,39 @@ function pruneOutputField(seg: Segment, field: string): Segment {
  *  last input field — mirrors the Go side's WarnMissingInputSchemas exactly:
  *  a segment with its own computed fields is still validated against those,
  *  so it does not count here. */
+/**
+ * Rules that would be invalidated by retyping an input field.
+ *
+ * An operator only supports certain types — gt is numbers, contains is arrays
+ * and strings — and validation rejects the whole snapshot when a condition
+ * uses one its field type does not support. Changing a type is legitimate and
+ * often necessary, so it is allowed; this is what lets the author be told what
+ * it will cost before rather than after the save is refused.
+ *
+ * Only leaf conditions are examined, at every depth, because only a leaf names
+ * a field. Cross-layer references are skipped: their type comes from the other
+ * layer, not this schema.
+ */
+function retypeBreakage(segments: Segment[], field: string, next: FieldType): string[] {
+  const broken: string[] = [];
+  const walk = (r: Rule, segID: string) => {
+    const c = r.condition;
+    if (c && c.field === field && !c.field.startsWith("layer:")) {
+      const allowed = OPERATOR_TYPES[c.operator];
+      if (allowed && !allowed.includes(next)) {
+        broken.push(`segment "${segID}" rule "${r.ruleName || "(unnamed)"}" uses ${c.operator}`);
+      }
+    }
+    for (const child of r.rules ?? []) walk(child, segID);
+  };
+  for (const seg of segments) {
+    for (const r of seg.rules ?? []) walk(r, seg.id);
+    for (const r of seg.overrides ?? []) walk(r, seg.id);
+    if (seg.when) walk(seg.when, seg.id);
+  }
+  return broken;
+}
+
 function segmentsNeedingInputSchema(segments: Segment[]): number {
   return segments.filter(
     (s) => !(s.computed?.length) && (s.rules?.length || s.overrides?.length || s.when)
@@ -129,6 +163,9 @@ export default function LayerForm({
 
   const [pendingOutputRemoval, setPendingOutputRemoval] = useState<
     { field: string; valueCount: number; segmentCount: number } | null
+  >(null);
+  const [pendingRetype, setPendingRetype] = useState<
+    { field: string; next: FieldType; broken: string[] } | null
   >(null);
   const [pendingInputRemoval, setPendingInputRemoval] = useState<
     { field: string; affectedSegments: number } | null
@@ -169,6 +206,18 @@ export default function LayerForm({
       return;
     }
     applyRemoveOutputField(field);
+  };
+
+  const applyRetype = (field: string, next: FieldType) =>
+    setInputSchema({ ...(inputSchema ?? {}), [field]: { ...(inputSchema ?? {})[field], type: next } });
+
+  const handleChangeInputFieldType = (field: string, next: FieldType) => {
+    const broken = retypeBreakage(segments, field, next);
+    if (broken.length > 0) {
+      setPendingRetype({ field, next, broken });
+      return;
+    }
+    applyRetype(field, next);
   };
 
   const handleRemoveInputField = (field: string) => {
@@ -257,6 +306,7 @@ export default function LayerForm({
           value={inputSchema}
           onChange={setInputSchema}
           onRemoveField={handleRemoveInputField}
+          onChangeFieldType={handleChangeInputFieldType}
         />
       </div>
 
@@ -299,6 +349,25 @@ export default function LayerForm({
           setPendingOutputRemoval(null);
         }}
         onCancel={() => setPendingOutputRemoval(null)}
+      />
+
+      <ConfirmDialog
+        open={!!pendingRetype}
+        title="Change Field Type"
+        confirmLabel="Change type"
+        message={
+          pendingRetype
+            ? `Changing "${pendingRetype.field}" to ${pendingRetype.next} will break ` +
+              `${pendingRetype.broken.length} condition(s), because the operator does not ` +
+              `support that type: ${pendingRetype.broken.join("; ")}. The save will be ` +
+              `rejected until those are fixed. Change it anyway?`
+            : ""
+        }
+        onConfirm={() => {
+          if (pendingRetype) applyRetype(pendingRetype.field, pendingRetype.next);
+          setPendingRetype(null);
+        }}
+        onCancel={() => setPendingRetype(null)}
       />
 
       <ConfirmDialog
