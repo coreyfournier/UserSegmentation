@@ -175,6 +175,12 @@ export default function SegmentEditor() {
       {updateSegment.error && <ErrorBanner message={(updateSegment.error as Error).message} />}
       {updateLayer.error && <ErrorBanner message={(updateLayer.error as Error).message} />}
 
+      {/* Two columns where there is room: the segment on the left, its tests
+          pinned on the right. Below that width they stack and the tests fall
+          to the bottom, which is where they were before. */}
+      <div className={styles.split}>
+        <div className={styles.main}>
+
       {/* Strategy */}
       <section className={`card ${styles.section}`}>
         <h3>Strategy</h3>
@@ -446,12 +452,18 @@ export default function SegmentEditor() {
         </section>
       )}
 
-      {/* Tests — last, because running one is what you do after editing, and
-          because it reads the saved config rather than the state above it. */}
-      <section className={`card ${styles.section}`}>
-        <h3>Tests</h3>
-        {layerKey && <LayerTests layerKey={layerKey} schema={layer?.inputSchema} />}
-      </section>
+        </div>
+
+        {/* Sticky, so it stays reachable from anywhere in a long segment —
+            the point is to edit at the bottom of the page and run without
+            scrolling back up. */}
+        <aside className={styles.aside}>
+          <section className={`card ${styles.testCard}`}>
+            <h3>Tests</h3>
+            {layerKey && <LayerTests layerKey={layerKey} schema={layer?.inputSchema} />}
+          </section>
+        </aside>
+      </div>
 
       {/* Footer */}
       <div className={styles.footer}>
