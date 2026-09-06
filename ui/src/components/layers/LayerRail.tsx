@@ -1,4 +1,4 @@
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import type { Layer } from '../../api/types';
 import styles from './LayerRail.module.css';
 
@@ -39,6 +39,7 @@ export default function LayerRail({
   truncated,
 }: Props) {
   const navigate = useNavigate();
+  const location = useLocation();
 
   return (
     <div className={styles.rail}>
@@ -88,7 +89,8 @@ export default function LayerRail({
                   className={styles.segRow}
                   onClick={() =>
                     navigate(
-                      `/layers/${encodeURIComponent(layer.key)}/segments/${encodeURIComponent(segId)}`
+                      `/layers/${encodeURIComponent(layer.key)}/segments/${encodeURIComponent(segId)}`,
+                      { state: { from: location.pathname + location.search } },
                     )
                   }
                   title={`Open segment ${segId}`}

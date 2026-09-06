@@ -202,3 +202,52 @@ func (h *AdminHandler) PreviewRekey(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, http.StatusOK, map[string]interface{}{"from": key, "to": to, "references": refs})
 }
+
+// ListTests handles GET /v1/admin/tests, optionally filtered by ?layer=<key>.
+func (h *AdminHandler) ListTests(w http.ResponseWriter, r *http.Request) {
+	tests := h.uc.ListTests(r.URL.Query().Get("layer"))
+	if tests == nil {
+		tests = []model.SavedTest{}
+	}
+	writeJSON(w, http.StatusOK, tests)
+}
+
+// CreateTest handles POST /v1/admin/tests.
+func (h *AdminHandler) CreateTest(w http.ResponseWriter, r *http.Request) {
+	var t model.SavedTest
+	if err := json.NewDecoder(r.Body).Decode(&t); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
+		return
+	}
+	snap, err := h.uc.CreateTest(t)
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusCreated, snap)
+}
+
+// UpdateTest handles PUT /v1/admin/tests/{id}.
+func (h *AdminHandler) UpdateTest(w http.ResponseWriter, r *http.Request) {
+	var t model.SavedTest
+	if err := json.NewDecoder(r.Body).Decode(&t); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
+		return
+	}
+	snap, err := h.uc.UpdateTest(r.PathValue("id"), t)
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, snap)
+}
+
+// DeleteTest handles DELETE /v1/admin/tests/{id}.
+func (h *AdminHandler) DeleteTest(w http.ResponseWriter, r *http.Request) {
+	snap, err := h.uc.DeleteTest(r.PathValue("id"))
+	if err != nil {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, snap)
+}

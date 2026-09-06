@@ -16,25 +16,26 @@ type RekeyRef struct {
 	Segment string `json:"segment,omitempty"`
 	Rule    string `json:"rule,omitempty"`
 	// Where says what kind of reference it was: "dependsOn", "condition",
-	// "message", "errorMessage", "defaultMessage" or "output".
+	// "message", "errorMessage", "defaultMessage", "output" or "test".
 	Where string `json:"where"`
 }
 
 // rekeyLayer rewrites every reference to oldKey so it names newKey, returning
 // what it touched.
 //
-// A layer's key reaches four places, and a rename that misses any of them
+// A layer's key reaches five places, and a rename that misses any of them
 // leaves config that still loads:
 //
 //   - dependsOn edges on other layers
 //   - "layer:<key>" as a condition field
 //   - "${layer:<key>}" in a message, error message or default message
 //   - "${layer:<key>}" in an authored output value
+//   - the layer a saved test is filed under
 //
-// The condition case is caught by validation if missed (a layer:x field must
-// have a matching dependsOn edge), but the template cases are not — a stale
-// token renders empty and says nothing. That asymmetry is why this rewrites
-// all four rather than relying on validation to find the stragglers.
+// The condition and test cases are caught by validation if missed, but the
+// template cases are not — a stale token renders empty and says nothing. That
+// asymmetry is why this rewrites all five rather than relying on validation to
+// find the stragglers.
 func rekeyLayer(snap *model.Snapshot, oldKey, newKey string) []RekeyRef {
 	if oldKey == newKey {
 		return nil
@@ -43,6 +44,16 @@ func rekeyLayer(snap *model.Snapshot, oldKey, newKey string) []RekeyRef {
 
 	oldField := "layer:" + oldKey
 	newField := "layer:" + newKey
+
+	// A saved test is filed under a layer key, so it moves with the key. Left
+	// behind it would name a layer that no longer exists, which validation
+	// rejects — the whole update would fail on config the author never wrote.
+	for i := range snap.Tests {
+		if snap.Tests[i].Layer == oldKey {
+			snap.Tests[i].Layer = newKey
+			refs = append(refs, RekeyRef{Layer: newKey, Where: "test"})
+		}
+	}
 
 	for i := range snap.Layers {
 		layer := &snap.Layers[i]

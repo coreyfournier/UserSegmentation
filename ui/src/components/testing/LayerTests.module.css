@@ -1,0 +1,145 @@
+.note {
+  margin: 0 0 10px;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.empty {
+  margin: 0 0 10px;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-bottom: 12px;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.pick {
+  flex: 1;
+  text-align: left;
+  padding: 5px 8px;
+  border: 1px solid transparent;
+  border-radius: var(--radius);
+  background: none;
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+  color: var(--text);
+}
+
+.pick:hover {
+  background: var(--bg);
+}
+
+.active {
+  background: var(--bg);
+  border-color: var(--border);
+  font-weight: 600;
+}
+
+.context {
+  margin-bottom: 8px;
+}
+
+.label {
+  display: block;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted);
+  margin-bottom: 4px;
+}
+
+.actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.spacer {
+  flex: 1;
+}
+
+.name {
+  width: auto;
+  max-width: 180px;
+  font-size: 12px;
+  padding: 4px 8px;
+}
+
+.result {
+  margin-top: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg);
+}
+
+.resultHead {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+}
+
+.status {
+  font-weight: 700;
+  text-transform: uppercase;
+  font-size: 11px;
+  letter-spacing: 0.04em;
+}
+
+/* Status colours follow the vocabulary rather than a pass/fail reading: a test
+   holds no expectation, so "violated" is an outcome to look at, not a failure. */
+.satisfied,
+.resolved {
+  color: var(--success, #16a34a);
+}
+
+.violated,
+.unevaluable {
+  color: var(--danger);
+}
+
+.unresolved,
+.skipped {
+  color: var(--text-muted);
+}
+
+.reason {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.warnings {
+  margin: 8px 0 0;
+  padding-left: 18px;
+  font-size: 11px;
+  color: var(--danger);
+}
+
+.raw {
+  cursor: pointer;
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-top: 8px;
+}
+
+.pre {
+  margin: 6px 0 0;
+  font-size: 11px;
+  max-height: 260px;
+  overflow: auto;
+  background: var(--card, #fff);
+  padding: 8px;
+  border-radius: var(--radius);
+}

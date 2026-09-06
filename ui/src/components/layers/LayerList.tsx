@@ -55,12 +55,6 @@ export default function LayerList() {
   const [newSegId, setNewSegId] = useState('');
   const [newSegStrategy, setNewSegStrategy] = useState<StrategyType>('static');
 
-  // Search runs on the server, not over the cached layer list: filtering here
-  // would work only for as long as the whole config fits in one response.
-  const [query, setQuery] = useState('');
-  const debouncedQuery = useDebounced(query);
-  const { data: searchResult } = useSearch(debouncedQuery);
-
   // "Edit on the layer" (SegmentEditor) links here with ?edit=<layer name> so
   // it opens that specific layer's editor rather than just the list. Derived
   // at render instead of synced into state via an effect — `editing` (an
@@ -77,6 +71,24 @@ export default function LayerList() {
       setSearchParams(next, { replace: true });
     }
   };
+
+  // Search runs on the server, not over the cached layer list: filtering here
+  // would work only for as long as the whole config fits in one response.
+  //
+  // The term lives in the URL, not in state, so it survives leaving the page:
+  // editing a segment used to mean coming back to an unfiltered list and
+  // retyping it, because this component had unmounted and taken the term with
+  // it. Replaced rather than pushed, so a search does not fill the back stack
+  // one keystroke at a time.
+  const query = searchParams.get('q') ?? '';
+  const setQuery = (q: string) => {
+    const next = new URLSearchParams(searchParams);
+    if (q) next.set('q', q);
+    else next.delete('q');
+    setSearchParams(next, { replace: true });
+  };
+  const debouncedQuery = useDebounced(query);
+  const { data: searchResult } = useSearch(debouncedQuery);
 
   if (isLoading) return <p>Loading...</p>;
   if (error) return <ErrorBanner message={(error as Error).message} />;

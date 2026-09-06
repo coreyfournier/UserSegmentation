@@ -50,4 +50,7 @@ type Snapshot struct {
 	LastModified *time.Time    `json:"last_modified,omitempty"`
 	Layers       []Layer       `json:"layers"`
 	Lookups      []LookupTable `json:"lookups,omitempty"`
+	// Tests are saved evaluation inputs, filed per layer. Authoring data
+	// rather than evaluation config: nothing in the engine reads them.
+	Tests []SavedTest `json:"tests,omitempty"`
 }

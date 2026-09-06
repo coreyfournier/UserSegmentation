@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { useLayers, useUpdateLayer } from '../../api/layers';
 import { useLookups } from '../../api/lookups';
 import { useUpdateSegment } from '../../api/segments';
@@ -16,6 +16,7 @@ import PredicateEditor from '../rules/PredicateEditor';
 import PromotionEditor from '../promotion/PromotionEditor';
 import EmittedFieldsReference from '../schema/EmittedFieldsReference';
 import LookupLink from '../lookups/LookupLink';
+import LayerTests from '../testing/LayerTests';
 import OutputValuesEditor from '../rules/OutputValuesEditor';
 import { fieldCoverage, supportsOutputSchema } from '../schema/outputSchemaRules';
 import ErrorBanner from '../common/ErrorBanner';
@@ -24,6 +25,9 @@ import styles from './SegmentEditor.module.css';
 export default function SegmentEditor() {
   const { key: layerKey, id: segId } = useParams<{ key: string; id: string }>();
   const navigate = useNavigate();
+  const location = useLocation();
+  // When the last save happened, so the button can confirm it landed.
+  const [savedAt, setSavedAt] = useState<number | null>(null);
   const { data: layers } = useLayers();
   const { data: lookups } = useLookups();
   const updateSegment = useUpdateSegment();
@@ -141,15 +145,26 @@ export default function SegmentEditor() {
     if (!layerKey || !segId || !segRef.current) return;
     updateSegment.mutate(
       { layerKey, segId, segment: segRef.current },
-      { onSuccess: () => navigate('/layers') }
+      {
+        // Stays on the page. Saving used to navigate back to the layer list,
+        // which threw away the editor you were working in — so testing a change
+        // meant walking back in, and any search that got you here was gone.
+        // Leaving is a separate decision, made with the Close button.
+        onSuccess: () => setSavedAt(Date.now()),
+      }
     );
   };
+
+  // Where Close returns to. LayerList hands over its own URL when it opens a
+  // segment, so closing restores the list exactly as it was — same selected
+  // layer, same search. Falls back for a segment reached by a pasted link.
+  const backHref = (location.state as { from?: string } | null)?.from ?? '/layers';
 
   return (
     <div className={styles.editor}>
       <div className={styles.toolbar}>
         <h2>
-          <span className={styles.breadcrumb} onClick={() => navigate('/layers')}>Layers</span>
+          <span className={styles.breadcrumb} onClick={() => navigate(backHref)}>Layers</span>
           {' / '}
           <span className={styles.breadcrumb}>{layerKey}</span>
           {' / '}
@@ -431,9 +446,21 @@ export default function SegmentEditor() {
         </section>
       )}
 
+      {/* Tests — last, because running one is what you do after editing, and
+          because it reads the saved config rather than the state above it. */}
+      <section className={`card ${styles.section}`}>
+        <h3>Tests</h3>
+        {layerKey && <LayerTests layerKey={layerKey} schema={layer?.inputSchema} />}
+      </section>
+
       {/* Footer */}
       <div className={styles.footer}>
-        <button type="button" className="btn-ghost" onClick={() => navigate('/layers')}>Cancel</button>
+        {/* "Close" rather than "Cancel": saving no longer leaves the page, so
+            this is how you leave — and it discards nothing that was saved. */}
+        <button type="button" className="btn-ghost" onClick={() => navigate(backHref)}>Close</button>
+        {savedAt !== null && !updateSegment.isPending && (
+          <span className={styles.saved} role="status">Saved</span>
+        )}
         <button type="button" className="btn-primary" onClick={handleSave} disabled={updateSegment.isPending}>
           {updateSegment.isPending ? 'Saving...' : 'Save'}
         </button>

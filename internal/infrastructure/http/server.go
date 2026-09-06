@@ -42,6 +42,10 @@ func NewServer(
 	mux.HandleFunc("DELETE /v1/admin/lookups/{id}", admin.DeleteLookup)
 	mux.HandleFunc("POST /v1/admin/import", admin.ImportSnapshot)
 	mux.HandleFunc("GET /v1/admin/export", admin.ExportSnapshot)
+	mux.HandleFunc("GET /v1/admin/tests", admin.ListTests)
+	mux.HandleFunc("POST /v1/admin/tests", admin.CreateTest)
+	mux.HandleFunc("PUT /v1/admin/tests/{id}", admin.UpdateTest)
+	mux.HandleFunc("DELETE /v1/admin/tests/{id}", admin.DeleteTest)
 	mux.Handle("GET /v1/admin/search", &SearchHandler{uc: searchUC})
 
 	handler := CORS(PanicRecovery(Timing(Logging(mux))))

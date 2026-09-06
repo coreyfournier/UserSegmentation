@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useLayers } from '../../api/layers';
+import { useTests } from '../../api/tests';
 import { useEvaluate } from '../../api/evaluate';
 import type { InputSchema, EvaluateResponse } from '../../api/types';
 import ContextEditor from './ContextEditor';
@@ -9,6 +10,7 @@ import styles from './TestingZone.module.css';
 
 export default function TestingZone() {
   const { data: layers } = useLayers();
+  const { data: savedTests } = useTests();
   const evaluate = useEvaluate();
 
   const [selectedLayers, setSelectedLayers] = useState<string[]>([]);
@@ -16,6 +18,7 @@ export default function TestingZone() {
   const [languages, setLanguages] = useState('');
   const [renderAll, setRenderAll] = useState(false);
   const [result, setResult] = useState<EvaluateResponse | null>(null);
+  const [loadedTestId, setLoadedTestId] = useState('');
 
   const allSchemas: InputSchema[] = [];
   for (const layer of layers ?? []) {
@@ -23,6 +26,19 @@ export default function TestingZone() {
     if (selectedLayers.length && !selectedLayers.includes(layer.key)) continue;
     if (layer.inputSchema) allSchemas.push(layer.inputSchema);
   }
+
+  // Loading a saved test fills the context and narrows the run to the layer it
+  // is filed under — running it against every layer would be answering a
+  // different question than the one the test was saved to ask.
+  const loadTest = (id: string) => {
+    setLoadedTestId(id);
+    const t = (savedTests ?? []).find((x) => x.id === id);
+    if (!t) return;
+    setContext(t.context ?? {});
+    setSelectedLayers([t.layer]);
+    setLanguages((t.languages ?? []).join(', '));
+    setRenderAll(!!t.renderAll);
+  };
 
   const toggleLayer = (name: string) => {
     setSelectedLayers((prev) =>
@@ -55,6 +71,28 @@ export default function TestingZone() {
               named subjectKey now, so it appears in the context editor below
               for any selected layer that declares it — and does not appear at
               all for layers that never read one. */}
+          {(savedTests ?? []).length > 0 && (
+            <div className="form-group">
+              <label>Saved test</label>
+              <select
+                value={loadedTestId}
+                onChange={(e) => loadTest(e.target.value)}
+                aria-label="load a saved test"
+              >
+                <option value="">— none —</option>
+                {(savedTests ?? []).map((t) => (
+                  <option key={t.id} value={t.id}>
+                    {t.layer} / {t.name}
+                  </option>
+                ))}
+              </select>
+              <p style={{ fontSize: 11, color: 'var(--text-muted)', margin: '4px 0 0' }}>
+                Loads that test&rsquo;s context and narrows the run to its layer. Saved tests
+                are managed in the segment editor.
+              </p>
+            </div>
+          )}
+
           <div className="form-group">
             <label>Layers (leave unchecked for all)</label>
             <div className={styles.checkboxes}>

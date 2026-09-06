@@ -21,6 +21,8 @@ func ValidateSnapshot(snap *model.Snapshot) error {
 	// The dependency graph must be usable before anything that reads it.
 	errs = append(errs, validateLayerGraph(snap.Layers)...)
 
+	errs = append(errs, validateSavedTests(snap)...)
+
 	for _, layer := range snap.Layers {
 		deps := make(map[string]struct{}, len(layer.DependsOn))
 		for _, d := range layer.DependsOn {
@@ -1020,4 +1022,66 @@ func sortedSchemaFields(s model.InputSchema) []string {
 	}
 	sort.Strings(names)
 	return names
+}
+
+// validateSavedTests checks the saved evaluation inputs kept in the snapshot.
+//
+// Only their identity and filing are checked: an id, a unique id, a name, and a
+// layer that exists. The context itself is deliberately left alone — a test
+// whose point is an absent required field has to be storable, or the
+// interesting cases become the ones that cannot be saved.
+//
+// A test naming a layer that is gone is an error rather than a warning because
+// nothing else can produce one: DeleteLayer removes that layer's tests with it,
+// and a key change rewrites them. So one here means the file was hand-edited,
+// and silently ignoring it would hide the edit.
+func validateSavedTests(snap *model.Snapshot) []string {
+	if len(snap.Tests) == 0 {
+		return nil
+	}
+	var errs []string
+
+	layers := make(map[string]struct{}, len(snap.Layers))
+	for _, l := range snap.Layers {
+		layers[l.Key] = struct{}{}
+	}
+
+	ids := make(map[string]struct{}, len(snap.Tests))
+	// Names are unique per layer, not globally: "missing subject key" is a
+	// reasonable name for a test of each of several layers.
+	namesByLayer := make(map[string]map[string]struct{}, len(snap.Layers))
+
+	for _, t := range snap.Tests {
+		switch {
+		case t.ID == "":
+			errs = append(errs, fmt.Sprintf("test %q: id is required", t.Name))
+			continue
+		case t.Name == "":
+			errs = append(errs, fmt.Sprintf("test %q: name is required", t.ID))
+		}
+		if _, dup := ids[t.ID]; dup {
+			errs = append(errs, fmt.Sprintf("duplicate test id %q", t.ID))
+			continue
+		}
+		ids[t.ID] = struct{}{}
+
+		if _, ok := layers[t.Layer]; !ok {
+			errs = append(errs, fmt.Sprintf(
+				"test %q: layer %q does not exist", t.ID, t.Layer))
+			continue
+		}
+
+		names, ok := namesByLayer[t.Layer]
+		if !ok {
+			names = make(map[string]struct{})
+			namesByLayer[t.Layer] = names
+		}
+		if _, dup := names[t.Name]; dup {
+			errs = append(errs, fmt.Sprintf(
+				"layer %q has two tests named %q", t.Layer, t.Name))
+		}
+		names[t.Name] = struct{}{}
+	}
+
+	return errs
 }

@@ -174,6 +174,17 @@ func (uc *AdminUseCase) DeleteLayer(name string) (*model.Snapshot, error) {
 			name, strings.Join(dependents, ", "))
 	}
 
+	// A test is filed under a layer, so it goes with it. Leaving it would name
+	// a layer that no longer exists, which validation rejects — the delete
+	// would fail on data the author did not think they were touching.
+	kept := snap.Tests[:0:0]
+	for _, t := range snap.Tests {
+		if t.Layer != name {
+			kept = append(kept, t)
+		}
+	}
+	snap.Tests = kept
+
 	snap.Layers = append(snap.Layers[:idx], snap.Layers[idx+1:]...)
 	return uc.commitSnapshot(snap)
 }

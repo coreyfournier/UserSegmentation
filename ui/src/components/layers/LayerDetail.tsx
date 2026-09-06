@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import type { Layer } from '../../api/types';
 import { useDeleteSegment } from '../../api/segments';
 import ConfirmDialog from '../common/ConfirmDialog';
@@ -23,11 +23,17 @@ interface Props {
  */
 export default function LayerDetail({ layer, onEdit, onDelete, onAddSegment }: Props) {
   const navigate = useNavigate();
+  const location = useLocation();
   const deleteSeg = useDeleteSegment();
   const [confirmSeg, setConfirmSeg] = useState<string | null>(null);
 
+  // The current layers URL goes with it — selected layer and search included —
+  // so the segment editor's Close returns to the list exactly as it was.
   const openSegment = (segId: string) =>
-    navigate(`/layers/${encodeURIComponent(layer.key)}/segments/${encodeURIComponent(segId)}`);
+    navigate(
+      `/layers/${encodeURIComponent(layer.key)}/segments/${encodeURIComponent(segId)}`,
+      { state: { from: location.pathname + location.search } },
+    );
 
   return (
     <div className={`card ${styles.pane}`}>

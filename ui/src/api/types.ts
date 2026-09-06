@@ -159,6 +159,7 @@ export interface Snapshot {
   version: number;
   layers: Layer[];
   lookups?: LookupTable[];
+  tests?: SavedTest[];
 }
 
 /** One itemised problem from a checklist layer. */
@@ -282,3 +283,18 @@ export interface SearchResult {
  * snapshot.
  */
 export const SUBJECT_KEY_FIELD = 'subjectKey';
+
+/**
+ * A named evaluation input, kept against the layer it exercises. Inputs only —
+ * running one shows the result to read, it does not assert an expectation.
+ * Mirrors model.SavedTest.
+ */
+export interface SavedTest {
+  id: string;
+  /** Key of the layer this test exercises. Immutable after creation. */
+  layer: string;
+  name: string;
+  context: Record<string, unknown>;
+  languages?: string[];
+  renderAll?: boolean;
+}
