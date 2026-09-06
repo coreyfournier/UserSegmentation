@@ -1,5 +1,6 @@
 import type { ComputedField, FieldType } from '../../api/types';
 import FormulaReference from './FormulaReference';
+import ExpandableField from '../common/ExpandableField';
 import styles from './ComputedFieldsEditor.module.css';
 
 interface Props {
@@ -54,7 +55,7 @@ export default function ComputedFieldsEditor({ value, onChange }: Props) {
                   </select>
                 </td>
                 <td>
-                  <input
+                  <ExpandableField
                     value={def.formula}
                     onChange={(e) => update(i, { formula: e.target.value })}
                     placeholder='e.g. abs(Rating) * -1 + Bonus'

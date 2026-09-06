@@ -17,7 +17,12 @@
   flex: 1;
 }
 
-.value input {
+/* The value control is an input, a select, or an ExpandableField (a textarea)
+   depending on the operator and whether the field is bound to a lookup. All
+   three need the same compact metrics, or the row's height jumps as the
+   operator changes. */
+.value input,
+.value textarea {
   font-size: 13px;
   padding: 6px 8px;
 }

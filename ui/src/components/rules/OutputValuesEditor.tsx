@@ -8,6 +8,7 @@ import {
   renameOutputKey,
   type FieldCoverage,
 } from '../schema/outputSchemaRules';
+import ExpandableField from '../common/ExpandableField';
 import styles from './OutputValuesEditor.module.css';
 
 interface Props {
@@ -113,7 +114,7 @@ export default function OutputValuesEditor({ outputs, schema, onChange, onDeclar
                   )}
                 </div>
                 <div>
-                  <input
+                  <ExpandableField
                     value={row.value}
                     onChange={(e) => set(row.name, e.target.value)}
                     placeholder={row.field ? placeholderFor(row.field) : undefined}

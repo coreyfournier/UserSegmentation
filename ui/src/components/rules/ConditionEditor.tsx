@@ -3,6 +3,7 @@ import { LOOKUP_OPERATORS, UNARY_OPERATORS } from '../../api/types';
 import { useLookups } from '../../api/lookups';
 import { parseNumericInput } from '../../utils/parse';
 import OperatorSelect from './OperatorSelect';
+import ExpandableField from '../common/ExpandableField';
 import styles from './ConditionEditor.module.css';
 
 interface Props {
@@ -112,7 +113,7 @@ export default function ConditionEditor({ value, onChange, schema, layerNames }:
             )}
           </select>
         ) : (
-          <input
+          <ExpandableField
             value={formatValue(value.value)}
             onChange={(e) =>
               onChange({ ...value, value: parseValue(e.target.value, value.operator as string) })

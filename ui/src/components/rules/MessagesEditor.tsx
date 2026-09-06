@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import ExpandableField from '../common/ExpandableField';
 import styles from './MessagesEditor.module.css';
 
 interface Props {
@@ -90,7 +91,7 @@ export default function MessagesEditor({ value, onChange, hint }: Props) {
                   aria-label="language code"
                   aria-invalid={blocked}
                 />
-                <input
+                <ExpandableField
                   className={styles.text}
                   value={text}
                   onChange={(e) => setText(i, e.target.value)}
