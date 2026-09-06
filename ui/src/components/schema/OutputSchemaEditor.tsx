@@ -154,8 +154,8 @@ export default function OutputSchemaEditor({ value, onChange, lookups, segmentOu
                     const overridesShort = c.overridesTotal - c.overridesAuthored;
                     const extra: string[] = [];
                     if (f.required) {
-                      if (c.defaultNeedsSegmentValue) {
-                        extra.push('a default is declared, so this must be set for the segment');
+                      if (c.defaultUnauthored) {
+                        extra.push('the default path has no value for this — set it in the Default section');
                       }
                       if (overridesShort > 0) {
                         extra.push(

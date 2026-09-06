@@ -131,6 +131,9 @@ export interface Segment {
   default?: string;
   /** Localized messages rendered when the segment falls back to `default`. */
   defaultMessages?: Record<string, string>;
+  /** Output values the default path authors, the way a rule authors its own.
+   *  Read only by the rule strategy's default branch. */
+  defaultOutputs?: Record<string, string>;
   promotion?: Promotion;
   /** Values for output fields that do not vary per reported item. */
   outputs?: Record<string, string>;

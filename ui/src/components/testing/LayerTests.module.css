@@ -202,3 +202,86 @@
   font-size: 12px;
   padding: 4px 8px;
 }
+
+/* Authoring half, framed so it reads as a distinct thing from the list above
+   it — creating a test was unclear partly because it looked like more list. */
+.editor {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+
+.editorHead {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.editorTitle {
+  flex: 1;
+  font-size: 12px;
+}
+
+.linkish {
+  border: none;
+  background: none;
+  padding: 0;
+  font: inherit;
+  font-size: 11px;
+  color: var(--primary);
+  cursor: pointer;
+}
+
+.linkish:hover {
+  text-decoration: underline;
+}
+
+.spacer {
+  flex: 1;
+}
+
+/* Result body. Shown outright after a run rather than behind a disclosure:
+   confirming what a change did is the reason to run one. */
+.resultLine {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.outputs {
+  width: 100%;
+  border-collapse: collapse;
+  margin-bottom: 6px;
+}
+
+.outputs td {
+  padding: 2px 6px;
+  font-size: 11px;
+  border-bottom: 1px solid var(--border);
+  vertical-align: top;
+}
+
+.outKey {
+  color: var(--text-muted);
+  white-space: nowrap;
+  width: 1%;
+}
+
+.outVal {
+  font-family: 'Consolas', 'Monaco', monospace;
+  word-break: break-word;
+}
+
+.failures {
+  margin: 0 0 6px;
+  padding-left: 18px;
+  font-size: 11px;
+}
+
+.none {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-bottom: 6px;
+}

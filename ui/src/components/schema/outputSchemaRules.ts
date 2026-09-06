@@ -1,4 +1,5 @@
 import type {
+  ComputedField,
   FieldType,
   LookupTable,
   OutputField,
@@ -71,9 +72,11 @@ export interface FieldCoverage {
    *  overrides in this UI, so any shortfall needs the segment-level value. */
   overridesAuthored: number;
   overridesTotal: number;
-  /** A rule segment with a default reads no rule values on that path, so only
-   *  a segment-level value can satisfy the field. */
-  defaultNeedsSegmentValue: boolean;
+  /** A rule segment with a default that has not authored this field itself.
+   *  The default authors its own values now (Segment.defaultOutputs), so this
+   *  is a shortfall to fill on the default — not, as it once was, a demand for
+   *  a segment-level value that would then apply to every rule too. */
+  defaultUnauthored: boolean;
 }
 
 export interface OutputRow {
@@ -207,6 +210,47 @@ export function fieldCoverage(seg: Segment, schema: OutputSchema | undefined, na
     segmentLevel: !!seg.outputs?.[name],
     overridesAuthored,
     overridesTotal: overrides.length,
-    defaultNeedsSegmentValue: seg.strategy === 'rule' && !!seg.default && !!schema?.[name],
+    defaultUnauthored:
+      seg.strategy === 'rule' && !!seg.default && !!schema?.[name] && !seg.defaultOutputs?.[name],
   };
+}
+
+/**
+ * The computed field that could supply an output field's value: same name,
+ * same type.
+ *
+ * Matching is on both, never on name alone. A computed `TransferFee` that is a
+ * number and an output `TransferFee` declared a string are not the same thing,
+ * and quietly wiring them together would emit the number's string form as if
+ * that had been intended.
+ *
+ * This is a suggestion the UI acts on when told to, not something the engine
+ * does at evaluation. The value it fills in is an ordinary expression written
+ * into the config, so what runs is what an author can read — nothing is
+ * resolved by a rule that only exists in the editor.
+ */
+export function matchingComputedField(
+  name: string,
+  field: OutputField | undefined,
+  computed: ComputedField[] | undefined,
+): ComputedField | undefined {
+  if (!field) return undefined;
+  return (computed ?? []).find((c) => c.name === name && c.type === field.type);
+}
+
+/**
+ * Every output field on this segment that a computed field could supply and
+ * that has no value at the given site yet. Drives the "fill these in" action,
+ * which writes the mapping rather than implying it.
+ */
+export function unfilledComputedMatches(
+  schema: OutputSchema | undefined,
+  computed: ComputedField[] | undefined,
+  values: Record<string, string> | undefined,
+): ComputedField[] {
+  if (!schema || !computed?.length) return [];
+  return Object.entries(schema)
+    .filter(([name]) => !values?.[name])
+    .map(([name, field]) => matchingComputedField(name, field, computed))
+    .filter((c): c is ComputedField => !!c);
 }

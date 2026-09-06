@@ -82,7 +82,7 @@ func (s *RuleStrategy) evaluateRules(seg *model.Segment, ctx *EvalContext) (Resu
 	if seg.Default != "" {
 		res := Result{Segment: seg.Default, Reason: "rule:default"}
 		applyMessages(&res, seg.DefaultMessages, ctx)
-		outputs, outErrs := evaluateOutputs(seg, nil, ctx)
+		outputs, outErrs := evaluateOutputs(seg, seg.DefaultOutputs, ctx)
 		res.Outputs = outputs
 		res.RenderErrors = append(res.RenderErrors, outErrs...)
 		return res, true

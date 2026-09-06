@@ -11,12 +11,12 @@ import PercentageConfig from './PercentageConfig';
 import ComputedFieldsEditor from './ComputedFieldsEditor';
 import RuleConfig from './RuleConfig';
 import RuleTreeBuilder from '../rules/RuleTreeBuilder';
-import MessagesEditor from '../rules/MessagesEditor';
 import PredicateEditor from '../rules/PredicateEditor';
 import PromotionEditor from '../promotion/PromotionEditor';
 import EmittedFieldsReference from '../schema/EmittedFieldsReference';
 import LookupLink from '../lookups/LookupLink';
 import LayerTests from '../testing/LayerTests';
+import SplitPane from '../common/SplitPane';
 import OutputValuesEditor from '../rules/OutputValuesEditor';
 import { fieldCoverage, supportsOutputSchema } from '../schema/outputSchemaRules';
 import ErrorBanner from '../common/ErrorBanner';
@@ -176,10 +176,18 @@ export default function SegmentEditor() {
       {updateLayer.error && <ErrorBanner message={(updateLayer.error as Error).message} />}
 
       {/* Two columns where there is room: the segment on the left, its tests
-          pinned on the right. Below that width they stack and the tests fall
-          to the bottom, which is where they were before. */}
-      <div className={styles.split}>
-        <div className={styles.main}>
+          pinned on the right and resizable by the divider between them. Below
+          that width they stack and the tests fall to the bottom, which is
+          where they were before. */}
+      <SplitPane
+        storageKey="segment-editor.tests-width"
+        side={
+          <section className={`card ${styles.testCard}`}>
+            <h3>Tests</h3>
+            {layerKey && <LayerTests layerKey={layerKey} schema={layer?.inputSchema} />}
+          </section>
+        }
+      >
 
       {/* Strategy */}
       <section className={`card ${styles.section}`}>
@@ -356,6 +364,9 @@ export default function SegmentEditor() {
             onDefaultChange={(v) => update({ default: v })}
             defaultMessages={seg.defaultMessages}
             onDefaultMessagesChange={(m) => update({ defaultMessages: m })}
+            defaultOutputs={seg.defaultOutputs}
+            onDefaultOutputsChange={(o) => update({ defaultOutputs: o })}
+            computed={seg.computed}
             ruleSchema={effectiveSchema(seg)}
             overrideSchema={layer?.inputSchema}
             layerNames={layerNames}
@@ -438,32 +449,14 @@ export default function SegmentEditor() {
           <p style={{ fontSize: 11, color: 'var(--text-muted)', fontStyle: 'italic', margin: '4px 0 0' }}>
             Evaluated before the strategy result. Only raw input fields are available.
           </p>
-          <div style={{ marginTop: 16 }}>
-            <label>Default Value</label>
-            <input
-              value={seg.default ?? ''}
-              onChange={(e) => update({ default: e.target.value || undefined })}
-            />
-            <MessagesEditor
-              value={seg.defaultMessages}
-              onChange={(m) => update({ defaultMessages: m })}
-            />
-          </div>
+          {/* No default here. Segment.default is read by the rule strategy
+              alone: static has its own default inside its mappings, and
+              percentage has no such notion. The editor used to offer one for
+              these strategies, writing a field nothing would ever read. */}
         </section>
       )}
 
-        </div>
-
-        {/* Sticky, so it stays reachable from anywhere in a long segment —
-            the point is to edit at the bottom of the page and run without
-            scrolling back up. */}
-        <aside className={styles.aside}>
-          <section className={`card ${styles.testCard}`}>
-            <h3>Tests</h3>
-            {layerKey && <LayerTests layerKey={layerKey} schema={layer?.inputSchema} />}
-          </section>
-        </aside>
-      </div>
+      </SplitPane>
 
       {/* Footer */}
       <div className={styles.footer}>

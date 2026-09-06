@@ -793,6 +793,10 @@ func unknownOutputNameErrors(seg *model.Segment, schema model.OutputSchema) []st
 				errs = append(errs, fmt.Sprintf(
 					"segment %q override %q: output %q is not declared in outputSchema",
 					seg.ID, m.name, name))
+			case siteDefault:
+				errs = append(errs, fmt.Sprintf(
+					"segment %q default: output %q is not declared in outputSchema",
+					seg.ID, name))
 			}
 		}
 	}
@@ -807,6 +811,10 @@ const (
 	siteSegment outputAuthoringSiteKind = iota
 	siteRule
 	siteOverride
+	// siteDefault is the rule strategy's default branch, which authors its own
+	// values like a rule does. Only meaningful where Default is set and the
+	// strategy actually reads it.
+	siteDefault
 )
 
 // outputAuthoringSite is one place a field's value can be authored: the
@@ -865,6 +873,14 @@ func outputAuthoringMaps(seg *model.Segment) []outputAuthoringMap {
 		maps = append(maps, outputAuthoringMap{kind: siteOverride, name: r.RuleName, values: r.Outputs})
 	}
 
+	// The default branch, but only where it can actually run: a checklist
+	// delegates to RuleStrategy and returns before reaching it, so a stray
+	// Default there is inert and must not be treated as a place values are
+	// authored.
+	if seg.Default != "" && seg.Strategy == model.StrategyRule {
+		maps = append(maps, outputAuthoringMap{kind: siteDefault, values: seg.DefaultOutputs})
+	}
+
 	return maps
 }
 
@@ -919,6 +935,8 @@ func validateOutputExpressionSyntax(seg *model.Segment, name string, env map[str
 				errs = append(errs, fmt.Sprintf("segment %q rule %q output %q: %v", seg.ID, s.name, name, err))
 			case siteOverride:
 				errs = append(errs, fmt.Sprintf("segment %q override %q output %q: %v", seg.ID, s.name, name, err))
+			case siteDefault:
+				errs = append(errs, fmt.Sprintf("segment %q default output %q: %v", seg.ID, name, err))
 			}
 		}
 	}
@@ -945,6 +963,8 @@ func validateOutputTemplateTokens(seg *model.Segment, name string, schema model.
 			where = fmt.Sprintf("segment %q rule %q output %q", seg.ID, s.name, name)
 		case siteOverride:
 			where = fmt.Sprintf("segment %q override %q output %q", seg.ID, s.name, name)
+		case siteDefault:
+			where = fmt.Sprintf("segment %q default output %q", seg.ID, name)
 		}
 		errs = append(errs, validateTemplateTokens(where, s.value, schema, env)...)
 	}
@@ -983,16 +1003,6 @@ func requiredOutputErrors(seg *model.Segment, name string) []string {
 	}
 
 	var errs []string
-	// Only the rule strategy reads Segment.Default: a checklist delegates to
-	// RuleStrategy but returns from collectViolations before the default
-	// branch. So a checklist carrying a stray, inert Default must not be
-	// gated here — it is never evaluated.
-	if seg.Default != "" && seg.Strategy == model.StrategyRule {
-		errs = append(errs, fmt.Sprintf(
-			"segment %q output %q: required, and a default is declared, so it must be set in "+
-				"the segment's outputs — the default path reads no rule values",
-			seg.ID, name))
-	}
 	for _, s := range sites[1:] {
 		if s.ok {
 			continue
@@ -1008,6 +1018,11 @@ func requiredOutputErrors(seg *model.Segment, name string) []string {
 				"segment %q override %q: required output %q has no value (set it on the "+
 					"override, or once in the segment's outputs)",
 				seg.ID, s.name, name))
+		case siteDefault:
+			errs = append(errs, fmt.Sprintf(
+				"segment %q default: required output %q has no value (set it on the default, "+
+					"or once in the segment's outputs)",
+				seg.ID, name))
 		}
 	}
 	return errs

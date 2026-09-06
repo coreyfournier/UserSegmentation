@@ -19,9 +19,9 @@ interface Props {
  *
  * `verdict` is unset today: a saved test records inputs and no expectation, so
  * a run produces a result to read rather than a pass or a fail. The field is
- * here because the row, the roll-up and the styling are all shaped around it —
- * when expectations arrive, they set this and nothing else about the display
- * has to move.
+ * here because the row, the outcome column and the styling are all shaped
+ * around it — when expectations arrive they set this, and nothing else about
+ * the display has to move.
  */
 export interface TestRunResult {
   layerResult?: LayerResult;
@@ -29,6 +29,9 @@ export interface TestRunResult {
   error?: string;
   verdict?: 'pass' | 'fail';
 }
+
+/** Key for the unsaved draft's own result. Not a valid test id — ids are slugs. */
+const DRAFT_KEY = 'draft:unsaved';
 
 export default function LayerTests({ layerKey, schema }: Props) {
   const { data: allTests } = useTests();
@@ -44,7 +47,10 @@ export default function LayerTests({ layerKey, schema }: Props) {
   // The context being edited, held locally so typing does not write to the
   // server on every keystroke. Seeded when a test is selected.
   const [draft, setDraft] = useState<Record<string, unknown>>({});
-  const [newName, setNewName] = useState('');
+  // One name field serves both: the selected test's name while editing it, and
+  // the new test's name otherwise. Two separate name inputs shown at once was
+  // what made creating a test unclear.
+  const [name, setName] = useState('');
   const [results, setResults] = useState<Record<string, TestRunResult>>({});
   const [running, setRunning] = useState<string[]>([]);
   const [expanded, setExpanded] = useState<string | null>(null);
@@ -53,9 +59,8 @@ export default function LayerTests({ layerKey, schema }: Props) {
   const tests = (allTests ?? []).filter((t) => scope === 'all' || t.layer === layerKey);
   const selected = tests.find((t) => t.id === selectedId) ?? null;
 
-  // Grouped for the "all" view so a row's layer is never in doubt. Insertion
-  // order follows the list, with the layer being edited pulled to the front —
-  // it is the one the author is working on.
+  // Grouped for the all-layers view so a row's layer is never in doubt, with
+  // the layer being edited first — it is the one being worked on.
   const byLayer = new Map<string, SavedTest[]>();
   for (const t of tests) byLayer.set(t.layer, [...(byLayer.get(t.layer) ?? []), t]);
   const groups = [...byLayer.entries()].sort(([a], [b]) =>
@@ -64,64 +69,94 @@ export default function LayerTests({ layerKey, schema }: Props) {
 
   const select = (test: SavedTest) => {
     setSelectedId(test.id);
+    setName(test.name);
     setDraft(test.context ?? {});
   };
 
+  const startNew = () => {
+    setSelectedId(null);
+    setName('');
+    setDraft({});
+  };
+
   /**
-   * Runs one test against the layer it is filed under.
+   * Evaluates one context against one layer and files the result under `key`.
    *
    * Scoped to that layer rather than the whole config because the test was
    * saved to ask about that layer; the engine still evaluates everything it
    * depends on, so a cross-layer gate is exercised either way.
    *
-   * Uses apiFetch directly rather than the mutation, so a run-all can await
-   * each one and keep per-test results apart — a shared mutation has one
-   * `data` and the last response would win.
+   * Uses apiFetch directly rather than a mutation, so a run-all can await each
+   * one and keep the results apart — a shared mutation has a single `data` and
+   * only the last response would survive.
    */
-  const runOne = async (test: SavedTest, context?: Record<string, unknown>) => {
-    setRunning((r) => [...r, test.id]);
+  const run = async (
+    key: string,
+    layer: string,
+    context: Record<string, unknown>,
+    languages?: string[],
+    renderAll?: boolean,
+  ) => {
+    setRunning((r) => [...r, key]);
     try {
       const response = await apiFetch<EvaluateResponse>('/v1/evaluate', {
         method: 'POST',
         body: JSON.stringify({
-          context: context ?? test.context ?? {},
-          layers: [test.layer],
-          languages: test.languages?.length ? test.languages : undefined,
-          render_all: test.renderAll || undefined,
+          context,
+          layers: [layer],
+          languages: languages?.length ? languages : undefined,
+          render_all: renderAll || undefined,
         }),
       });
-      setResults((r) => ({
-        ...r,
-        [test.id]: { response, layerResult: response.layers?.[test.layer] },
-      }));
+      setResults((r) => ({ ...r, [key]: { response, layerResult: response.layers?.[layer] } }));
     } catch (e) {
-      setResults((r) => ({ ...r, [test.id]: { error: (e as Error).message } }));
+      setResults((r) => ({ ...r, [key]: { error: (e as Error).message } }));
     } finally {
-      setRunning((r) => r.filter((id) => id !== test.id));
+      setRunning((r) => r.filter((k) => k !== key));
     }
   };
 
+  // A single run opens its own result. The outcome was reachable only by
+  // clicking the status, which is not discoverable and is one click too many
+  // when confirming what a change did — the reason to run it at all.
+  const runOne = async (t: SavedTest, context?: Record<string, unknown>) => {
+    setExpanded(t.id);
+    await run(t.id, t.layer, context ?? t.context ?? {}, t.languages, t.renderAll);
+  };
+
+  const runDraft = async () => {
+    setExpanded(DRAFT_KEY);
+    await run(DRAFT_KEY, layerKey, draft);
+  };
+
   // Sequential rather than parallel: these all write to the same result map,
-  // and a handful of local evaluations is fast enough that the ordering is
-  // worth more than the concurrency.
+  // and a handful of local evaluations is fast enough that predictable
+  // ordering is worth more than the concurrency. Nothing is auto-expanded —
+  // the outcome column is the point when running a set.
   const runAll = async () => {
     for (const t of tests) await runOne(t);
+    setExpanded(null);
   };
 
   const save = () => {
     if (!selected) return;
-    updateTest.mutate({ id: selected.id, test: { ...selected, context: draft } });
+    const trimmed = name.trim();
+    if (!trimmed) return;
+    updateTest.mutate({ id: selected.id, test: { ...selected, name: trimmed, context: draft } });
   };
 
   const saveAsNew = () => {
-    const name = newName.trim();
-    if (!name) return;
+    const trimmed = name.trim();
+    if (!trimmed) return;
     createTest.mutate(
-      { layer: layerKey, name, context: draft },
+      { layer: layerKey, name: trimmed, context: draft },
       {
         onSuccess: (snap) => {
-          setNewName('');
-          const created = (snap.tests ?? []).find((t) => t.layer === layerKey && t.name === name);
+          // Select what was just created, so the panel is now editing it
+          // rather than still offering to create the same thing again.
+          const created = (snap.tests ?? []).find(
+            (t) => t.layer === layerKey && t.name === trimmed,
+          );
           if (created) setSelectedId(created.id);
         },
       }
@@ -129,6 +164,68 @@ export default function LayerTests({ layerKey, schema }: Props) {
   };
 
   const ranCount = tests.filter((t) => results[t.id]).length;
+
+  /** The outcome of a run, shown in full: what resolved, and what it emitted. */
+  const renderResult = (r: TestRunResult) => (
+    <div className={styles.detail}>
+      {r.error && <div className={styles.fail}>{r.error}</div>}
+      {r.layerResult && (
+        <>
+          <div className={styles.resultLine}>
+            <span className={`${styles.status} ${styles[r.layerResult.status] ?? ''}`}>
+              {r.layerResult.status}
+            </span>
+            {r.layerResult.segment && <code>{r.layerResult.segment}</code>}
+            {r.layerResult.reason && (
+              <span className={styles.reason}>{r.layerResult.reason}</span>
+            )}
+          </div>
+
+          {/* The emitted record, laid out rather than buried in JSON — it is
+              what an author is checking when they run a test at all. */}
+          {r.layerResult.outputs && Object.keys(r.layerResult.outputs).length > 0 && (
+            <table className={styles.outputs}>
+              <tbody>
+                {Object.entries(r.layerResult.outputs).map(([k, v]) => (
+                  <tr key={k}>
+                    <td className={styles.outKey}>{k}</td>
+                    <td className={styles.outVal}>
+                      {typeof v === 'object' ? JSON.stringify(v) : String(v)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+
+          {r.layerResult.failures && r.layerResult.failures.length > 0 && (
+            <ul className={styles.failures}>
+              {r.layerResult.failures.map((f) => (
+                <li key={f.rule}>
+                  <code>{f.rule}</code> {f.message}
+                </li>
+              ))}
+            </ul>
+          )}
+
+          {!r.layerResult.outputs && !r.layerResult.failures?.length && (
+            <div className={styles.none}>No outputs emitted.</div>
+          )}
+        </>
+      )}
+
+      {r.response?.warnings?.map((w, i) => (
+        <div key={i} className={styles.warning}>
+          <code>{w.field}</code> {w.message}
+        </div>
+      ))}
+
+      <details>
+        <summary className={styles.raw}>Raw response</summary>
+        <pre className={styles.pre}>{JSON.stringify(r.response ?? r, null, 2)}</pre>
+      </details>
+    </div>
+  );
 
   return (
     <div className={styles.panel}>
@@ -174,7 +271,7 @@ export default function LayerTests({ layerKey, schema }: Props) {
         <p className={styles.empty}>
           {scope === 'all'
             ? 'No saved tests anywhere yet.'
-            : 'No saved tests for this layer yet. Fill in a context below and name it to keep it.'}
+            : 'No saved tests for this layer yet — name a context below to keep one.'}
         </p>
       ) : (
         <div className={styles.list}>
@@ -208,7 +305,7 @@ export default function LayerTests({ layerKey, schema }: Props) {
                         className={styles.outcome}
                         onClick={() => setExpanded(expanded === t.id ? null : t.id)}
                         disabled={!r}
-                        aria-label={r ? `Show the result for ${t.name}` : undefined}
+                        title={r ? 'Show or hide this result' : undefined}
                       >
                         {isRunning && <span className={styles.pending}>…</span>}
                         {!isRunning && r?.error && <span className={styles.fail}>error</span>}
@@ -234,19 +331,7 @@ export default function LayerTests({ layerKey, schema }: Props) {
                         x
                       </button>
                     </div>
-                    {expanded === t.id && r && (
-                      <div className={styles.detail}>
-                        {r.error && <div className={styles.fail}>{r.error}</div>}
-                        {r.response?.warnings?.map((w, i) => (
-                          <div key={i} className={styles.warning}>
-                            <code>{w.field}</code> {w.message}
-                          </div>
-                        ))}
-                        <pre className={styles.pre}>
-                          {JSON.stringify(r.layerResult ?? r.response, null, 2)}
-                        </pre>
-                      </div>
-                    )}
+                    {expanded === t.id && r && renderResult(r)}
                   </div>
                 );
               })}
@@ -255,49 +340,55 @@ export default function LayerTests({ layerKey, schema }: Props) {
         </div>
       )}
 
-      <div className={styles.context}>
-        <label className={styles.label}>
-          Context{selected ? ` — ${selected.name}` : ' — unsaved'}
-        </label>
-        <ContextEditor value={draft} onChange={setDraft} schemas={schema ? [schema] : []} />
-      </div>
+      {/* Authoring half. The name leads: naming a context is what turns it into
+          a test, and it used to sit below the context editor beside a Save
+          button, where it read as an afterthought rather than the way you
+          create one. */}
+      <div className={styles.editor}>
+        <div className={styles.editorHead}>
+          <strong className={styles.editorTitle}>{selected ? 'Editing test' : 'New test'}</strong>
+          {selected && (
+            <button type="button" className={styles.linkish} onClick={startNew}>
+              + new test
+            </button>
+          )}
+        </div>
 
-      <div className={styles.actions}>
-        {selected && (
-          <>
-            <button
-              type="button"
-              className="btn-ghost btn-sm"
-              onClick={() => runOne(selected, draft)}
-              disabled={running.includes(selected.id)}
-            >
-              Run edited
-            </button>
-            <button
-              type="button"
-              className="btn-ghost btn-sm"
-              onClick={save}
-              disabled={updateTest.isPending}
-            >
-              Save to &ldquo;{selected.name}&rdquo;
-            </button>
-          </>
-        )}
+        <label className={styles.label} htmlFor="test-name">Name</label>
         <input
+          id="test-name"
           className={styles.name}
-          value={newName}
-          onChange={(e) => setNewName(e.target.value)}
-          placeholder="name this context"
-          aria-label="new test name"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          placeholder="e.g. high earner, low hours"
         />
-        <button
-          type="button"
-          className="btn-ghost btn-sm"
-          onClick={saveAsNew}
-          disabled={!newName.trim() || createTest.isPending}
-        >
-          Save as test
-        </button>
+
+        <label className={styles.label}>Context</label>
+        <ContextEditor value={draft} onChange={setDraft} schemas={schema ? [schema] : []} />
+
+        <div className={styles.actions}>
+          <button
+            type="button"
+            className="btn-ghost btn-sm"
+            onClick={() => (selected ? runOne(selected, draft) : runDraft())}
+            disabled={running.length > 0}
+          >
+            Run without saving
+          </button>
+          <span className={styles.spacer} />
+          <button
+            type="button"
+            className="btn-primary btn-sm"
+            onClick={selected ? save : saveAsNew}
+            disabled={!name.trim() || createTest.isPending || updateTest.isPending}
+          >
+            {selected ? 'Save changes' : 'Save test'}
+          </button>
+        </div>
+
+        {/* The draft's own result, shown here rather than in the list, because
+            an unsaved context has no row to hang it off. */}
+        {!selected && results[DRAFT_KEY] && renderResult(results[DRAFT_KEY])}
       </div>
 
       <ConfirmDialog
@@ -307,7 +398,7 @@ export default function LayerTests({ layerKey, schema }: Props) {
         onConfirm={() => {
           if (deleting) {
             deleteTest.mutate(deleting.id);
-            if (deleting.id === selectedId) setSelectedId(null);
+            if (deleting.id === selectedId) startNew();
           }
           setDeleting(null);
         }}

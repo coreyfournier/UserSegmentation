@@ -1,8 +1,9 @@
 import { useState } from 'react';
-import type { FieldType, OutputField, OutputSchema } from '../../api/types';
+import type { ComputedField, FieldType, OutputField, OutputSchema } from '../../api/types';
 import {
   availableOutputFields,
   FIELD_TYPES,
+  matchingComputedField,
   outputValueRows,
   placeholderFor,
   renameOutputKey,
@@ -17,6 +18,9 @@ interface Props {
   onChange: (o?: Record<string, string>) => void;
   /** Declares a new field on the segment's schema, so it can be authored inline. */
   onDeclare: (name: string, field: OutputField) => void;
+  /** The segment's computed fields, so a field a computed one could supply
+   *  can offer it. Omitted where there are none to offer. */
+  computed?: ComputedField[];
   /** How completely each field is authored elsewhere on the segment (its
    *  rules and overrides). Only meaningful when this editor represents a
    *  segment's own values rather than one rule's — omitted by every
@@ -30,7 +34,7 @@ interface Props {
  */
 const DECLARE_NEW = '\0declare-new';
 
-export default function OutputValuesEditor({ outputs, schema, onChange, onDeclare, coverage }: Props) {
+export default function OutputValuesEditor({ outputs, schema, onChange, onDeclare, coverage, computed }: Props) {
   // Shared by every select's "declare new…" option and the add-value picker:
   // whichever triggers it first reveals the same name input below the grid.
   const [showDeclare, setShowDeclare] = useState(false);
@@ -120,6 +124,24 @@ export default function OutputValuesEditor({ outputs, schema, onChange, onDeclar
                     placeholder={row.field ? placeholderFor(row.field) : undefined}
                     aria-label={`value for ${row.name}`}
                   />
+                  {/* A computed field of the same name and type could supply
+                      this. Offered, not applied: clicking writes the
+                      expression into the config, so what evaluates is what an
+                      author can read here — the engine infers nothing. */}
+                  {!row.value && (() => {
+                    const match = matchingComputedField(row.name, row.field, computed);
+                    if (!match) return null;
+                    return (
+                      <button
+                        type="button"
+                        className={styles.useComputed}
+                        onClick={() => set(row.name, match.name)}
+                        title={`Set this to the computed field ${match.name} (${match.type})`}
+                      >
+                        use computed <code>{match.name}</code>
+                      </button>
+                    );
+                  })()}
                   {coverage && row.field && (() => {
                     const field = row.field;
                     const c = coverage(row.name);
@@ -130,8 +152,8 @@ export default function OutputValuesEditor({ outputs, schema, onChange, onDeclar
                     const overridesShort = c.overridesTotal - c.overridesAuthored;
                     const extra: string[] = [];
                     if (field.required) {
-                      if (c.defaultNeedsSegmentValue) {
-                        extra.push('a default is declared, so this must be set for the segment');
+                      if (c.defaultUnauthored) {
+                        extra.push('the default path has no value for this — set it in the Default section');
                       }
                       if (overridesShort > 0) {
                         extra.push(

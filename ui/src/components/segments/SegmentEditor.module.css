@@ -68,36 +68,6 @@
   align-self: center;
 }
 
-/* The segment and its tests, side by side where the window allows it.
-   1200px is where a 380px panel still leaves the editor a workable width —
-   below it the two stack and the tests sit at the bottom, as before. */
-.split {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  gap: 16px;
-  align-items: start;
-}
-
-@media (min-width: 1200px) {
-  .split {
-    grid-template-columns: minmax(0, 1fr) 380px;
-  }
-
-  /* Pinned: an author editing at the bottom of a long segment can run a test
-     without scrolling back up. The panel scrolls inside itself once its
-     content outgrows the viewport, so it never pushes the page taller. */
-  .aside {
-    position: sticky;
-    top: 16px;
-    max-height: calc(100vh - 32px);
-    overflow-y: auto;
-  }
-}
-
-.main {
-  min-width: 0;
-}
-
 .testCard {
   padding: 14px 16px;
   margin-bottom: 0;

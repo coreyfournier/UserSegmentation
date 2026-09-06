@@ -1,7 +1,9 @@
 import type { ReactNode } from 'react';
-import type { Rule, InputSchema, OutputField, OutputSchema } from '../../api/types';
+import type { ComputedField, Rule, InputSchema, OutputField, OutputSchema } from '../../api/types';
 import RuleTreeBuilder from '../rules/RuleTreeBuilder';
 import MessagesEditor from '../rules/MessagesEditor';
+import OutputValuesEditor from '../rules/OutputValuesEditor';
+import styles from './RuleConfig.module.css';
 
 interface Props {
   rules: Rule[];
@@ -12,6 +14,12 @@ interface Props {
   onDefaultChange: (v: string) => void;
   defaultMessages?: Record<string, string>;
   onDefaultMessagesChange: (v: Record<string, string> | undefined) => void;
+  /** The default path's own output values, authored like a rule's. */
+  defaultOutputs?: Record<string, string>;
+  onDefaultOutputsChange: (o?: Record<string, string>) => void;
+  /** The segment's computed fields, so an output a computed one could supply
+   *  can offer it. */
+  computed?: ComputedField[];
   /** Schema for rules — includes computed fields when applicable. */
   ruleSchema?: InputSchema;
   /** Schema for overrides — raw input fields only (no computed fields). */
@@ -35,6 +43,9 @@ export default function RuleConfig({
   onDefaultChange,
   defaultMessages,
   onDefaultMessagesChange,
+  defaultOutputs,
+  onDefaultOutputsChange,
+  computed,
   ruleSchema,
   overrideSchema,
   layerNames,
@@ -72,10 +83,47 @@ export default function RuleConfig({
         />
       </div>
 
-      <div className="form-group" style={{ marginTop: 16 }}>
-        <label>Default Value</label>
-        <input value={defaultValue} onChange={(e) => onDefaultChange(e.target.value)} />
+      {/* The default is an outcome, not a trailing field: it is what the
+          segment resolves to whenever no rule matches, which for most subjects
+          is most of the time. It used to be a bare input at the bottom, easy
+          to skim past — hence the framing and the rule above it. */}
+      <div className={styles.default}>
+        <div className={styles.defaultHead}>
+          <h4 className={styles.defaultTitle}>Default — when no rule matches</h4>
+          {!defaultValue && <span className={styles.unset}>not set</span>}
+        </div>
+        <p className={styles.defaultNote}>
+          With no default, a segment where nothing matches resolves to nothing at all and
+          the layer reports <code>unresolved</code>.
+        </p>
+
+        <div className="form-group">
+          <label>Resolved value</label>
+          <input
+            value={defaultValue}
+            onChange={(e) => onDefaultChange(e.target.value)}
+            placeholder="e.g. standard"
+          />
+        </div>
+
         <MessagesEditor value={defaultMessages} onChange={onDefaultMessagesChange} />
+
+        {/* The default authors its own output values, the same way a rule does.
+            Without this a field whose value depends on the outcome had to be
+            set once for the whole segment — and that one value was then wrong
+            for every rule that did match. */}
+        {defaultValue && outputSchema && Object.keys(outputSchema).length > 0 && (
+          <div style={{ marginTop: 12 }}>
+            <label>Output values</label>
+            <OutputValuesEditor
+              outputs={defaultOutputs}
+              schema={outputSchema}
+              onChange={onDefaultOutputsChange}
+              onDeclare={onDeclareOutput ?? (() => {})}
+              computed={computed}
+            />
+          </div>
+        )}
       </div>
     </div>
   );
