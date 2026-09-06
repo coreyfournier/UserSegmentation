@@ -10,7 +10,8 @@
     "preview": "vite preview",
     "verify:rules": "node verify-rule-tree.mjs",
     "verify:output-schema": "node verify-output-schema.mjs",
-    "verify:layer-keys": "node verify-layer-keys.mjs"
+    "verify:layer-keys": "node verify-layer-keys.mjs",
+    "verify:computed-fields": "node verify-computed-fields.mjs"
   },
   "dependencies": {
     "@tanstack/react-query": "^5.90.21",

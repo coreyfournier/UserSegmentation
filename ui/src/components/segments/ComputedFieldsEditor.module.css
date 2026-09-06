@@ -34,3 +34,33 @@
   min-width: 260px;
   font-family: monospace;
 }
+
+.reorder {
+  white-space: nowrap;
+  width: 1%;
+}
+
+.reorder button {
+  padding: 2px 6px;
+  line-height: 1;
+}
+
+.reorder button:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+
+/* A formula reading a field declared below it. Not an error the engine will
+   refuse — it evaluates against a value that does not exist yet — so it reads
+   as a warning rather than a failure. */
+.forward {
+  margin-top: 3px;
+  font-size: 10px;
+  color: var(--danger);
+}
+
+.orderNote {
+  margin: 6px 0 0;
+  font-size: 11px;
+  color: var(--text-muted);
+}
