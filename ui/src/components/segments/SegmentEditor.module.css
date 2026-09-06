@@ -1,5 +1,9 @@
+/* No page-wide cap. The readable-width cap belongs to the form column inside
+   SplitPane, which carries its own width; capping the page as well meant a
+   wide monitor showed a 900px page and a wall of empty space to its right,
+   with the tests panel unable to reach into any of it. */
 .editor {
-  max-width: 900px;
+  min-width: 0;
 }
 
 .toolbar {

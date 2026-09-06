@@ -15,7 +15,9 @@
 }
 
 /* Sticky so the side column stays reachable from anywhere in a long page, and
-   scrolls inside itself rather than making the page taller. */
+   scrolls inside itself rather than making the page taller. It takes whatever
+   width the form column does not, so a wider monitor gives the results more
+   room rather than more margin. */
 .side {
   position: sticky;
   top: 16px;

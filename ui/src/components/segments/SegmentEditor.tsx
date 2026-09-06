@@ -180,7 +180,7 @@ export default function SegmentEditor() {
           that width they stack and the tests fall to the bottom, which is
           where they were before. */}
       <SplitPane
-        storageKey="segment-editor.tests-width"
+        storageKey="segment-editor.form-width"
         side={
           <section className={`card ${styles.testCard}`}>
             <h3>Tests</h3>
@@ -456,9 +456,9 @@ export default function SegmentEditor() {
         </section>
       )}
 
-      </SplitPane>
-
-      {/* Footer */}
+      {/* Footer, inside the form column: these act on the segment, and a
+          right-aligned footer spanning an uncapped page would put Save at the
+          far edge of a wide monitor, nowhere near the form. */}
       <div className={styles.footer}>
         {/* "Close" rather than "Cancel": saving no longer leaves the page, so
             this is how you leave — and it discards nothing that was saved. */}
@@ -470,6 +470,8 @@ export default function SegmentEditor() {
           {updateSegment.isPending ? 'Saving...' : 'Save'}
         </button>
       </div>
+
+      </SplitPane>
     </div>
   );
 }

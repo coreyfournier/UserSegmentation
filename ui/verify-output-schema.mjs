@@ -34,6 +34,8 @@ const {
   outputValueRows,
   availableOutputFields,
   renameOutputKey,
+  matchingComputedField,
+  unfilledComputedMatches,
 } = await import(
   pathToFileURL(join(out, 'components', 'schema', 'outputSchemaRules.js')).href
 );
@@ -85,16 +87,16 @@ const seg = {
 };
 assert.deepEqual(
   fieldCoverage(seg, schema, 'cat'),
-  { authored: 1, total: 2, segmentLevel: false, overridesAuthored: 0, overridesTotal: 0, defaultNeedsSegmentValue: false },
+  { authored: 1, total: 2, segmentLevel: false, overridesAuthored: 0, overridesTotal: 0, defaultUnauthored: false },
 );
 assert.deepEqual(
   fieldCoverage({ ...seg, outputs: { cat: 'y' } }, schema, 'cat'),
-  { authored: 1, total: 2, segmentLevel: true, overridesAuthored: 0, overridesTotal: 0, defaultNeedsSegmentValue: false },
+  { authored: 1, total: 2, segmentLevel: true, overridesAuthored: 0, overridesTotal: 0, defaultUnauthored: false },
 );
 // An empty segment-level value does not count — the engine treats it as unauthored.
 assert.deepEqual(
   fieldCoverage({ ...seg, outputs: { cat: '' } }, schema, 'cat'),
-  { authored: 1, total: 2, segmentLevel: false, overridesAuthored: 0, overridesTotal: 0, defaultNeedsSegmentValue: false },
+  { authored: 1, total: 2, segmentLevel: false, overridesAuthored: 0, overridesTotal: 0, defaultUnauthored: false },
 );
 // Nor does an empty rule-level value — key presence alone must not count as authoring it.
 assert.deepEqual(
@@ -103,7 +105,7 @@ assert.deepEqual(
     schema,
     'cat',
   ),
-  { authored: 1, total: 3, segmentLevel: false, overridesAuthored: 0, overridesTotal: 0, defaultNeedsSegmentValue: false },
+  { authored: 1, total: 3, segmentLevel: false, overridesAuthored: 0, overridesTotal: 0, defaultUnauthored: false },
 );
 
 // Overrides count toward coverage too — enabled ones only, and per-item values
@@ -119,12 +121,12 @@ const withOverrides = {
 };
 assert.deepEqual(
   fieldCoverage(withOverrides, schema, 'cat'),
-  { authored: 1, total: 2, segmentLevel: false, overridesAuthored: 1, overridesTotal: 2, defaultNeedsSegmentValue: false },
+  { authored: 1, total: 2, segmentLevel: false, overridesAuthored: 1, overridesTotal: 2, defaultUnauthored: false },
 );
 // A segment-level value still covers everything, overrides included.
 assert.deepEqual(
   fieldCoverage({ ...withOverrides, outputs: { cat: 'y' } }, schema, 'cat'),
-  { authored: 1, total: 2, segmentLevel: true, overridesAuthored: 1, overridesTotal: 2, defaultNeedsSegmentValue: false },
+  { authored: 1, total: 2, segmentLevel: true, overridesAuthored: 1, overridesTotal: 2, defaultUnauthored: false },
 );
 
 // A rule segment with a non-empty default reads no rule values on that path —
@@ -139,14 +141,27 @@ const ruleSeg = {
 };
 assert.deepEqual(
   fieldCoverage(ruleSeg, schema, 'cat'),
-  { authored: 1, total: 1, segmentLevel: false, overridesAuthored: 0, overridesTotal: 0, defaultNeedsSegmentValue: true },
+  { authored: 1, total: 1, segmentLevel: false, overridesAuthored: 0, overridesTotal: 0, defaultUnauthored: true },
 );
 // No default declared: rule values alone are enough.
-assert.equal(fieldCoverage({ ...ruleSeg, default: '' }, schema, 'cat').defaultNeedsSegmentValue, false);
-assert.equal(fieldCoverage({ ...ruleSeg, default: undefined }, schema, 'cat').defaultNeedsSegmentValue, false);
-// A checklist never reads Default, so it never needs the segment-level value
-// on that account, even if a stray default is present.
-assert.equal(fieldCoverage({ ...seg, default: 'stray' }, schema, 'cat').defaultNeedsSegmentValue, false);
+assert.equal(fieldCoverage({ ...ruleSeg, default: '' }, schema, 'cat').defaultUnauthored, false);
+assert.equal(fieldCoverage({ ...ruleSeg, default: undefined }, schema, 'cat').defaultUnauthored, false);
+// A checklist never reads Default, so a stray one there is inert.
+assert.equal(fieldCoverage({ ...seg, default: 'stray' }, schema, 'cat').defaultUnauthored, false);
+
+// The default authors its own values now, so a value there settles it — this
+// is the case that used to demand a segment-level value and, with it, the same
+// value on every rule that matched.
+assert.equal(
+  fieldCoverage({ ...ruleSeg, defaultOutputs: { cat: '"x"' } }, schema, 'cat').defaultUnauthored,
+  false,
+);
+// An empty string is not a value: evaluateOutputs skips it exactly as it skips
+// an absent key.
+assert.equal(
+  fieldCoverage({ ...ruleSeg, defaultOutputs: { cat: '' } }, schema, 'cat').defaultUnauthored,
+  true,
+);
 
 // --- output value rows -------------------------------------------------
 const rowSchema = {
@@ -201,3 +216,51 @@ assert.equal(renameOutputKey({ a: '1' }, 'a', ''), undefined);
 assert.equal(renameOutputKey(undefined, 'a', 'b'), undefined);
 
 console.log('output schema rules OK');
+
+// --- computed field matching -------------------------------------------
+// A suggestion the editor acts on when told to, never something the engine
+// resolves: what it fills in is an ordinary expression written into the config.
+
+const computed = [
+  { name: 'TransferFee', type: 'number', formula: 'amount * 0.02' },
+  { name: 'Tier', type: 'string', formula: '"gold"' },
+];
+
+// Name and type both agree.
+assert.equal(
+  matchingComputedField('TransferFee', { type: 'number' }, computed)?.name,
+  'TransferFee',
+);
+
+// Name agrees, type does not. Wiring these together would emit the number's
+// string form as though that had been intended.
+assert.equal(matchingComputedField('TransferFee', { type: 'string' }, computed), undefined);
+
+// No computed field of that name at all.
+assert.equal(matchingComputedField('Severity', { type: 'string' }, computed), undefined);
+
+// Nothing to match against.
+assert.equal(matchingComputedField('TransferFee', { type: 'number' }, []), undefined);
+assert.equal(matchingComputedField('TransferFee', { type: 'number' }, undefined), undefined);
+// An undeclared field cannot match: there is no type to agree with.
+assert.equal(matchingComputedField('TransferFee', undefined, computed), undefined);
+
+// The set a "fill these in" action would write, which excludes anything
+// already authored — filling those would overwrite an author's own value.
+const matchSchema = {
+  TransferFee: { type: 'number' },
+  Tier: { type: 'string' },
+  Severity: { type: 'string' },
+};
+assert.deepEqual(
+  unfilledComputedMatches(matchSchema, computed, {}).map((c) => c.name).sort(),
+  ['Tier', 'TransferFee'],
+);
+assert.deepEqual(
+  unfilledComputedMatches(matchSchema, computed, { TransferFee: '0' }).map((c) => c.name),
+  ['Tier'],
+);
+assert.deepEqual(unfilledComputedMatches(matchSchema, [], {}), []);
+assert.deepEqual(unfilledComputedMatches(undefined, computed, {}), []);
+
+console.log('computed field matching OK');
