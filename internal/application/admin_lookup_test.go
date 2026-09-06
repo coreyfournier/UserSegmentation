@@ -22,15 +22,22 @@ func TestCreateLookup_AutoSlug(t *testing.T) {
 
 func TestCreateLookup_SlugUniqueness(t *testing.T) {
 	uc, _, _ := newTestAdminUC()
-	if _, err := uc.CreateLookup(model.LookupTable{Name: "Zips", KeyType: model.FieldTypeString}); err != nil {
+	// Two DISTINCT names that slugify to the same id. This used to use the same
+	// name twice, which duplicate-name rejection now forbids — but slug
+	// collision is still reachable, because slugify strips the punctuation that
+	// makes these two names different.
+	if _, err := uc.CreateLookup(model.LookupTable{Name: "Zip Codes", KeyType: model.FieldTypeString}); err != nil {
 		t.Fatal(err)
 	}
-	snap, err := uc.CreateLookup(model.LookupTable{Name: "Zips", KeyType: model.FieldTypeString})
+	snap, err := uc.CreateLookup(model.LookupTable{Name: "Zip-Codes", KeyType: model.FieldTypeString})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if snap.Lookups[1].ID != "zips-2" {
-		t.Fatalf("expected zips-2, got %q", snap.Lookups[1].ID)
+	if snap.Lookups[0].ID != "zip-codes" {
+		t.Fatalf("expected zip-codes, got %q", snap.Lookups[0].ID)
+	}
+	if snap.Lookups[1].ID != "zip-codes-2" {
+		t.Fatalf("expected zip-codes-2, got %q", snap.Lookups[1].ID)
 	}
 }
 
