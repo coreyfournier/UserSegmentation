@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useLookups } from '../../api/lookups';
 import type { ComputedField, FieldType, OutputField, OutputSchema } from '../../api/types';
 import {
   availableOutputFields,
@@ -40,6 +41,12 @@ export default function OutputValuesEditor({ outputs, schema, onChange, onDeclar
   const [showDeclare, setShowDeclare] = useState(false);
   const [newName, setNewName] = useState('');
   const [newType, setNewType] = useState<FieldType>('string');
+
+  // Read here rather than threaded through every caller: four call sites pass
+  // this editor around, and none of them cares about lookup tables.
+  const { data: lookups } = useLookups();
+  const lookupFor = (f?: OutputField) =>
+    f?.lookup ? (lookups ?? []).find((t) => t.id === f.lookup) : undefined;
 
   const set = (name: string, raw: string) => {
     const next = { ...(outputs ?? {}) };
@@ -124,6 +131,39 @@ export default function OutputValuesEditor({ outputs, schema, onChange, onDeclar
                     placeholder={row.field ? placeholderFor(row.field) : undefined}
                     aria-label={`value for ${row.name}`}
                   />
+                  {/* The field's lookup declares its permitted values, so they
+                      are offered here rather than left to be remembered and
+                      typed. Picking one writes the key into the value, which
+                      is all a key ever is: a string field's value is a
+                      template, so the bare key renders to itself, and a
+                      number field's is an expression, where a numeric key is
+                      already a literal.
+
+                      Offered beside the field rather than replacing it,
+                      because a value may legitimately be an expression that
+                      computes which key applies. */}
+                  {(() => {
+                    const table = lookupFor(row.field);
+                    if (!table?.entries?.length) return null;
+                    return (
+                      <select
+                        className={styles.keyPick}
+                        value=""
+                        onChange={(e) => {
+                          if (e.target.value) set(row.name, e.target.value);
+                        }}
+                        aria-label={`pick a ${table.name} key for ${row.name}`}
+                        title={`Values come from the lookup table "${table.name}"`}
+                      >
+                        <option value="">pick a {table.name} key…</option>
+                        {table.entries.map((entry) => (
+                          <option key={String(entry.key)} value={String(entry.key)}>
+                            {entry.value ? `${String(entry.key)} — ${entry.value}` : String(entry.key)}
+                          </option>
+                        ))}
+                      </select>
+                    );
+                  })()}
                   {/* A computed field of the same name and type could supply
                       this. Offered, not applied: clicking writes the
                       expression into the config, so what evaluates is what an

@@ -35,3 +35,14 @@
   font-style: italic;
   color: var(--text-muted);
 }
+
+/* Key adder for a list operator on a lookup-bound field. Appends and resets,
+   so it reads as an action rather than as the condition's current value — the
+   text field beside it holds that. */
+.keyAdd {
+  margin-top: 3px;
+  font-size: 11px;
+  padding: 2px 6px;
+  width: auto;
+  max-width: 100%;
+}

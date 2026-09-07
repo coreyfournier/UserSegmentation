@@ -27,12 +27,23 @@ export default function ConditionEditor({ value, onChange, schema, layerNames }:
   const lookupOptions = (lookups ?? []).filter((t) => !fieldType || t.keyType === fieldType);
 
   // A field bound to a lookup in the input schema has a known domain, so the
-  // value is picked from that table's keys rather than typed. Only for the
-  // operators that take exactly one value — `in`/`not_in` take a list, which a
-  // single select cannot express.
+  // value is picked from that table's keys rather than typed.
   const boundTable = (lookups ?? []).find((t) => t.id === schema?.[value.field]?.lookup);
-  const takesOneValue = !isUnaryOp && !isLookupOp && value.operator !== 'in' && value.operator !== 'not_in';
+  const takesList = value.operator === 'in' || value.operator === 'not_in';
+  const takesOneValue = !isUnaryOp && !isLookupOp && !takesList;
   const keyOptions = boundTable && takesOneValue ? boundTable.entries : undefined;
+  // A list operator gets an adder instead of a replacing select: one select
+  // cannot express a list, but it can append to one — which is the whole
+  // difficulty with typing these by hand, since every key has to be recalled
+  // and spelled exactly.
+  const listKeyOptions = boundTable && !isUnaryOp && !isLookupOp && takesList
+    ? boundTable.entries
+    : undefined;
+  const currentList = Array.isArray(value.value) ? value.value.map(String) : [];
+  const appendKey = (key: string) => {
+    if (!key || currentList.includes(key)) return;
+    onChange({ ...value, value: [...currentList, key] });
+  };
   const currentKey = String(value.value ?? '');
   // Keep a value the table does not (or no longer) list, so opening a rule
   // written before the binding — or after an entry was removed — does not
@@ -113,13 +124,37 @@ export default function ConditionEditor({ value, onChange, schema, layerNames }:
             )}
           </select>
         ) : (
-          <ExpandableField
-            value={formatValue(value.value)}
-            onChange={(e) =>
-              onChange({ ...value, value: parseValue(e.target.value, value.operator as string) })
-            }
-            placeholder={value.operator === 'in' || value.operator === 'not_in' ? 'val1, val2, ...' : 'value'}
-          />
+          <>
+            <ExpandableField
+              value={formatValue(value.value)}
+              onChange={(e) =>
+                onChange({ ...value, value: parseValue(e.target.value, value.operator as string) })
+              }
+              placeholder={takesList ? 'val1, val2, ...' : 'value'}
+            />
+            {/* A list on a bound field gets its keys offered as an adder. The
+                select appends and resets, rather than replacing the list, so
+                the typed field stays authoritative and a value the table does
+                not list is never taken away. */}
+            {listKeyOptions && listKeyOptions.length > 0 && (
+              <select
+                className={styles.keyAdd}
+                value=""
+                onChange={(e) => appendKey(e.target.value)}
+                aria-label={`add a ${boundTable!.name} key`}
+                title={`Keys from the lookup table "${boundTable!.name}"`}
+              >
+                <option value="">add a {boundTable!.name} key…</option>
+                {listKeyOptions
+                  .filter((entry) => !currentList.includes(String(entry.key)))
+                  .map((entry) => (
+                    <option key={String(entry.key)} value={String(entry.key)}>
+                      {entry.value ? `${String(entry.key)} — ${entry.value}` : String(entry.key)}
+                    </option>
+                  ))}
+              </select>
+            )}
+          </>
         )}
       </div>
     </div>
