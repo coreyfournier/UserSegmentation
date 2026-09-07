@@ -1,7 +1,8 @@
 import type { ComputedField, FieldType } from '../../api/types';
 import FormulaReference from './FormulaReference';
 import ExpandableField from '../common/ExpandableField';
-import { forwardReferences, moveComputedField } from './computedFieldRules';
+import { forwardReferences } from './computedFieldRules';
+import { moveItem } from '../../utils/move';
 import styles from './ComputedFieldsEditor.module.css';
 
 interface Props {
@@ -42,7 +43,7 @@ export default function ComputedFieldsEditor({ value, onChange, onChangeType }: 
   const add = () => onChange([...value, empty()]);
 
   const move = (idx: number, delta: number) =>
-    onChange(moveComputedField(value, idx, idx + delta));
+    onChange(moveItem(value, idx, idx + delta));
 
   // Which formulas read a field declared below them — the case reordering
   // exists to fix, called out so it does not have to be worked out by hand.

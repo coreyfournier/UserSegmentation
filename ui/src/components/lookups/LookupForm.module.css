@@ -7,10 +7,12 @@
 /* Two input columns + a remove button. min-width:0 lets the inputs shrink
    inside the grid instead of the key column hogging the row. A third,
    fixed-width order column is added only in custom-order mode. */
+/* The leading column holds the move controls, which appear only while list
+   position is what the emitted order comes from. */
 .entryHead,
 .entryRow {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1.6fr) 28px;
+  grid-template-columns: auto minmax(0, 1fr) minmax(0, 1.6fr) 28px;
   gap: 8px;
   align-items: center;
 }
@@ -36,4 +38,23 @@
 .entryRow input {
   width: 100%;
   min-width: 0;
+}
+
+/* Move controls. Present only when position decides the emitted order — in
+   hand-authored mode the number does, so arrows would claim an effect they do
+   not have. */
+.reorder {
+  display: flex;
+  gap: 2px;
+  white-space: nowrap;
+}
+
+.reorder button {
+  padding: 2px 5px;
+  line-height: 1;
+}
+
+.reorder button:disabled {
+  opacity: 0.3;
+  cursor: default;
 }

@@ -17,41 +17,41 @@ const out = join(here, 'node_modules', '.computed-field-check');
 mkdirSync(out, { recursive: true });
 execFileSync(
   process.platform === 'win32' ? 'npx.cmd' : 'npx',
-  ['tsc', 'src/components/segments/computedFieldRules.ts', '--outDir', out,
+  ['tsc', 'src/components/segments/computedFieldRules.ts', 'src/utils/move.ts', '--outDir', out,
    '--module', 'esnext', '--target', 'es2022', '--moduleResolution', 'bundler'],
   { cwd: here, stdio: 'inherit', shell: process.platform === 'win32' }
 );
 writeFileSync(join(out, 'package.json'), '{"type":"module"}');
 
-const { moveComputedField, forwardReferences } =
-  await import(
-    // Nested because the module has an import of its own, so tsc preserves the
-    // source tree under outDir rather than emitting flat.
-    pathToFileURL(join(out, 'components', 'segments', 'computedFieldRules.js')).href,
-  );
+// Nested because these modules have imports of their own, so tsc preserves the
+// source tree under outDir rather than emitting flat.
+const { forwardReferences } = await import(
+  pathToFileURL(join(out, 'components', 'segments', 'computedFieldRules.js')).href,
+);
+const { moveItem } = await import(pathToFileURL(join(out, 'utils', 'move.js')).href);
 
 const f = (name, formula = '') => ({ name, type: 'number', formula });
 const names = (defs) => defs.map((d) => d.name).join(',');
 
-// --- moveComputedField ---
+// --- moveItem: shared, because more than one list's order is load-bearing ---
 
 const three = [f('a'), f('b'), f('c')];
 
-assert.equal(names(moveComputedField(three, 2, 0)), 'c,a,b', 'move last to first');
-assert.equal(names(moveComputedField(three, 0, 2)), 'b,c,a', 'move first to last');
-assert.equal(names(moveComputedField(three, 1, 0)), 'b,a,c', 'swap up');
-assert.equal(names(moveComputedField(three, 1, 2)), 'a,c,b', 'swap down');
+assert.equal(names(moveItem(three, 2, 0)), 'c,a,b', 'move last to first');
+assert.equal(names(moveItem(three, 0, 2)), 'b,c,a', 'move first to last');
+assert.equal(names(moveItem(three, 1, 0)), 'b,a,c', 'swap up');
+assert.equal(names(moveItem(three, 1, 2)), 'a,c,b', 'swap down');
 
 // The input is never mutated — the editor holds it as props.
 const original = [f('a'), f('b')];
-moveComputedField(original, 0, 1);
+moveItem(original, 0, 1);
 assert.equal(names(original), 'a,b', 'input must not be mutated');
 
 // Out of range is a no-op, so a caller need not guard the ends.
-assert.equal(moveComputedField(three, 0, -1), three, 'above the top is a no-op');
-assert.equal(moveComputedField(three, 2, 3), three, 'below the bottom is a no-op');
-assert.equal(moveComputedField(three, 1, 1), three, 'moving to its own slot is a no-op');
-assert.equal(moveComputedField(three, 9, 0), three, 'unknown source is a no-op');
+assert.equal(moveItem(three, 0, -1), three, 'above the top is a no-op');
+assert.equal(moveItem(three, 2, 3), three, 'below the bottom is a no-op');
+assert.equal(moveItem(three, 1, 1), three, 'moving to its own slot is a no-op');
+assert.equal(moveItem(three, 9, 0), three, 'unknown source is a no-op');
 
 // --- forwardReferences ---
 
@@ -63,7 +63,7 @@ assert.deepEqual(refs.get(0), ['base', 'bonus'], 'both later fields reported');
 assert.equal(refs.size, 1, 'only the offending row is reported');
 
 // Once reordered, nothing is flagged.
-let fixed = moveComputedField(late, 0, 2);
+let fixed = moveItem(late, 0, 2);
 assert.equal(names(fixed), 'base,bonus,total');
 assert.equal(forwardReferences(fixed).size, 0, 'correct order reports nothing');
 
