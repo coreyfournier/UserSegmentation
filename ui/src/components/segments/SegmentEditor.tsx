@@ -1,9 +1,10 @@
 import { useState, useEffect, useRef } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
-import { useLayers, useUpdateLayer } from '../../api/layers';
+import { useQueryClient } from '@tanstack/react-query';
+import { useLayers, useUpdateLayer, revisionOf } from '../../api/layers';
 import { useLookups } from '../../api/lookups';
 import { useUpdateSegment } from '../../api/segments';
-import type { FieldType, Layer, Segment, StrategyType, InputSchema, OutputField } from '../../api/types';
+import type { ConflictDetail, FieldType, Layer, Segment, StrategyType, InputSchema, OutputField } from '../../api/types';
 import { SUBJECT_KEY_FIELD } from '../../api/types';
 import StrategyPicker from './StrategyPicker';
 import StaticConfig from './StaticConfig';
@@ -24,6 +25,9 @@ import ConfirmDialog from '../common/ConfirmDialog';
 import Modal from '../common/Modal';
 import LayerForm from '../layers/LayerForm';
 import ErrorBanner from '../common/ErrorBanner';
+import ConflictDialog from '../common/ConflictDialog';
+import LastChanged from '../common/LastChanged';
+import type { ApiError } from '../../api/client';
 import styles from './SegmentEditor.module.css';
 
 export default function SegmentEditor() {
@@ -43,6 +47,20 @@ export default function SegmentEditor() {
   // unsaved change with it — for a schema tweak the author only wanted so they
   // could carry on here.
   const [editingLayer, setEditingLayer] = useState(false);
+  // An open conflict: the layer moved under this editor, and the author has a
+  // decision to make that no default can make for them.
+  //
+  // The retry is carried with it because two different writes can conflict from
+  // this page — the segment, and the layer edited in the modal — and
+  // "overwrite" has to repeat the one that was actually refused. Storing the
+  // callback keeps that exact, rather than inferring it from which mutation
+  // errored last.
+  const [conflict, setConflict] = useState<{
+    detail: ConflictDetail;
+    subject: string;
+    retry: (force: boolean) => void;
+  } | null>(null);
+  const qc = useQueryClient();
   const { data: layers } = useLayers();
   const { data: lookups } = useLookups();
   const updateSegment = useUpdateSegment();
@@ -176,19 +194,33 @@ export default function SegmentEditor() {
   // The form is handed this page's in-progress segment rather than the server's
   // copy (see initialLayer below), so if removing an output field prunes it,
   // what gets written is the author's live work and not a stale version of it.
-  const saveLayerFromModal = async (l: Partial<Layer>, changedSegments?: Segment[]) => {
+  //
+  // The whole sequence is guarded by one revision: the first write carries the
+  // expectation, and each subsequent one carries what the previous write
+  // returned. Guarding only the layer PUT would let a segment prune land on a
+  // layer someone else had already changed, which is exactly the write this is
+  // meant to refuse.
+  const saveLayerFromModal = async (l: Partial<Layer>, changedSegments?: Segment[], force = false) => {
     if (!layerKey) return;
+    let rev = force ? undefined : layer?.revision;
     try {
       for (const s of changedSegments ?? []) {
-        await updateSegment.mutateAsync({ layerKey, segId: s.id, segment: s });
+        const snap = await updateSegment.mutateAsync({
+          layerKey,
+          segId: s.id,
+          segment: s,
+          revision: rev,
+        });
+        rev = revisionOf(snap, layerKey);
         // A pruned copy of the segment being edited is now what the server
         // holds, so the editor adopts it — otherwise local state would still
         // carry the value that was just removed and the next save would be
         // rejected for it.
         if (s.id === segId) setSeg(structuredClone(s));
       }
-      await updateLayer.mutateAsync({ key: layerKey, layer: l });
+      await updateLayer.mutateAsync({ key: layerKey, layer: l, revision: rev });
       setEditingLayer(false);
+      setConflict(null);
       // A layer key change moves this page's address, like a segment rename.
       if (l.key && l.key !== layerKey) {
         navigate(
@@ -196,8 +228,18 @@ export default function SegmentEditor() {
           { replace: true, state: location.state },
         );
       }
-    } catch {
-      // Left open; the error banners above render what failed.
+    } catch (e) {
+      // A conflict is offered the same choice as a segment save's, retrying
+      // this same sequence when the author accepts the overwrite. Anything
+      // else is left open; the error banners above render what failed.
+      const c = (e as ApiError).conflict;
+      if (c) {
+        setConflict({
+          detail: c,
+          subject: 'your layer changes',
+          retry: (f) => void saveLayerFromModal(l, changedSegments, f),
+        });
+      }
     }
   };
 
@@ -210,24 +252,26 @@ export default function SegmentEditor() {
     segments: layer.segments.map((s) => (s.id === segId ? seg : s)),
   };
 
-  const handleSave = () => {
+  // Saves the segment, guarded by the revision of the layer it was loaded from.
+  //
+  // `force` drops the guard, which is what "overwrite with mine" means: the
+  // author has been shown what they are replacing and chosen to. It is not a
+  // retry with the newer revision — that would be the same write with a
+  // different number and no decision taken.
+  const saveSegment = (force: boolean) => {
     if (!layerKey || !segId || !segRef.current) return;
     const saving = segRef.current;
     updateSegment.mutate(
-      // Addressed by the id in the URL, which is the one the server still
-      // holds; the payload carries the new one when the author has renamed it.
-      { layerKey, segId, segment: saving },
       {
-        // Stays on the page. Saving used to navigate back to the layer list,
-        // which threw away the editor you were working in — so testing a change
-        // meant walking back in, and any search that got you here was gone.
-        // Leaving is a separate decision, made with the Close button.
+        layerKey,
+        segId,
+        segment: saving,
+        revision: force ? undefined : layer?.revision,
+      },
+      {
         onSuccess: () => {
           setSavedAt(Date.now());
-          // A rename changes this page's own address. Replacing the URL keeps
-          // the editor open on the same segment rather than leaving it pointed
-          // at an id the server no longer has — the next reload, or any save
-          // after it, would 404.
+          setConflict(null);
           if (saving.id !== segId) {
             navigate(
               `/layers/${encodeURIComponent(layerKey)}/segments/${encodeURIComponent(saving.id)}`,
@@ -235,18 +279,35 @@ export default function SegmentEditor() {
             );
           }
         },
+        onError: (e) => {
+          // A conflict is the one failure with a decision attached, so it opens
+          // the dialog instead of joining the footer's error text.
+          const c = (e as ApiError).conflict;
+          if (c) {
+            setConflict({
+              detail: c,
+              subject: `your changes to ${saving.name || saving.id}`,
+              retry: (f) => saveSegment(f),
+            });
+          }
+        },
       }
     );
   };
 
+
+  // The last save failure, shown in the footer beside the button that caused
+  // it. Cleared when a save starts, so a stale failure never sits under a
+  // successful one. A conflict is excluded: it has its own dialog, and would
+  // otherwise be reported twice with only one of them offering a way out.
+  const saveError =
+    updateSegment.error && !(updateSegment.error as ApiError).conflict
+      ? (updateSegment.error as Error).message
+      : null;
+
   // Where Close returns to. LayerList hands over its own URL when it opens a
   // segment, so closing restores the list exactly as it was — same selected
   // layer, same search. Falls back for a segment reached by a pasted link.
-  // The last save failure, shown in the footer beside the button that caused
-  // it. Cleared when a save starts, so a stale failure never sits under a
-  // successful one.
-  const saveError = updateSegment.error ? (updateSegment.error as Error).message : null;
-
   const backHref = (location.state as { from?: string } | null)?.from ?? '/layers';
   // Where the layer crumb goes when the editor was reached by a pasted link,
   // so it still lands on this layer rather than the top of the list.
@@ -272,6 +333,10 @@ export default function SegmentEditor() {
           {' / '}
           {seg.name || seg.id}
         </h2>
+        {/* The layer's timestamp, not the segment's: the revision guarding this
+            save covers the whole layer, so this is the number that decides
+            whether the save is refused. */}
+        <LastChanged at={layer?.updatedAt} revision={layer?.revision} />
       </div>
 
       {/* A failed segment save is reported next to the Save button rather than
@@ -290,7 +355,14 @@ export default function SegmentEditor() {
         side={
           <section className={`card ${styles.testCard}`}>
             <h3>Tests</h3>
-            {layerKey && <LayerTests layerKey={layerKey} schema={layer?.inputSchema} />}
+            {layerKey && (
+              <LayerTests
+                layerKey={layerKey}
+                segmentId={seg.id}
+                segments={layer?.segments ?? []}
+                schema={layer?.inputSchema}
+              />
+            )}
           </section>
         }
       >
@@ -643,7 +715,7 @@ export default function SegmentEditor() {
           <button
             type="button"
             className="btn-primary"
-            onClick={handleSave}
+            onClick={() => saveSegment(false)}
             disabled={updateSegment.isPending}
           >
             {updateSegment.isPending ? 'Saving...' : saveError ? 'Save again' : 'Save'}
@@ -668,6 +740,20 @@ export default function SegmentEditor() {
           />
         )}
       </Modal>
+
+      <ConflictDialog
+        conflict={conflict?.detail ?? null}
+        subject={conflict?.subject}
+        onOverwrite={() => conflict?.retry(true)}
+        onDiscard={() => {
+          // Adopt what is stored. The query is refetched because this editor's
+          // copy of the layer is as stale as the write that was refused.
+          setConflict(null);
+          setSeg(null);
+          qc.invalidateQueries({ queryKey: ['layers'] });
+        }}
+        onCancel={() => setConflict(null)}
+      />
 
       <ConfirmDialog
         open={!!pendingComputedRetype}

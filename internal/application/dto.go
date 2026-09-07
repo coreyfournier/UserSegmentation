@@ -10,6 +10,14 @@ package application
 type EvaluateRequest struct {
 	Context map[string]interface{} `json:"context"`
 	Layers  []string               `json:"layers,omitempty"`
+	// Segments narrows the requested layers to these segment ids. An authoring
+	// aid, not a serving one: a layer resolves to the first segment that
+	// applies, so a segment sitting behind one that always resolves cannot be
+	// reached in a real evaluation and could not otherwise be exercised at all.
+	//
+	// Layers evaluated only as dependencies are unaffected — see
+	// engine.OnlySegments.
+	Segments []string `json:"segments,omitempty"`
 	// Languages requests localized messages for the winning rule/override/default
 	// of each layer. RenderAll returns every defined locale (testing aid).
 	Languages []string `json:"languages,omitempty"`
@@ -55,8 +63,12 @@ type LayerResultDTO struct {
 // FailureDTO is one itemised problem from a checklist layer. The rule name is the
 // stable identifier; the message states the problem.
 type FailureDTO struct {
-	Rule     string                 `json:"rule"`
-	Message  string                 `json:"message,omitempty"`
+	Rule    string `json:"rule"`
+	Message string `json:"message,omitempty"`
+	// Segment names which segment reported this finding, present only when the
+	// layer ran more than one — otherwise it would repeat the same answer on
+	// every row.
+	Segment  string                 `json:"segment,omitempty"`
 	Messages map[string]string      `json:"messages,omitempty"`
 	Outputs  map[string]interface{} `json:"outputs,omitempty"`
 }

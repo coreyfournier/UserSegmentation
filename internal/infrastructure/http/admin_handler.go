@@ -3,6 +3,9 @@ package http
 import (
 	"encoding/json"
 	"net/http"
+	"strconv"
+	"strings"
+	"time"
 
 	"github.com/segmentation-service/segmentation/internal/application"
 	"github.com/segmentation-service/segmentation/internal/domain/model"
@@ -62,9 +65,9 @@ func (h *AdminHandler) UpdateLayer(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
 		return
 	}
-	snap, err := h.uc.UpdateLayer(name, layer)
+	snap, err := h.uc.UpdateLayer(name, layer, ifMatchRevision(r))
 	if err != nil {
-		writeJSON(w, http.StatusNotFound, map[string]string{"error": err.Error()})
+		writeAdminError(w, err, http.StatusNotFound)
 		return
 	}
 	writeJSON(w, http.StatusOK, snap)
@@ -114,9 +117,9 @@ func (h *AdminHandler) CreateSegment(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "strategy is required"})
 		return
 	}
-	snap, err := h.uc.CreateSegment(name, seg)
+	snap, err := h.uc.CreateSegment(name, seg, ifMatchRevision(r))
 	if err != nil {
-		writeJSON(w, http.StatusConflict, map[string]string{"error": err.Error()})
+		writeAdminError(w, err, http.StatusConflict)
 		return
 	}
 	writeJSON(w, http.StatusCreated, snap)
@@ -131,9 +134,9 @@ func (h *AdminHandler) UpdateSegment(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
 		return
 	}
-	snap, err := h.uc.UpdateSegment(name, id, seg)
+	snap, err := h.uc.UpdateSegment(name, id, seg, ifMatchRevision(r))
 	if err != nil {
-		writeJSON(w, http.StatusNotFound, map[string]string{"error": err.Error()})
+		writeAdminError(w, err, http.StatusNotFound)
 		return
 	}
 	writeJSON(w, http.StatusOK, snap)
@@ -143,9 +146,9 @@ func (h *AdminHandler) UpdateSegment(w http.ResponseWriter, r *http.Request) {
 func (h *AdminHandler) DeleteSegment(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("key")
 	id := r.PathValue("id")
-	snap, err := h.uc.DeleteSegment(name, id)
+	snap, err := h.uc.DeleteSegment(name, id, ifMatchRevision(r))
 	if err != nil {
-		writeJSON(w, http.StatusNotFound, map[string]string{"error": err.Error()})
+		writeAdminError(w, err, http.StatusNotFound)
 		return
 	}
 	writeJSON(w, http.StatusOK, snap)
@@ -250,4 +253,58 @@ func (h *AdminHandler) DeleteTest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, snap)
+}
+
+// ifMatchRevision reads the caller's expected layer revision from If-Match.
+//
+// The revision is an ETag, which is the standard HTTP expression of optimistic
+// concurrency — so any client gets the behaviour without a bespoke field, and
+// the token stays out of the payload. That last part matters: a client that
+// round-trips the object it read would resend the stale revision it was given,
+// which is exactly the case the check exists to catch.
+//
+// Absent means no expectation, and nil skips the check. Quoted and bare forms
+// are both accepted, since a hand-written curl rarely quotes. A value that is
+// not an integer is treated as absent rather than as an error: it cannot match
+// anything, and failing the request would turn a malformed header into a
+// different class of problem than the one the caller has.
+func ifMatchRevision(r *http.Request) *int {
+	raw := strings.TrimSpace(r.Header.Get("If-Match"))
+	if raw == "" || raw == "*" {
+		return nil
+	}
+	raw = strings.Trim(raw, `"`)
+	// A weak validator is still a revision; the weakness says nothing here.
+	raw = strings.TrimPrefix(raw, "W/")
+	raw = strings.Trim(raw, `"`)
+	n, err := strconv.Atoi(raw)
+	if err != nil {
+		return nil
+	}
+	return &n
+}
+
+// writeAdminError maps a write failure to a status.
+//
+// A conflict is 409 with the detail a client needs to offer a choice: what it
+// expected, what is stored, and when that was written. Typed rather than
+// sniffed from a message, and produced by the domain — so a store that enforces
+// the predicate itself lands here unchanged (see model.ConflictError).
+func writeAdminError(w http.ResponseWriter, err error, fallback int) {
+	if c, ok := model.AsConflict(err); ok {
+		body := map[string]interface{}{
+			"error":    err.Error(),
+			"conflict": true,
+			"kind":     c.Kind,
+			"key":      c.Key,
+			"expected": c.Expected,
+			"actual":   c.Actual,
+		}
+		if c.ChangedAt != nil {
+			body["changedAt"] = c.ChangedAt.UTC().Format(time.RFC3339)
+		}
+		writeJSON(w, http.StatusConflict, body)
+		return
+	}
+	writeJSON(w, fallback, map[string]string{"error": err.Error()})
 }

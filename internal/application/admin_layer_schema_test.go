@@ -58,7 +58,7 @@ func TestLayerSchema_UpdateLayerCarriesSchemasThrough(t *testing.T) {
 			model.SubjectKeyField: {Type: model.FieldTypeString},
 		},
 		OutputSchema: model.OutputSchema{"category": {Type: model.FieldTypeString}},
-	})
+	}, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -98,13 +98,13 @@ func TestLayerSchema_UpdateLayer_OmittedSchemaIsCleared(t *testing.T) {
 		Key:          "clearable",
 		InputSchema:  model.InputSchema{"age": {Type: model.FieldTypeNumber}},
 		OutputSchema: model.OutputSchema{"category": {Type: model.FieldTypeString}},
-	})
+	}, nil)
 	if err != nil {
 		t.Fatalf("unexpected error priming schemas: %v", err)
 	}
 
 	// Now update again with a layer that omits both schemas.
-	snap, err := uc.UpdateLayer("clearable", model.Layer{Key: "clearable"})
+	snap, err := uc.UpdateLayer("clearable", model.Layer{Key: "clearable"}, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -155,7 +155,7 @@ func TestLayerSchema_UpdateLayer_InvalidatingSegmentRuleIsRejected(t *testing.T)
 	_, err = uc.UpdateLayer("hazard", model.Layer{
 		Key:         "hazard",
 		InputSchema: model.InputSchema{"country": {Type: model.FieldTypeString}},
-	})
+	}, nil)
 	if err == nil {
 		t.Fatal("expected the update to be rejected — the rule reads a field the new schema doesn't declare")
 	}

@@ -17,7 +17,7 @@ func TestUpdateSegment_RenamesTheID(t *testing.T) {
 		Name:     "Renamed segment",
 		Strategy: model.StrategyStatic,
 		Static:   &model.StaticConfig{Mappings: map[string]string{}, Default: "x"},
-	})
+	}, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -38,7 +38,7 @@ func TestUpdateSegment_OmittedIDIsPreserved(t *testing.T) {
 	snap, err := uc.UpdateSegment("baseLayer", "seg1", model.Segment{
 		Strategy: model.StrategyStatic,
 		Static:   &model.StaticConfig{Mappings: map[string]string{}, Default: "x"},
-	})
+	}, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -55,7 +55,7 @@ func TestUpdateSegment_RenameOntoASiblingIsRefused(t *testing.T) {
 		ID:       "seg2",
 		Strategy: model.StrategyStatic,
 		Static:   &model.StaticConfig{Mappings: map[string]string{}, Default: "y"},
-	}); err != nil {
+	}, nil); err != nil {
 		t.Fatalf("create: %v", err)
 	}
 
@@ -63,7 +63,7 @@ func TestUpdateSegment_RenameOntoASiblingIsRefused(t *testing.T) {
 		ID:       "seg2",
 		Strategy: model.StrategyStatic,
 		Static:   &model.StaticConfig{Mappings: map[string]string{}, Default: "x"},
-	})
+	}, nil)
 	if err == nil || !strings.Contains(err.Error(), "already exists") {
 		t.Errorf("expected a duplicate-id error, got %v", err)
 	}
@@ -76,7 +76,7 @@ func TestUpdateSegment_RenameToTheSameIDIsFine(t *testing.T) {
 		ID:       "seg1",
 		Strategy: model.StrategyStatic,
 		Static:   &model.StaticConfig{Mappings: map[string]string{}, Default: "x"},
-	}); err != nil {
+	}, nil); err != nil {
 		t.Errorf("unexpected error: %v", err)
 	}
 }

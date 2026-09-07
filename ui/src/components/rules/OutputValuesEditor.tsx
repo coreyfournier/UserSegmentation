@@ -67,17 +67,29 @@ export default function OutputValuesEditor({ outputs, schema, onChange, onDeclar
     return out;
   };
 
+  // Clearing a value keeps the key. Deleting it on empty meant an optional
+  // row vanished the moment you selected its text and pressed delete — the
+  // ordinary way to replace a value — taking the field with it and leaving
+  // nothing to retype into. An empty value is not a missing field; it is a
+  // field whose value you are in the middle of writing.
+  //
+  // Safe to persist: the engine's evaluateOutputs and the validator's
+  // outputAuthoringSites both count a value as authored only when the key is
+  // present *and* non-empty, so `"severity": ""` evaluates and validates
+  // exactly as an absent key does. fieldCoverage above agrees, so the
+  // "authored on N of M" line does not credit a blank either.
   const set = (name: string, raw: string) => {
-    const next = { ...(outputs ?? {}) };
-    if (raw === '') delete next[name];
-    else next[name] = raw;
-    onChange(Object.keys(next).length ? next : undefined);
+    onChange({ ...(outputs ?? {}), [name]: raw });
   };
 
-  // A required row's remove control clears its value but the row stays
-  // (outputValueRows always includes required fields); an optional or
-  // orphaned row's key disappears entirely, so the row does too.
-  const remove = (name: string) => set(name, '');
+  // Removing is the x button's job alone, and it takes the key out. A required
+  // field's row comes back regardless — outputValueRows always includes it —
+  // which is the point: you cannot remove an obligation, only its value.
+  const remove = (name: string) => {
+    const next = { ...(outputs ?? {}) };
+    delete next[name];
+    onChange(Object.keys(next).length ? next : undefined);
+  };
 
   const declare = () => {
     // Trim to match OutputSchemaEditor's add path. Without it " severity" and

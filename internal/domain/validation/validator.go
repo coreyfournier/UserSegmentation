@@ -432,7 +432,10 @@ func validateRuleTree(r *model.Rule, vc ruleContext) []string {
 					"layer %q segment %q rule %q: references %q but %q is not declared in dependsOn",
 					vc.layer, vc.segment, r.RuleName, field, ref))
 			}
-			return errs
+			// The left side's type is unknown here — a layer result is not a
+			// schema field — so the right-hand reference is checked for
+			// existence and shape, but not for type agreement.
+			return append(errs, validateValueRef(r, vc, nil)...)
 		}
 
 		sf, ok := vc.schema[field]
@@ -445,6 +448,7 @@ func validateRuleTree(r *model.Rule, vc ruleContext) []string {
 				vc.segment, r.RuleName, r.Condition.Operator, sf.Type, field))
 		}
 		errs = append(errs, validateLookupRef(r, sf.Type, vc.segment, vc.lookups)...)
+		errs = append(errs, validateValueRef(r, vc, &sf.Type)...)
 		return errs
 	}
 	for i := range r.Rules {
@@ -559,6 +563,86 @@ func findCycle(layers []model.Layer) []string {
 		if color[l.Key] == white && visit(l.Key) {
 			return cycle
 		}
+	}
+	return nil
+}
+
+// validateValueRef checks a condition that compares against another field
+// rather than a literal (Condition.ValueField).
+//
+// leftType is the declared type of the left-hand field, or nil where it is not
+// knowable — a "layer:x" reference on the left resolves to a layer result, not
+// to a schema field.
+//
+// Every failure here is one the engine cannot report at evaluation: an
+// unresolvable reference makes the condition false, which is indistinguishable
+// from a rule that simply did not match. That is the whole reason these are
+// errors at load rather than warnings at runtime.
+func validateValueRef(r *model.Rule, vc ruleContext, leftType *model.FieldType) []string {
+	cond := r.Condition
+	if !cond.ComparesToField() {
+		return nil
+	}
+
+	where := fmt.Sprintf("segment %q rule %q", vc.segment, r.RuleName)
+
+	// Both sides authored is not a precedence question to settle quietly: the
+	// author meant one of them, and no reading of the config says which.
+	if cond.Value != nil {
+		return []string{fmt.Sprintf("%s: sets both value and valueField — a condition compares against one or the other", where)}
+	}
+	if model.IsUnary(cond.Operator) {
+		return []string{fmt.Sprintf("%s: operator %q tests the field itself and takes no value, so valueField is meaningless",
+			where, cond.Operator)}
+	}
+	if cond.Operator == model.OpInLookup || cond.Operator == model.OpNotInLookup {
+		return []string{fmt.Sprintf("%s: operator %q compares against a lookup table id, which is a literal — valueField cannot name one",
+			where, cond.Operator)}
+	}
+
+	// A cross-layer reference on the right carries the same dependency
+	// obligation as one on the left, and for the same reason: without the
+	// edge it resolves to nothing forever.
+	if ref, ok := strings.CutPrefix(cond.ValueField, "layer:"); ok {
+		if _, declared := vc.deps[ref]; !declared {
+			return []string{fmt.Sprintf(
+				"layer %q %s: valueField references %q but %q is not declared in dependsOn",
+				vc.layer, where, cond.ValueField, ref)}
+		}
+		return nil
+	}
+
+	rf, ok := vc.schema[cond.ValueField]
+	if !ok {
+		return []string{fmt.Sprintf("%s: valueField %q not in inputSchema", where, cond.ValueField)}
+	}
+	// Comparing a field to itself is always true for eq and always false for
+	// neq and the ordering operators. It is not a syntax error, but it is
+	// never what anyone meant to write.
+	if cond.ValueField == cond.Field {
+		return []string{fmt.Sprintf("%s: compares field %q against itself", where, cond.Field)}
+	}
+	// What the right-hand side has to be depends on the operator, not only on
+	// the left field:
+	//
+	//   in / not_in   the right side is the list, so it must be an array —
+	//                 never the left field's own type
+	//   contains      over an array, the right side is one element, and the
+	//                 schema does not say what an array holds; over a string
+	//                 it is a substring, which the equality rule covers
+	//   everything    both sides are compared as they are, so their types
+	//                 must agree
+	switch {
+	case cond.Operator == model.OpIn || cond.Operator == model.OpNotIn:
+		if rf.Type != model.FieldTypeArray {
+			return []string{fmt.Sprintf("%s: operator %q needs a list, but valueField %q is %q",
+				where, cond.Operator, cond.ValueField, rf.Type)}
+		}
+	case cond.Operator == model.OpContains && leftType != nil && *leftType == model.FieldTypeArray:
+		// Unknowable: an array's element type is not declared.
+	case leftType != nil && rf.Type != *leftType:
+		return []string{fmt.Sprintf("%s: field %q is %q but valueField %q is %q — the engine compares them as they are, so this can never match",
+			where, cond.Field, *leftType, cond.ValueField, rf.Type)}
 	}
 	return nil
 }
@@ -1075,14 +1159,21 @@ func validateSavedTests(snap *model.Snapshot) []string {
 	var errs []string
 
 	layers := make(map[string]struct{}, len(snap.Layers))
+	// Segment ids, keyed "layer\x00segment" — \x00 because neither a layer key
+	// nor a segment id can contain it, so the pair cannot be forged by a name
+	// that happens to hold the separator.
+	segments := make(map[string]struct{})
 	for _, l := range snap.Layers {
 		layers[l.Key] = struct{}{}
+		for i := range l.Segments {
+			segments[l.Key+"\x00"+l.Segments[i].ID] = struct{}{}
+		}
 	}
 
 	ids := make(map[string]struct{}, len(snap.Tests))
-	// Names are unique per layer, not globally: "missing subject key" is a
-	// reasonable name for a test of each of several layers.
-	namesByLayer := make(map[string]map[string]struct{}, len(snap.Layers))
+	// Names are unique per layer *and segment*, not globally: "happy path" is
+	// a reasonable name for a test of each segment of each layer.
+	namesBySlot := make(map[string]map[string]struct{}, len(snap.Layers))
 
 	for _, t := range snap.Tests {
 		switch {
@@ -1104,14 +1195,30 @@ func validateSavedTests(snap *model.Snapshot) []string {
 			continue
 		}
 
-		names, ok := namesByLayer[t.Layer]
+		// An empty segment means the test predates per-segment filing and runs
+		// the layer as a whole; only a named one has to exist.
+		slot := t.Layer + "\x00" + t.Segment
+		if t.Segment != "" {
+			if _, ok := segments[slot]; !ok {
+				errs = append(errs, fmt.Sprintf(
+					"test %q: layer %q has no segment %q", t.ID, t.Layer, t.Segment))
+				continue
+			}
+		}
+
+		names, ok := namesBySlot[slot]
 		if !ok {
 			names = make(map[string]struct{})
-			namesByLayer[t.Layer] = names
+			namesBySlot[slot] = names
 		}
 		if _, dup := names[t.Name]; dup {
-			errs = append(errs, fmt.Sprintf(
-				"layer %q has two tests named %q", t.Layer, t.Name))
+			if t.Segment == "" {
+				errs = append(errs, fmt.Sprintf(
+					"layer %q has two tests named %q", t.Layer, t.Name))
+			} else {
+				errs = append(errs, fmt.Sprintf(
+					"segment %q in layer %q has two tests named %q", t.Segment, t.Layer, t.Name))
+			}
 		}
 		names[t.Name] = struct{}{}
 	}

@@ -104,7 +104,7 @@ func TestAdminUseCase_UpdateLayer(t *testing.T) {
 		// Resent because a PUT replaces the schema, and the layer's static
 		// segment requires subjectKey to stay declared.
 		InputSchema: model.InputSchema{model.SubjectKeyField: {Type: model.FieldTypeString}},
-	})
+	}, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -119,7 +119,7 @@ func TestAdminUseCase_UpdateLayer(t *testing.T) {
 
 func TestAdminUseCase_UpdateLayer_NotFound(t *testing.T) {
 	uc, _, _ := newTestAdminUC()
-	_, err := uc.UpdateLayer("nonexistent", model.Layer{Key: "x"})
+	_, err := uc.UpdateLayer("nonexistent", model.Layer{Key: "x"}, nil)
 	if err == nil || !strings.Contains(err.Error(), "not found") {
 		t.Errorf("expected not found error, got %v", err)
 	}
@@ -153,7 +153,7 @@ func TestAdminUseCase_CreateSegment(t *testing.T) {
 	snap, err := uc.CreateSegment("baseLayer", model.Segment{
 		ID: "seg2", Strategy: "static",
 		Static: &model.StaticConfig{Mappings: map[string]string{}, Default: "y"},
-	})
+	}, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -167,7 +167,7 @@ func TestAdminUseCase_CreateSegment_DuplicateID(t *testing.T) {
 	_, err := uc.CreateSegment("baseLayer", model.Segment{
 		ID: "seg1", Strategy: "static",
 		Static: &model.StaticConfig{Mappings: map[string]string{}, Default: "y"},
-	})
+	}, nil)
 	if err == nil || !strings.Contains(err.Error(), "already exists") {
 		t.Errorf("expected duplicate segment error, got %v", err)
 	}
@@ -175,7 +175,7 @@ func TestAdminUseCase_CreateSegment_DuplicateID(t *testing.T) {
 
 func TestAdminUseCase_CreateSegment_LayerNotFound(t *testing.T) {
 	uc, _, _ := newTestAdminUC()
-	_, err := uc.CreateSegment("nonexistent", model.Segment{ID: "s", Strategy: "static"})
+	_, err := uc.CreateSegment("nonexistent", model.Segment{ID: "s", Strategy: "static"}, nil)
 	if err == nil || !strings.Contains(err.Error(), "not found") {
 		t.Errorf("expected not found error, got %v", err)
 	}
@@ -188,7 +188,7 @@ func TestAdminUseCase_UpdateSegment(t *testing.T) {
 	snap, err := uc.UpdateSegment("baseLayer", "seg1", model.Segment{
 		Strategy: "static",
 		Static:   &model.StaticConfig{Mappings: map[string]string{}, Default: "updated"},
-	})
+	}, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -202,7 +202,7 @@ func TestAdminUseCase_UpdateSegment(t *testing.T) {
 
 func TestAdminUseCase_UpdateSegment_NotFound(t *testing.T) {
 	uc, _, _ := newTestAdminUC()
-	_, err := uc.UpdateSegment("baseLayer", "nonexistent", model.Segment{Strategy: "static"})
+	_, err := uc.UpdateSegment("baseLayer", "nonexistent", model.Segment{Strategy: "static"}, nil)
 	if err == nil || !strings.Contains(err.Error(), "not found") {
 		t.Errorf("expected not found error, got %v", err)
 	}
@@ -210,7 +210,7 @@ func TestAdminUseCase_UpdateSegment_NotFound(t *testing.T) {
 
 func TestAdminUseCase_UpdateSegment_LayerNotFound(t *testing.T) {
 	uc, _, _ := newTestAdminUC()
-	_, err := uc.UpdateSegment("nope", "seg1", model.Segment{Strategy: "static"})
+	_, err := uc.UpdateSegment("nope", "seg1", model.Segment{Strategy: "static"}, nil)
 	if err == nil || !strings.Contains(err.Error(), "not found") {
 		t.Errorf("expected not found error, got %v", err)
 	}
@@ -220,7 +220,7 @@ func TestAdminUseCase_UpdateSegment_LayerNotFound(t *testing.T) {
 
 func TestAdminUseCase_DeleteSegment(t *testing.T) {
 	uc, _, _ := newTestAdminUC()
-	snap, err := uc.DeleteSegment("baseLayer", "seg1")
+	snap, err := uc.DeleteSegment("baseLayer", "seg1", nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -231,7 +231,7 @@ func TestAdminUseCase_DeleteSegment(t *testing.T) {
 
 func TestAdminUseCase_DeleteSegment_NotFound(t *testing.T) {
 	uc, _, _ := newTestAdminUC()
-	_, err := uc.DeleteSegment("baseLayer", "nonexistent")
+	_, err := uc.DeleteSegment("baseLayer", "nonexistent", nil)
 	if err == nil || !strings.Contains(err.Error(), "not found") {
 		t.Errorf("expected not found error, got %v", err)
 	}

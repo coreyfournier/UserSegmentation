@@ -176,6 +176,12 @@ export default function RuleNode({ rule, path, onChange, onDelete, index, total,
         <button type="button" className="btn-danger btn-sm" onClick={onDelete}>x</button>
       </div>
 
+      {/* The logic first, then what it reports — the same order whether this
+          node's logic is one condition or a group of nested rules. Children
+          used to be rendered last, so a leaf read condition-then-outputs while
+          a group read outputs-then-children, and the same two things swapped
+          places depending on the node you were looking at. Overrides render
+          through this component too, so they follow suit. */}
       {isLeaf && rule.condition && (
         <div className={styles.exprWrap}>
           <ConditionEditor
@@ -184,6 +190,27 @@ export default function RuleNode({ rule, path, onChange, onDelete, index, total,
             schema={schema}
             layerNames={layerNames}
           />
+        </div>
+      )}
+
+      {!isLeaf && (
+        <div className={styles.children}>
+          {childCount > 1 && <p className={styles.orderHint}>{groupHint}</p>}
+          <RuleList
+            rules={rule.rules ?? []}
+            onChange={(rules) => onChange({ ...rule, rules })}
+            parentPath={path}
+            depth={depth + 1}
+            schema={schema}
+            layerNames={layerNames}
+            perRuleMessages={perRuleMessages}
+            outputSchema={outputSchema}
+            onDeclareOutput={onDeclareOutput}
+          />
+          <div className={styles.addButtons}>
+            <button type="button" className="btn-ghost btn-sm" onClick={addLeaf}>+ Add Check</button>
+            <button type="button" className="btn-ghost btn-sm" onClick={addGroup}>+ Add Group</button>
+          </div>
         </div>
       )}
 
@@ -234,27 +261,6 @@ export default function RuleNode({ rule, path, onChange, onDelete, index, total,
               : "Rendered when this rule wins. Use ${field} for variables and formulas."
           }
         />
-      )}
-
-      {!isLeaf && (
-        <div className={styles.children}>
-          {childCount > 1 && <p className={styles.orderHint}>{groupHint}</p>}
-          <RuleList
-            rules={rule.rules ?? []}
-            onChange={(rules) => onChange({ ...rule, rules })}
-            parentPath={path}
-            depth={depth + 1}
-            schema={schema}
-            layerNames={layerNames}
-            perRuleMessages={perRuleMessages}
-            outputSchema={outputSchema}
-            onDeclareOutput={onDeclareOutput}
-          />
-          <div className={styles.addButtons}>
-            <button type="button" className="btn-ghost btn-sm" onClick={addLeaf}>+ Add Check</button>
-            <button type="button" className="btn-ghost btn-sm" onClick={addGroup}>+ Add Group</button>
-          </div>
-        </div>
       )}
     </div>
   );

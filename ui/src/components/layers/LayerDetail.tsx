@@ -3,6 +3,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import type { Layer } from '../../api/types';
 import { useDeleteSegment } from '../../api/segments';
 import ConfirmDialog from '../common/ConfirmDialog';
+import LastChanged from '../common/LastChanged';
 import styles from './LayerDetail.module.css';
 
 interface Props {
@@ -59,6 +60,33 @@ export default function LayerDetail({ layer, onEdit, onDelete, onAddSegment }: P
           ? `Runs after ${layer.dependsOn.join(', ')}`
           : 'No dependencies — runs whenever it is requested'}
       </p>
+
+      {/* When this layer last moved. It sits with the dependency line rather
+          than by the edit button because it describes the layer, not the
+          action — but it is the same number the save guard compares, so an
+          author who has been away can see before editing that someone else
+          has been here. */}
+      <LastChanged at={layer.updatedAt} revision={layer.revision} block />
+
+      {/* Which segments run, stated wherever the segments are listed — this
+          decides whether the rows below are all of the answer or only the
+          first of them, and it is invisible in the config until you open the
+          editor. Shown in both states, not just the non-default one: "no
+          badge" reads as "nobody thought about it". */}
+      {layer.segments.length > 1 && (
+        <p
+          className={layer.firstMatchOnly ? styles.modeFirst : styles.modeAll}
+          title={
+            layer.firstMatchOnly
+              ? 'Segments are ordered alternatives: the first whose `when` passes answers, and the rest do not run.'
+              : 'Every segment whose `when` passes runs, and their findings merge into one list. A segment that resolves a value still ends the layer.'
+          }
+        >
+          {layer.firstMatchOnly
+            ? 'Stops at the first segment that applies'
+            : 'Runs every segment that applies'}
+        </p>
+      )}
 
       <div className={styles.body}>
         {layer.segments.length === 0 && (

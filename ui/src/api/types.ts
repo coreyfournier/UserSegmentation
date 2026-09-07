@@ -68,6 +68,13 @@ export interface Condition {
   operator: Operator;
   /** Absent for unary operators, which test the field itself. */
   value?: unknown;
+  /**
+   * Compares `field` against another field's value instead of a literal.
+   * Resolved from the same context, so a dotted path and a `layer:x`
+   * reference work here exactly as they do on the left. Mutually exclusive
+   * with `value`; rejected for the unary and lookup operators.
+   */
+  valueField?: string;
 }
 
 export interface Rule {
@@ -149,11 +156,29 @@ export interface Layer {
   /** Friendly label. Optional, free-form, references nothing. */
   name?: string;
   /**
+   * Optimistic-concurrency token. Advances on every write that touches this
+   * layer, its segments included — the layer is the aggregate. Sent back as
+   * `If-Match` on a save; a mismatch is a 409.
+   */
+  revision: number;
+  /** When that revision was written. Absent for a layer never written since
+   *  the field existed. */
+  updatedAt?: string;
+  /**
    * Layers this one must follow. A rule referencing `layer:x` must declare x
    * here. If a dependency does not resolve, this layer is skipped rather than
    * evaluated against absent context.
    */
   dependsOn?: string[];
+  /**
+   * Stop at the first segment that applies, instead of running every
+   * applicable one. Absent means the default: run them all.
+   *
+   * Only ever changes anything for segments that report findings — a rule,
+   * static or percentage segment answers with one value, so the first to
+   * answer ends the layer regardless.
+   */
+  firstMatchOnly?: boolean;
   segments: Segment[];
   /** Fallback locale for message rendering; empty means "en". */
   defaultLanguage?: string;
@@ -174,6 +199,9 @@ export interface Failure {
   /** Stable identifier — the rule name doubles as the public contract. */
   rule: string;
   message?: string;
+  /** Which segment reported this finding. Present only when the layer ran
+   *  more than one. */
+  segment?: string;
   messages?: Record<string, string>;
   /** The resolved output record for this finding. */
   outputs?: Record<string, unknown>;
@@ -205,6 +233,13 @@ export interface Warning {
 export interface EvaluateRequest {
   context: Record<string, unknown>;
   layers?: string[];
+  /**
+   * Narrows the requested layers to these segment ids. An authoring aid: a
+   * layer resolves to the first segment that applies, so a segment behind one
+   * that always resolves cannot otherwise be exercised at all. Layers
+   * evaluated only as dependencies are unaffected.
+   */
+  segments?: string[];
   languages?: string[];
   render_all?: boolean;
 }
@@ -300,8 +335,30 @@ export interface SavedTest {
   id: string;
   /** Key of the layer this test exercises. Immutable after creation. */
   layer: string;
+  /**
+   * Id of the segment within that layer the test is aimed at; the run is
+   * scoped to it. Empty for a test written before per-segment filing, which
+   * runs the whole layer as it always did. Immutable after creation.
+   */
+  segment?: string;
   name: string;
   context: Record<string, unknown>;
   languages?: string[];
   renderAll?: boolean;
+}
+
+/**
+ * A 409 body: the write was refused because the layer moved under the caller.
+ * Mirrors what writeAdminError emits from model.ConflictError.
+ */
+export interface ConflictDetail {
+  conflict: true;
+  kind: string;
+  key: string;
+  /** What the caller believed it was updating. */
+  expected: number;
+  /** What the store holds now — what an overwrite must be sent with. */
+  actual: number;
+  changedAt?: string;
+  error: string;
 }

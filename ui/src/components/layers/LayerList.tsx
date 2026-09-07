@@ -1,10 +1,12 @@
 import { useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { useLayers, useCreateLayer, useUpdateLayer, useDeleteLayer } from '../../api/layers';
+import { useQueryClient } from '@tanstack/react-query';
+import { useLayers, useCreateLayer, useUpdateLayer, useDeleteLayer, revisionOf } from '../../api/layers';
 import { useCreateSegment, useUpdateSegment } from '../../api/segments';
 import { useSearch } from '../../api/search';
 import { useDebounced } from '../../utils/useDebounced';
-import type { Layer, Segment, StrategyType } from '../../api/types';
+import type { ConflictDetail, Layer, Segment, StrategyType } from '../../api/types';
+import type { ApiError } from '../../api/client';
 import { SUBJECT_KEY_FIELD } from '../../api/types';
 import { STRATEGY_OPTIONS } from '../segments/StrategyPicker';
 import LayerRail from './LayerRail';
@@ -13,6 +15,7 @@ import LayerForm from './LayerForm';
 import Modal from '../common/Modal';
 import ConfirmDialog from '../common/ConfirmDialog';
 import ErrorBanner from '../common/ErrorBanner';
+import ConflictDialog from '../common/ConflictDialog';
 import styles from './LayerList.module.css';
 
 /**
@@ -47,6 +50,7 @@ export default function LayerList() {
   const updateSegment = useUpdateSegment();
   const deleteLayer = useDeleteLayer();
   const createSegment = useCreateSegment();
+  const qc = useQueryClient();
 
   const [showCreate, setShowCreate] = useState(false);
   const [editing, setEditing] = useState<Layer | null>(null);
@@ -54,6 +58,11 @@ export default function LayerList() {
   const [addSegTo, setAddSegTo] = useState<string | null>(null);
   const [newSegId, setNewSegId] = useState('');
   const [newSegStrategy, setNewSegStrategy] = useState<StrategyType>('static');
+  // A refused save and the retry that would repeat it. See saveLayer.
+  const [conflict, setConflict] = useState<{
+    detail: ConflictDetail;
+    retry: (force: boolean) => void;
+  } | null>(null);
 
   // "Edit on the layer" (SegmentEditor) links here with ?edit=<layer name> so
   // it opens that specific layer's editor rather than just the list. Derived
@@ -152,6 +161,56 @@ export default function LayerList() {
     setSearchParams(next, { replace: true });
   };
 
+  /**
+   * Saves the layer edited in the modal, guarded by the revision it was loaded
+   * from.
+   *
+   * Segments pruned of a just-removed output field's stale values (LayerForm's
+   * onRemoveField) must be saved BEFORE the layer: a layer PUT validates the
+   * whole snapshot as it stands, so a segment still carrying a value for the
+   * field being removed would reject the very schema change that orphaned it.
+   * They are saved under the layer's current key — a rename, if any, is part of
+   * the layer PUT that follows.
+   *
+   * One expectation covers the sequence: the first write carries the revision
+   * this modal opened against, and each later write carries what the previous
+   * one returned. `force` drops the guard, which is what the conflict dialog's
+   * "overwrite" means.
+   */
+  const saveLayer = async (
+    from: Layer,
+    l: Partial<Layer>,
+    changedSegments: Segment[] | undefined,
+    force: boolean,
+  ) => {
+    const layerKey = from.key;
+    let rev = force ? undefined : from.revision;
+    try {
+      for (const seg of changedSegments ?? []) {
+        const snap = await updateSegment.mutateAsync({
+          layerKey,
+          segId: seg.id,
+          segment: seg,
+          revision: rev,
+        });
+        rev = revisionOf(snap, layerKey);
+      }
+      await updateLayer.mutateAsync({ key: layerKey, layer: l, revision: rev });
+      setConflict(null);
+      // Follow a rename: the selection is held by key, so keeping the old one
+      // would silently bounce the pane to the first layer.
+      selectAndCloseEdit(l.key ?? layerKey);
+    } catch (e) {
+      // A conflict gets the dialog and a retry of this same sequence. Anything
+      // else is left open; updateLayer.error / updateSegment.error above render
+      // what failed so the author can retry or adjust.
+      const c = (e as ApiError).conflict;
+      if (c) {
+        setConflict({ detail: c, retry: (f) => void saveLayer(from, l, changedSegments, f) });
+      }
+    }
+  };
+
   return (
     <div>
       <div className={styles.toolbar}>
@@ -223,34 +282,25 @@ export default function LayerList() {
             initial={activeEditing}
             allLayers={layers ?? []}
             submitLabel="Save"
-            onSubmit={async (l, changedSegments) => {
-              // Segments pruned of a just-removed output field's stale values
-              // (LayerForm's onRemoveField) must be saved BEFORE the layer:
-              // a layer PUT validates the whole snapshot as it stands, so a
-              // segment still carrying a value for the field being removed
-              // would reject the very schema change that orphaned it. They
-              // are saved under the layer's current name — a rename, if any,
-              // is part of the layer PUT that follows.
-              const layerKey = activeEditing.key;
-              try {
-                if (changedSegments?.length) {
-                  for (const seg of changedSegments) {
-                    await updateSegment.mutateAsync({ layerKey, segId: seg.id, segment: seg });
-                  }
-                }
-                await updateLayer.mutateAsync({ key: layerKey, layer: l });
-                // Follow a rename: the selection is held by name, so keeping
-                // the old one would silently bounce the pane to the first layer.
-                selectAndCloseEdit(l.key ?? layerKey);
-              } catch {
-                // Left open; updateLayer.error / updateSegment.error above
-                // render what failed so the author can retry or adjust.
-              }
-            }}
+            onSubmit={(l, changedSegments) => saveLayer(activeEditing, l, changedSegments, false)}
             onCancel={closeEditModal}
           />
         )}
       </Modal>
+
+      <ConflictDialog
+        conflict={conflict?.detail ?? null}
+        subject="your layer changes"
+        onOverwrite={() => conflict?.retry(true)}
+        onDiscard={() => {
+          // Close the modal and refetch: what it was editing is as stale as the
+          // write that was refused, so reopening it should start from stored.
+          setConflict(null);
+          closeEditModal();
+          qc.invalidateQueries({ queryKey: ['layers'] });
+        }}
+        onCancel={() => setConflict(null)}
+      />
 
       {/* Delete Layer Confirm */}
       <ConfirmDialog

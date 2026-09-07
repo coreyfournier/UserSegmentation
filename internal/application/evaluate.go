@@ -33,7 +33,8 @@ func (uc *EvaluateUseCase) Execute(req EvaluateRequest) (*EvaluateResponse, erro
 		ctx = make(map[string]interface{})
 	}
 
-	result := uc.evaluator.Evaluate(snap, ctx, req.Layers, req.Languages, req.RenderAll, now)
+	result := uc.evaluator.Evaluate(snap, ctx, req.Layers, req.Languages, req.RenderAll, now,
+		engine.OnlySegments(req.Segments))
 
 	resp := &EvaluateResponse{
 		Layers:      make(map[string]LayerResultDTO, len(result.Layers)),
@@ -55,6 +56,7 @@ func (uc *EvaluateUseCase) Execute(req EvaluateRequest) (*EvaluateResponse, erro
 			dto.Failures = append(dto.Failures, FailureDTO{
 				Rule:     f.Rule,
 				Message:  f.Message,
+				Segment:  f.Segment,
 				Messages: f.Messages,
 				Outputs:  f.Outputs,
 			})

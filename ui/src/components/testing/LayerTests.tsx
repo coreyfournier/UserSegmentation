@@ -1,15 +1,20 @@
 import { useState } from 'react';
 import { useTests, useCreateTest, useUpdateTest, useDeleteTest } from '../../api/tests';
 import { apiFetch } from '../../api/client';
-import type { EvaluateResponse, InputSchema, LayerResult, SavedTest } from '../../api/types';
+import { duration } from '../../utils/time';
+import type { EvaluateResponse, InputSchema, LayerResult, SavedTest, Segment } from '../../api/types';
 import ContextEditor from './ContextEditor';
 import ConfirmDialog from '../common/ConfirmDialog';
 import ErrorBanner from '../common/ErrorBanner';
 import styles from './LayerTests.module.css';
 
 interface Props {
-  /** The layer being edited — the default scope, and where a new test is filed. */
+  /** The layer being edited. Every test shown is filed under it. */
   layerKey: string;
+  /** The segment being edited — the default scope, and where a new test is filed. */
+  segmentId: string;
+  /** The layer's segments, so a test can say which one it exercises. */
+  segments: Segment[];
   /** That layer's input schema, so the context editor can offer its fields. */
   schema?: InputSchema;
 }
@@ -28,21 +33,32 @@ export interface TestRunResult {
   response?: EvaluateResponse;
   error?: string;
   verdict?: 'pass' | 'fail';
+  /**
+   * Round trip measured here, in microseconds to match the engine's own unit.
+   *
+   * Kept alongside `response.duration_us` rather than instead of it: they
+   * answer different questions. The engine's number is what the configuration
+   * costs to evaluate — the one that means something about the rules being
+   * authored. This one includes HTTP, JSON and the browser, and is the only
+   * one available when the request fails.
+   */
+  elapsedUs?: number;
 }
 
 /** Key for the unsaved draft's own result. Not a valid test id — ids are slugs. */
 const DRAFT_KEY = 'draft:unsaved';
 
-export default function LayerTests({ layerKey, schema }: Props) {
-  const { data: allTests } = useTests();
+export default function LayerTests({ layerKey, segmentId, segments, schema }: Props) {
+  const { data: allTests } = useTests(layerKey);
   const createTest = useCreateTest();
   const updateTest = useUpdateTest();
   const deleteTest = useDeleteTest();
 
-  // Which tests are listed. A change to one layer can break another's rules —
-  // layers gate and override each other — so the tests worth running after an
-  // edit are not only the ones filed under the layer being edited.
-  const [scope, setScope] = useState<'layer' | 'all'>('layer');
+  // Which of the layer's tests are listed. Was "this layer / all layers", and
+  // the wide half was both too broad to be useful and the reason the narrow
+  // half was wrong: a layer's tests all looked like they belonged to whichever
+  // segment happened to be open. The choice that matters is within the layer.
+  const [scope, setScope] = useState<'segment' | 'layer'>('segment');
   const [selectedId, setSelectedId] = useState<string | null>(null);
   // The context being edited, held locally so typing does not write to the
   // server on every keystroke. Seeded when a test is selected.
@@ -62,16 +78,33 @@ export default function LayerTests({ layerKey, schema }: Props) {
   const [expanded, setExpanded] = useState<string | null>(null);
   const [deleting, setDeleting] = useState<SavedTest | null>(null);
 
-  const tests = (allTests ?? []).filter((t) => scope === 'all' || t.layer === layerKey);
+  // A test with no segment predates per-segment filing and runs the whole
+  // layer, so it is listed in the segment view too: it exercises this segment
+  // among the others, and hiding it would make it look deleted.
+  const tests = (allTests ?? []).filter(
+    (t) => t.layer === layerKey && (scope === 'layer' || !t.segment || t.segment === segmentId),
+  );
   const selected = tests.find((t) => t.id === selectedId) ?? null;
 
-  // Grouped for the all-layers view so a row's layer is never in doubt, with
-  // the layer being edited first — it is the one being worked on.
-  const byLayer = new Map<string, SavedTest[]>();
-  for (const t of tests) byLayer.set(t.layer, [...(byLayer.get(t.layer) ?? []), t]);
-  const groups = [...byLayer.entries()].sort(([a], [b]) =>
-    a === layerKey ? -1 : b === layerKey ? 1 : a.localeCompare(b),
-  );
+  const segmentLabel = (id: string) => {
+    const s = segments.find((x) => x.id === id);
+    return s ? s.name || s.id : id;
+  };
+
+  // Grouped by segment for the layer-wide view, with the segment being edited
+  // first, then the rest in the order they are evaluated — which is the order
+  // that decides which of them a real evaluation can reach.
+  const bySegment = new Map<string, SavedTest[]>();
+  for (const t of tests) {
+    const key = t.segment ?? '';
+    bySegment.set(key, [...(bySegment.get(key) ?? []), t]);
+  }
+  const order = new Map(segments.map((s, i) => [s.id, i]));
+  const groups = [...bySegment.entries()].sort(([a], [b]) => {
+    if (a === segmentId) return -1;
+    if (b === segmentId) return 1;
+    return (order.get(a) ?? 99) - (order.get(b) ?? 99);
+  });
 
   const select = (test: SavedTest) => {
     setSelectedId(test.id);
@@ -118,24 +151,38 @@ export default function LayerTests({ layerKey, schema }: Props) {
   const run = async (
     key: string,
     layer: string,
+    segment: string | undefined,
     context: Record<string, unknown>,
     languages?: string[],
     renderAll?: boolean,
   ) => {
     setRunning((r) => [...r, key]);
+    const started = performance.now();
+    const elapsedUs = () => Math.round((performance.now() - started) * 1000);
     try {
       const response = await apiFetch<EvaluateResponse>('/v1/evaluate', {
         method: 'POST',
         body: JSON.stringify({
           context,
           layers: [layer],
+          // Scoped to the segment the test is filed against. Without this the
+          // layer resolves to whichever segment applies first, so a test aimed
+          // at the second one silently reported on the first — the second
+          // could not be exercised at all.
+          segments: segment ? [segment] : undefined,
           languages: languages?.length ? languages : undefined,
           render_all: renderAll || undefined,
         }),
       });
-      setResults((r) => ({ ...r, [key]: { response, layerResult: response.layers?.[layer] } }));
+      setResults((r) => ({
+        ...r,
+        [key]: { response, layerResult: response.layers?.[layer], elapsedUs: elapsedUs() },
+      }));
     } catch (e) {
-      setResults((r) => ({ ...r, [key]: { error: (e as Error).message } }));
+      setResults((r) => ({
+        ...r,
+        [key]: { error: (e as Error).message, elapsedUs: elapsedUs() },
+      }));
     } finally {
       setRunning((r) => r.filter((k) => k !== key));
     }
@@ -146,12 +193,12 @@ export default function LayerTests({ layerKey, schema }: Props) {
   // when confirming what a change did — the reason to run it at all.
   const runOne = async (t: SavedTest, context?: Record<string, unknown>) => {
     setExpanded(t.id);
-    await run(t.id, t.layer, context ?? t.context ?? {}, t.languages, t.renderAll);
+    await run(t.id, t.layer, t.segment, context ?? t.context ?? {}, t.languages, t.renderAll);
   };
 
   const runDraft = async () => {
     setExpanded(DRAFT_KEY);
-    await run(DRAFT_KEY, layerKey, draft);
+    await run(DRAFT_KEY, layerKey, segmentId, draft);
   };
 
   // Sequential rather than parallel: these all write to the same result map,
@@ -174,13 +221,13 @@ export default function LayerTests({ layerKey, schema }: Props) {
     const trimmed = name.trim();
     if (!trimmed) return;
     createTest.mutate(
-      { layer: layerKey, name: trimmed, context: draft, ...draftMeta },
+      { layer: layerKey, segment: segmentId, name: trimmed, context: draft, ...draftMeta },
       {
         onSuccess: (snap) => {
           // Select what was just created, so the panel is now editing it
           // rather than still offering to create the same thing again.
           const created = (snap.tests ?? []).find(
-            (t) => t.layer === layerKey && t.name === trimmed,
+            (t) => t.layer === layerKey && t.segment === segmentId && t.name === trimmed,
           );
           if (created) setSelectedId(created.id);
         },
@@ -192,10 +239,69 @@ export default function LayerTests({ layerKey, schema }: Props) {
   // A selected test whose name has been edited: the save will rename it.
   const renaming = !!selected && !!name.trim() && name.trim() !== selected.name;
 
+  /**
+   * How long a run took, shown with the outcome.
+   *
+   * The engine's own measurement is the headline where it exists — it is what
+   * this configuration costs to evaluate, the number worth watching as rules
+   * are added. The round trip is the tooltip: larger and mostly transport, so
+   * leading with it would make every layer look slow.
+   *
+   * The exception is a reported zero, which is the common case and is not a
+   * measurement. The engine times itself with Go's clock, and that clock
+   * advances in ticks of about half a millisecond on Windows — an evaluation
+   * of a handful of layers takes tens of microseconds, so both reads usually
+   * land in the same tick and the subtraction is exactly 0. Printing "0 µs"
+   * would state a precision that does not exist and make a fast run look
+   * broken; the honest report is that it finished inside one tick, with the
+   * round trip as the only number actually measured.
+   */
+  const renderTiming = (r: TestRunResult) => {
+    const engine = r.response?.duration_us;
+    const trip = r.elapsedUs;
+    if (engine === undefined && trip === undefined) return null;
+
+    // Below the server clock's resolution: no engine figure to report.
+    if (engine === 0) {
+      return (
+        <span
+          className={styles.timing}
+          title={
+            'The engine reported 0 µs: the evaluation finished within one tick of the ' +
+            "server's clock (about 0.5 ms on Windows), so it is too fast for that clock " +
+            'to measure. ' +
+            (trip === undefined
+              ? ''
+              : `The ${duration(trip)} round trip measured here is mostly HTTP and JSON.`)
+          }
+        >
+          &lt; 1 tick
+        </span>
+      );
+    }
+
+    return (
+      <span
+        className={styles.timing}
+        title={
+          engine === undefined
+            ? 'Round trip from this browser; the run reported no engine time'
+            : `Engine ${duration(engine)} · round trip ${duration(trip ?? NaN)}`
+        }
+      >
+        {engine === undefined ? `${duration(trip ?? NaN)} round trip` : duration(engine)}
+      </span>
+    );
+  };
+
   /** The outcome of a run, shown in full: what resolved, and what it emitted. */
   const renderResult = (r: TestRunResult) => (
     <div className={styles.detail}>
-      {r.error && <div className={styles.fail}>{r.error}</div>}
+      {r.error && (
+        <div className={styles.fail}>
+          {r.error} {renderTiming(r)}
+        </div>
+      )}
       {r.layerResult && (
         <>
           <div className={styles.resultLine}>
@@ -206,6 +312,7 @@ export default function LayerTests({ layerKey, schema }: Props) {
             {r.layerResult.reason && (
               <span className={styles.reason}>{r.layerResult.reason}</span>
             )}
+            {renderTiming(r)}
           </div>
 
           {/* The emitted record, laid out rather than buried in JSON — it is
@@ -228,7 +335,11 @@ export default function LayerTests({ layerKey, schema }: Props) {
           {r.layerResult.failures && r.layerResult.failures.length > 0 && (
             <ul className={styles.failures}>
               {r.layerResult.failures.map((f) => (
-                <li key={f.rule}>
+                <li key={f.segment ? `${f.segment}/${f.rule}` : f.rule}>
+                  {/* Only set when the layer ran more than one segment, which
+                      is exactly when "which check failed" stops implying
+                      "in which segment". */}
+                  {f.segment && <span className={styles.fromSegment}>{f.segment}</span>}
                   <code>{f.rule}</code> {f.message}
                 </li>
               ))}
@@ -260,18 +371,19 @@ export default function LayerTests({ layerKey, schema }: Props) {
         <div className={styles.scope} role="group" aria-label="Which tests to show">
           <button
             type="button"
-            className={`${styles.tab} ${scope === 'layer' ? styles.tabOn : ''}`}
-            onClick={() => setScope('layer')}
+            className={`${styles.tab} ${scope === 'segment' ? styles.tabOn : ''}`}
+            onClick={() => setScope('segment')}
+            title={`Tests filed against ${segmentLabel(segmentId)}`}
           >
-            This layer
+            This segment
           </button>
           <button
             type="button"
-            className={`${styles.tab} ${scope === 'all' ? styles.tabOn : ''}`}
-            onClick={() => setScope('all')}
-            title="A change here can break another layer's rules — they gate and override each other"
+            className={`${styles.tab} ${scope === 'layer' ? styles.tabOn : ''}`}
+            onClick={() => setScope('layer')}
+            title="Every test in this layer, grouped by the segment it exercises"
           >
-            All layers
+            Whole layer
           </button>
         </div>
         <button
@@ -296,18 +408,20 @@ export default function LayerTests({ layerKey, schema }: Props) {
 
       {tests.length === 0 ? (
         <p className={styles.empty}>
-          {scope === 'all'
-            ? 'No saved tests anywhere yet.'
-            : 'No saved tests for this layer yet — name a context below to keep one.'}
+          {scope === 'layer'
+            ? 'No saved tests in this layer yet.'
+            : 'No saved tests for this segment yet — name a context below to keep one.'}
         </p>
       ) : (
         <div className={styles.list}>
-          {groups.map(([layer, group]) => (
-            <div key={layer}>
-              {scope === 'all' && (
+          {groups.map(([segment, group]) => (
+            <div key={segment}>
+              {scope === 'layer' && (
                 <div className={styles.group}>
-                  {layer}
-                  {layer === layerKey && <span className={styles.here}>editing</span>}
+                  {/* An unscoped test is not filed against any segment: it
+                      predates per-segment filing and runs them all. */}
+                  {segment === '' ? 'whole layer' : segmentLabel(segment)}
+                  {segment === segmentId && <span className={styles.here}>editing</span>}
                 </div>
               )}
               {group.map((t) => {
@@ -320,9 +434,16 @@ export default function LayerTests({ layerKey, schema }: Props) {
                         type="button"
                         className={`${styles.pick} ${t.id === selectedId ? styles.active : ''}`}
                         onClick={() => select(t)}
-                        title={t.layer === layerKey ? undefined : `Filed under ${t.layer}`}
+                        title={
+                          t.segment
+                            ? `Runs ${segmentLabel(t.segment)} only`
+                            : 'Runs the whole layer — filed before tests were kept per segment'
+                        }
                       >
                         {t.name}
+                        {/* Called out in the segment view too, where it is the
+                            one row that does not run only this segment. */}
+                        {!t.segment && <span className={styles.wholeLayer}>whole layer</span>}
                       </button>
                       {/* The outcome sits between the name and the controls, so
                           a column of them reads down the panel at a glance —
@@ -342,6 +463,10 @@ export default function LayerTests({ layerKey, schema }: Props) {
                           </span>
                         )}
                       </button>
+                      {/* Its own fixed column rather than inside the outcome
+                          button, so a run-all leaves a readable column of
+                          times without knocking the statuses out of line. */}
+                      <span className={styles.rowTiming}>{r && renderTiming(r)}</span>
                       <button
                         type="button"
                         className="btn-ghost btn-sm"

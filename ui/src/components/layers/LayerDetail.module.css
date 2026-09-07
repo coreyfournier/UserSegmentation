@@ -97,3 +97,27 @@
   padding: 1px 6px;
   border-radius: 4px;
 }
+
+/* How the layer treats several applicable segments. Only shown where there is
+   more than one, since with a single segment the distinction says nothing. */
+.modeAll,
+.modeFirst {
+  display: inline-block;
+  margin: 0 0 10px;
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-size: 11px;
+  border: 1px solid var(--border);
+}
+
+.modeAll {
+  background: var(--bg);
+  color: var(--text-muted);
+}
+
+/* The opt-out is the surprising one: segments below it may never run. */
+.modeFirst {
+  background: color-mix(in srgb, var(--danger) 8%, transparent);
+  border-color: color-mix(in srgb, var(--danger) 35%, transparent);
+  color: var(--danger);
+}

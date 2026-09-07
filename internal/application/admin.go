@@ -58,6 +58,7 @@ func (uc *AdminUseCase) CreateLayer(layer model.Layer) (*model.Snapshot, error) 
 	if layer.Segments == nil {
 		layer.Segments = []model.Segment{}
 	}
+	stampLayer(&layer)
 	snap.Layers = append(snap.Layers, layer)
 	return uc.commitSnapshot(snap)
 }
@@ -86,7 +87,7 @@ func (uc *AdminUseCase) CreateLayer(layer model.Layer) (*model.Snapshot, error) 
 // is rejected and the stored snapshot is left unchanged. The same is true of a
 // cascade: if rewriting the references produces invalid config, nothing is
 // saved and the key change is refused whole.
-func (uc *AdminUseCase) UpdateLayer(key string, updated model.Layer) (*model.Snapshot, error) {
+func (uc *AdminUseCase) UpdateLayer(key string, updated model.Layer, expectedRev *int) (*model.Snapshot, error) {
 	uc.mu.Lock()
 	defer uc.mu.Unlock()
 
@@ -111,6 +112,12 @@ func (uc *AdminUseCase) UpdateLayer(key string, updated model.Layer) (*model.Sna
 		}
 	}
 
+	// Checked before anything is mutated, so a refused write leaves the clone
+	// untouched and nothing reaches the store.
+	if err := checkLayerRevision(&snap.Layers[idx], expectedRev); err != nil {
+		return nil, err
+	}
+
 	snap.Layers[idx].Key = newKey
 	snap.Layers[idx].Name = updated.Name
 	snap.Layers[idx].DependsOn = updated.DependsOn
@@ -123,6 +130,7 @@ func (uc *AdminUseCase) UpdateLayer(key string, updated model.Layer) (*model.Sna
 	// being left behind by a cascade that ran first.
 	rekeyLayer(snap, key, newKey)
 
+	stampLayer(&snap.Layers[idx])
 	return uc.commitSnapshot(snap)
 }
 
@@ -190,7 +198,7 @@ func (uc *AdminUseCase) DeleteLayer(name string) (*model.Snapshot, error) {
 }
 
 // CreateSegment adds a segment to a layer.
-func (uc *AdminUseCase) CreateSegment(layerName string, seg model.Segment) (*model.Snapshot, error) {
+func (uc *AdminUseCase) CreateSegment(layerName string, seg model.Segment, expectedRev *int) (*model.Snapshot, error) {
 	uc.mu.Lock()
 	defer uc.mu.Unlock()
 
@@ -199,17 +207,21 @@ func (uc *AdminUseCase) CreateSegment(layerName string, seg model.Segment) (*mod
 	if idx < 0 {
 		return nil, fmt.Errorf("layer %q not found", layerName)
 	}
+	if err := checkLayerRevision(&snap.Layers[idx], expectedRev); err != nil {
+		return nil, err
+	}
 	for _, s := range snap.Layers[idx].Segments {
 		if s.ID == seg.ID {
 			return nil, fmt.Errorf("segment %q already exists in layer %q", seg.ID, layerName)
 		}
 	}
 	snap.Layers[idx].Segments = append(snap.Layers[idx].Segments, seg)
+	stampLayer(&snap.Layers[idx])
 	return uc.commitSnapshot(snap)
 }
 
 // UpdateSegment replaces a segment in a layer.
-func (uc *AdminUseCase) UpdateSegment(layerName, segID string, seg model.Segment) (*model.Snapshot, error) {
+func (uc *AdminUseCase) UpdateSegment(layerName, segID string, seg model.Segment, expectedRev *int) (*model.Snapshot, error) {
 	uc.mu.Lock()
 	defer uc.mu.Unlock()
 
@@ -222,15 +234,19 @@ func (uc *AdminUseCase) UpdateSegment(layerName, segID string, seg model.Segment
 	if si < 0 {
 		return nil, fmt.Errorf("segment %q not found in layer %q", segID, layerName)
 	}
+	if err := checkLayerRevision(&snap.Layers[li], expectedRev); err != nil {
+		return nil, err
+	}
 	// The id is renameable. It used to be pinned to whatever the request was
 	// addressed to, which made it uneditable through the API at all — and a
 	// segment's id is the label an author reads in every list, so being stuck
 	// with the first thing typed is a poor trade for a guarantee nothing needed.
 	//
-	// Nothing inside the config refers to a segment by id: there is no
-	// dependsOn between segments, saved tests are filed per layer, and the
-	// response is keyed by layer. So a rename has nothing to cascade into — it
-	// only has to stay unique within the layer.
+	// Almost nothing inside the config refers to a segment by id: there is no
+	// dependsOn between segments and the response is keyed by layer. Saved
+	// tests are the one exception — they are filed per segment — so a rename
+	// carries them, in this same transaction. Leaving them behind would point
+	// them at a segment that no longer exists, which validation refuses.
 	if seg.ID == "" {
 		seg.ID = segID
 	}
@@ -240,13 +256,19 @@ func (uc *AdminUseCase) UpdateSegment(layerName, segID string, seg model.Segment
 				return nil, fmt.Errorf("segment %q already exists in layer %q", seg.ID, layerName)
 			}
 		}
+		for i := range snap.Tests {
+			if snap.Tests[i].Layer == layerName && snap.Tests[i].Segment == segID {
+				snap.Tests[i].Segment = seg.ID
+			}
+		}
 	}
 	snap.Layers[li].Segments[si] = seg
+	stampLayer(&snap.Layers[li])
 	return uc.commitSnapshot(snap)
 }
 
 // DeleteSegment removes a segment from a layer.
-func (uc *AdminUseCase) DeleteSegment(layerName, segID string) (*model.Snapshot, error) {
+func (uc *AdminUseCase) DeleteSegment(layerName, segID string, expectedRev *int) (*model.Snapshot, error) {
 	uc.mu.Lock()
 	defer uc.mu.Unlock()
 
@@ -259,8 +281,24 @@ func (uc *AdminUseCase) DeleteSegment(layerName, segID string) (*model.Snapshot,
 	if si < 0 {
 		return nil, fmt.Errorf("segment %q not found in layer %q", segID, layerName)
 	}
+	if err := checkLayerRevision(&snap.Layers[li], expectedRev); err != nil {
+		return nil, err
+	}
 	segs := snap.Layers[li].Segments
 	snap.Layers[li].Segments = append(segs[:si], segs[si+1:]...)
+	// Its saved tests go with it. They name inputs for a segment that will not
+	// exist, so keeping them would leave rows in the panel that cannot run —
+	// and validation, which requires a test's segment to exist, would refuse
+	// the delete outright.
+	kept := snap.Tests[:0:0]
+	for _, t := range snap.Tests {
+		if t.Layer == layerName && t.Segment == segID {
+			continue
+		}
+		kept = append(kept, t)
+	}
+	snap.Tests = kept
+	stampLayer(&snap.Layers[li])
 	return uc.commitSnapshot(snap)
 }
 
