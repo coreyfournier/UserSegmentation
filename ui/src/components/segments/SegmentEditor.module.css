@@ -80,3 +80,40 @@
 .testCard h3 {
   margin-top: 0;
 }
+
+/* Pinned to the bottom of the viewport. The segment page runs long, so Save
+   was routinely offscreen — and its failure message, rendered at the top of
+   the page, always was. The outcome of pressing a button belongs where the
+   button is. */
+.footer {
+  position: sticky;
+  bottom: 0;
+  z-index: 2;
+  display: block;
+  margin-top: 24px;
+  padding: 12px 0;
+  border-top: 1px solid var(--border);
+  /* Opaque, or the form scrolls through it. */
+  background: var(--bg);
+}
+
+.footerActions {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 8px;
+}
+
+/* Wraps rather than scrolls or truncates: a validation failure names the rule
+   and the field at fault, and that is the part worth reading. */
+.footerError {
+  margin-bottom: 10px;
+  padding: 8px 10px;
+  border: 1px solid var(--danger);
+  border-radius: var(--radius);
+  background: var(--bg-card);
+  color: var(--danger);
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+}

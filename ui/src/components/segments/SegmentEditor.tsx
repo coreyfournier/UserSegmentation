@@ -242,6 +242,11 @@ export default function SegmentEditor() {
   // Where Close returns to. LayerList hands over its own URL when it opens a
   // segment, so closing restores the list exactly as it was — same selected
   // layer, same search. Falls back for a segment reached by a pasted link.
+  // The last save failure, shown in the footer beside the button that caused
+  // it. Cleared when a save starts, so a stale failure never sits under a
+  // successful one.
+  const saveError = updateSegment.error ? (updateSegment.error as Error).message : null;
+
   const backHref = (location.state as { from?: string } | null)?.from ?? '/layers';
   // Where the layer crumb goes when the editor was reached by a pasted link,
   // so it still lands on this layer rather than the top of the list.
@@ -269,7 +274,11 @@ export default function SegmentEditor() {
         </h2>
       </div>
 
-      {updateSegment.error && <ErrorBanner message={(updateSegment.error as Error).message} />}
+      {/* A failed segment save is reported next to the Save button rather than
+          here — this page is long, and a message at the top for a button at the
+          bottom is a message nobody sees. Layer errors stay: they come from
+          controls in the middle of the page (declaring an output field,
+          declaring subjectKey), so the top is where they happened. */}
       {updateLayer.error && <ErrorBanner message={(updateLayer.error as Error).message} />}
 
       {/* Two columns where there is room: the segment on the left, its tests
@@ -612,17 +621,34 @@ export default function SegmentEditor() {
 
       {/* Footer, inside the form column: these act on the segment, and a
           right-aligned footer spanning an uncapped page would put Save at the
-          far edge of a wide monitor, nowhere near the form. */}
+          far edge of a wide monitor, nowhere near the form.
+
+          Pinned to the bottom of the viewport, and carrying its own failure
+          message. The segment is long enough that Save was often offscreen and
+          the error always was — the outcome of pressing a button belongs where
+          the button is. */}
       <div className={styles.footer}>
-        {/* "Close" rather than "Cancel": saving no longer leaves the page, so
-            this is how you leave — and it discards nothing that was saved. */}
-        <button type="button" className="btn-ghost" onClick={() => navigate(backHref)}>Close</button>
-        {savedAt !== null && !updateSegment.isPending && (
-          <span className={styles.saved} role="status">Saved</span>
+        {saveError && (
+          <div className={styles.footerError} role="alert">
+            <strong>Save failed.</strong> {saveError}
+          </div>
         )}
-        <button type="button" className="btn-primary" onClick={handleSave} disabled={updateSegment.isPending}>
-          {updateSegment.isPending ? 'Saving...' : 'Save'}
-        </button>
+        <div className={styles.footerActions}>
+          {/* "Close" rather than "Cancel": saving no longer leaves the page, so
+              this is how you leave — and it discards nothing that was saved. */}
+          <button type="button" className="btn-ghost" onClick={() => navigate(backHref)}>Close</button>
+          {savedAt !== null && !saveError && !updateSegment.isPending && (
+            <span className={styles.saved} role="status">Saved</span>
+          )}
+          <button
+            type="button"
+            className="btn-primary"
+            onClick={handleSave}
+            disabled={updateSegment.isPending}
+          >
+            {updateSegment.isPending ? 'Saving...' : saveError ? 'Save again' : 'Save'}
+          </button>
+        </div>
       </div>
 
       </SplitPane>
