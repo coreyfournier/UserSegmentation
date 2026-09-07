@@ -3,7 +3,7 @@ import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { useLayers, useUpdateLayer } from '../../api/layers';
 import { useLookups } from '../../api/lookups';
 import { useUpdateSegment } from '../../api/segments';
-import type { FieldType, Segment, StrategyType, InputSchema, OutputField } from '../../api/types';
+import type { FieldType, Layer, Segment, StrategyType, InputSchema, OutputField } from '../../api/types';
 import { SUBJECT_KEY_FIELD } from '../../api/types';
 import StrategyPicker from './StrategyPicker';
 import StaticConfig from './StaticConfig';
@@ -21,6 +21,8 @@ import OutputValuesEditor from '../rules/OutputValuesEditor';
 import { fieldCoverage, supportsOutputSchema } from '../schema/outputSchemaRules';
 import { describeBreak, segmentRetypeBreaks } from '../rules/operatorRules';
 import ConfirmDialog from '../common/ConfirmDialog';
+import Modal from '../common/Modal';
+import LayerForm from '../layers/LayerForm';
 import ErrorBanner from '../common/ErrorBanner';
 import styles from './SegmentEditor.module.css';
 
@@ -36,6 +38,11 @@ export default function SegmentEditor() {
   const [pendingComputedRetype, setPendingComputedRetype] = useState<
     { field: string; next: FieldType; broken: string[]; apply: () => void } | null
   >(null);
+  // The layer editor, opened over this page. "Edit on the layer" used to
+  // navigate to /layers?edit=, which unmounted this editor and took every
+  // unsaved change with it — for a schema tweak the author only wanted so they
+  // could carry on here.
+  const [editingLayer, setEditingLayer] = useState(false);
   const { data: layers } = useLayers();
   const { data: lookups } = useLookups();
   const updateSegment = useUpdateSegment();
@@ -48,9 +55,6 @@ export default function SegmentEditor() {
   // A rule may only reference layers this one declares a dependency on, so the
   // picker offers exactly those — the UI cannot build a config validation rejects.
   const layerNames = layer?.dependsOn ?? [];
-  // "Edit on the layer" must open this segment's own layer, not just the list —
-  // LayerList reads this query param on mount and opens that layer's edit modal.
-  const editLayerHref = layerKey ? `/layers?edit=${encodeURIComponent(layerKey)}` : '/layers';
 
   const [seg, setSeg] = useState<Segment | null>(null);
   const segRef = useRef(seg);
@@ -162,6 +166,48 @@ export default function SegmentEditor() {
       return;
     }
     setPendingComputedRetype({ field, next, broken: broken.map(describeBreak), apply });
+  };
+
+  // Saves the layer from the modal, the same way the layers page does: any
+  // segment the form pruned goes first, because a layer PUT validates the whole
+  // snapshot and a segment still holding a value for the field being removed
+  // would reject the very schema change that orphaned it.
+  //
+  // The form is handed this page's in-progress segment rather than the server's
+  // copy (see initialLayer below), so if removing an output field prunes it,
+  // what gets written is the author's live work and not a stale version of it.
+  const saveLayerFromModal = async (l: Partial<Layer>, changedSegments?: Segment[]) => {
+    if (!layerKey) return;
+    try {
+      for (const s of changedSegments ?? []) {
+        await updateSegment.mutateAsync({ layerKey, segId: s.id, segment: s });
+        // A pruned copy of the segment being edited is now what the server
+        // holds, so the editor adopts it — otherwise local state would still
+        // carry the value that was just removed and the next save would be
+        // rejected for it.
+        if (s.id === segId) setSeg(structuredClone(s));
+      }
+      await updateLayer.mutateAsync({ key: layerKey, layer: l });
+      setEditingLayer(false);
+      // A layer key change moves this page's address, like a segment rename.
+      if (l.key && l.key !== layerKey) {
+        navigate(
+          `/layers/${encodeURIComponent(l.key)}/segments/${encodeURIComponent(segId ?? '')}`,
+          { replace: true, state: location.state },
+        );
+      }
+    } catch {
+      // Left open; the error banners above render what failed.
+    }
+  };
+
+  // What the modal edits. The segments are the server's, except for the one on
+  // screen — the form prunes segments when an output field is removed, and it
+  // should prune what the author can see rather than the version they have
+  // been editing away from.
+  const initialLayer: Layer | undefined = layer && {
+    ...layer,
+    segments: layer.segments.map((s) => (s.id === segId ? seg : s)),
   };
 
   const handleSave = () => {
@@ -298,7 +344,7 @@ export default function SegmentEditor() {
         <p className={styles.layerNote}>
           Declared on layer <strong>{layerKey}</strong> — every segment in it shares this
           schema.{' '}
-          <button type="button" className="btn-ghost btn-sm" onClick={() => navigate(editLayerHref)}>
+          <button type="button" className="btn-ghost btn-sm" onClick={() => setEditingLayer(true)}>
             Edit on the layer
           </button>
         </p>
@@ -335,7 +381,7 @@ export default function SegmentEditor() {
             <p className={styles.layerNote}>
               Declared on layer <strong>{layerKey}</strong> — every segment in it shares this
               schema.{' '}
-              <button type="button" className="btn-ghost btn-sm" onClick={() => navigate(editLayerHref)}>
+              <button type="button" className="btn-ghost btn-sm" onClick={() => setEditingLayer(true)}>
                 Edit on the layer
               </button>
             </p>
@@ -580,6 +626,22 @@ export default function SegmentEditor() {
       </div>
 
       </SplitPane>
+
+      {/* The layer's own editor, over this page rather than instead of it.
+          Closing it leaves the segment exactly as it was; saving refreshes the
+          read-only schema tables through the layers query, so the change is
+          visible here without a navigation. */}
+      <Modal open={editingLayer} onClose={() => setEditingLayer(false)} title="Edit Layer">
+        {initialLayer && (
+          <LayerForm
+            initial={initialLayer}
+            allLayers={layers ?? []}
+            submitLabel="Save"
+            onSubmit={saveLayerFromModal}
+            onCancel={() => setEditingLayer(false)}
+          />
+        )}
+      </Modal>
 
       <ConfirmDialog
         open={!!pendingComputedRetype}
