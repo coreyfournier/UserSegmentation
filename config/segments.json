@@ -1,6 +1,6 @@
 {
-  "version": 166,
-  "last_modified": "2026-09-06T13:02:24.2057661Z",
+  "version": 191,
+  "last_modified": "2026-09-07T02:46:36.907269713Z",
   "layers": [
     {
       "key": "baseTier",
@@ -274,12 +274,17 @@
     },
     {
       "key": "ctFeeOverride",
-      "name": "ct-fee-override",
+      "name": "CT Compliance (Max Fee)",
       "segments": [
         {
           "id": "ct-fee",
           "strategy": "rule",
           "computed": [
+            {
+              "name": "MaxTransferFee",
+              "type": "number",
+              "formula": "30"
+            },
             {
               "name": "CTTotal",
               "type": "number",
@@ -288,7 +293,12 @@
             {
               "name": "TransferFee",
               "type": "number",
-              "formula": "CTTotal \u003e 30.0 ? 0.0 : (CTTotal + 4.0 \u003e 30.0 ? 30.0 - CTTotal : 4.0)"
+              "formula": "CTTotal \u003e MaxTransferFee ? 0.0 : (CTTotal + TransferFee \u003e MaxTransferFee ? MaxTransferFee - CTTotal : TransferFee )"
+            },
+            {
+              "name": "HasMaxFeeBeenReached",
+              "type": "boolean",
+              "formula": "CTTotal \u003e= MaxTransferFee"
             }
           ],
           "rules": [
@@ -296,9 +306,12 @@
               "ruleName": "fee-waived",
               "successEvent": "fee-waived",
               "condition": {
-                "field": "CTTotal",
-                "operator": "gt",
-                "value": 30
+                "field": "HasMaxFeeBeenReached",
+                "operator": "eq",
+                "value": "True"
+              },
+              "outputs": {
+                "TransferFee": "TransferFee"
               }
             },
             {
@@ -306,18 +319,31 @@
               "successEvent": "fee-partial",
               "condition": {
                 "field": "CTTotal",
-                "operator": "gt",
+                "operator": "gte",
                 "value": 26
+              },
+              "outputs": {
+                "TransferFee": "TransferFee"
               }
             }
           ],
           "default": "fee-standard"
         }
       ],
+      "defaultLanguage": "en",
       "inputSchema": {
         "Employees": {
           "type": "array",
           "required": true
+        },
+        "TransferFee": {
+          "type": "number",
+          "required": true
+        }
+      },
+      "outputSchema": {
+        "TransferFee": {
+          "type": "number"
         }
       }
     },
@@ -1166,6 +1192,68 @@
           "order": 4
         }
       ]
+    }
+  ],
+  "tests": [
+    {
+      "id": "ctfeeoverride-fee-standard",
+      "layer": "ctFeeOverride",
+      "name": "fee-standard",
+      "context": {
+        "Employees": [
+          {
+            "State": "CT",
+            "TransferSpendThisMonth": 20
+          }
+        ],
+        "TransferFee": 4
+      }
+    },
+    {
+      "id": "ctfeeoverride-fee-waived",
+      "layer": "ctFeeOverride",
+      "name": "fee-waived",
+      "context": {
+        "Employees": [
+          {
+            "State": "CT",
+            "TransferSpendThisMonth": 30
+          }
+        ],
+        "TransferFee": 4
+      }
+    },
+    {
+      "id": "ctfeeoverride-fee-partial",
+      "layer": "ctFeeOverride",
+      "name": "fee-partial",
+      "context": {
+        "Employees": [
+          {
+            "State": "CT",
+            "TransferSpendThisMonth": 27
+          }
+        ],
+        "TransferFee": 4
+      }
+    },
+    {
+      "id": "balancediagnosis-checkemployeesyncfailed",
+      "layer": "balanceDiagnosis",
+      "name": "CheckEmployeeSyncFailed",
+      "context": {
+        "EmployeeCount": 5,
+        "EmployeeId": 1234,
+        "EmployeeReason": "Failed",
+        "EmployeeStatus": "Failed",
+        "GrossPay": 5,
+        "NetPay": "2",
+        "PayCycleId": 1234,
+        "ResultCode": "NoBalanceAvailable",
+        "UserEmployerIds": [
+          "123456448"
+        ]
+      }
     }
   ]
 }
