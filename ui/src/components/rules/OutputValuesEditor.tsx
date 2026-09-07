@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useId, useState } from 'react';
 import { useLookups } from '../../api/lookups';
 import type { ComputedField, FieldType, OutputField, OutputSchema } from '../../api/types';
 import {
@@ -47,6 +47,25 @@ export default function OutputValuesEditor({ outputs, schema, onChange, onDeclar
   const { data: lookups } = useLookups();
   const lookupFor = (f?: OutputField) =>
     f?.lookup ? (lookups ?? []).find((t) => t.id === f.lookup) : undefined;
+
+  // Unique per instance: several of these editors are on the page at once (one
+  // per reporting rule, plus the segment and the default), and a datalist is
+  // addressed by a document-wide id.
+  const listId = useId();
+
+  // What the field offers: the bound lookup's keys, and a computed field of the
+  // same name and type. Both are things an author would otherwise have to
+  // remember and spell exactly.
+  const suggestionsFor = (name: string, field?: OutputField) => {
+    const out: { value: string; label: string }[] = [];
+    for (const entry of lookupFor(field)?.entries ?? []) {
+      const key = String(entry.key);
+      out.push({ value: key, label: entry.value ? `${key} — ${entry.value}` : key });
+    }
+    const match = matchingComputedField(name, field, computed);
+    if (match) out.push({ value: match.name, label: `${match.name} (computed ${match.type})` });
+    return out;
+  };
 
   const set = (name: string, raw: string) => {
     const next = { ...(outputs ?? {}) };
@@ -125,63 +144,45 @@ export default function OutputValuesEditor({ outputs, schema, onChange, onDeclar
                   )}
                 </div>
                 <div>
-                  <ExpandableField
-                    value={row.value}
-                    onChange={(e) => set(row.name, e.target.value)}
-                    placeholder={row.field ? placeholderFor(row.field) : undefined}
-                    aria-label={`value for ${row.name}`}
-                  />
-                  {/* The field's lookup declares its permitted values, so they
-                      are offered here rather than left to be remembered and
-                      typed. Picking one writes the key into the value, which
-                      is all a key ever is: a string field's value is a
-                      template, so the bare key renders to itself, and a
-                      number field's is an expression, where a numeric key is
-                      already a literal.
+                  {/* Suggestions live in the field itself rather than in
+                      controls beneath it. A lookup key picker and a "use
+                      computed" button each added a row per value, so a leaf
+                      setting six of them was mostly chrome — and the value
+                      still had to be typed or the suggestion clicked, two ways
+                      to do one thing.
 
-                      Offered beside the field rather than replacing it,
-                      because a value may legitimately be an expression that
-                      computes which key applies. */}
-                  {(() => {
-                    const table = lookupFor(row.field);
-                    if (!table?.entries?.length) return null;
-                    return (
-                      <select
-                        className={styles.keyPick}
-                        value=""
-                        onChange={(e) => {
-                          if (e.target.value) set(row.name, e.target.value);
-                        }}
-                        aria-label={`pick a ${table.name} key for ${row.name}`}
-                        title={`Values come from the lookup table "${table.name}"`}
-                      >
-                        <option value="">pick a {table.name} key…</option>
-                        {table.entries.map((entry) => (
-                          <option key={String(entry.key)} value={String(entry.key)}>
-                            {entry.value ? `${String(entry.key)} — ${entry.value}` : String(entry.key)}
+                      A datalist is one control that does both: the field stays
+                      free text, because a value may legitimately be an
+                      expression computing which key applies, and the arrow
+                      offers what is known. Single-line for these, since a
+                      suggested value is a key or a field name; a value with
+                      nothing to suggest keeps the resizable field, because
+                      that is where the long templates are. */}
+                  {suggestionsFor(row.name, row.field).length > 0 ? (
+                    <>
+                      <input
+                        value={row.value}
+                        onChange={(e) => set(row.name, e.target.value)}
+                        placeholder={row.field ? placeholderFor(row.field) : undefined}
+                        aria-label={`value for ${row.name}`}
+                        list={`${listId}-${row.name}`}
+                      />
+                      <datalist id={`${listId}-${row.name}`}>
+                        {suggestionsFor(row.name, row.field).map((s) => (
+                          <option key={s.value} value={s.value}>
+                            {s.label}
                           </option>
                         ))}
-                      </select>
-                    );
-                  })()}
-                  {/* A computed field of the same name and type could supply
-                      this. Offered, not applied: clicking writes the
-                      expression into the config, so what evaluates is what an
-                      author can read here — the engine infers nothing. */}
-                  {!row.value && (() => {
-                    const match = matchingComputedField(row.name, row.field, computed);
-                    if (!match) return null;
-                    return (
-                      <button
-                        type="button"
-                        className={styles.useComputed}
-                        onClick={() => set(row.name, match.name)}
-                        title={`Set this to the computed field ${match.name} (${match.type})`}
-                      >
-                        use computed <code>{match.name}</code>
-                      </button>
-                    );
-                  })()}
+                      </datalist>
+                    </>
+                  ) : (
+                    <ExpandableField
+                      value={row.value}
+                      onChange={(e) => set(row.name, e.target.value)}
+                      placeholder={row.field ? placeholderFor(row.field) : undefined}
+                      aria-label={`value for ${row.name}`}
+                    />
+                  )}
                   {coverage && row.field && (() => {
                     const field = row.field;
                     const c = coverage(row.name);

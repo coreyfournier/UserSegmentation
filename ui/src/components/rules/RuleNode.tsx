@@ -197,12 +197,28 @@ export default function RuleNode({ rule, path, onChange, onDelete, index, total,
           a leaf inside a checklist's And/Or group author values the engine
           never reads, which is dead config nothing would flag. */}
       {onDeclareOutput && depth === 0 && (
-        <OutputValuesEditor
-          outputs={rule.outputs}
-          schema={outputSchema ?? {}}
-          onChange={(o) => onChange({ ...rule, outputs: o })}
-          onDeclare={onDeclareOutput}
-        />
+        // Framed and labelled as this rule's own. Rendered bare, a rule
+        // setting six values was a wall of controls with nothing tying them to
+        // the rule above — and nothing saying they belong to this rule rather
+        // than to the segment.
+        <div className={styles.outputs}>
+          <div className={styles.outputsHead}>
+            <span className={styles.outputsTitle}>
+              Output values for <code>{rule.ruleName || '(unnamed)'}</code>
+            </span>
+            {Object.keys(rule.outputs ?? {}).length > 0 && (
+              <span className={styles.outputsCount}>
+                {Object.keys(rule.outputs ?? {}).length} set
+              </span>
+            )}
+          </div>
+          <OutputValuesEditor
+            outputs={rule.outputs}
+            schema={outputSchema ?? {}}
+            onChange={(o) => onChange({ ...rule, outputs: o })}
+            onDeclare={onDeclareOutput}
+          />
+        </div>
       )}
 
       {/* Under first-match strategies only the winning top-level rule's message

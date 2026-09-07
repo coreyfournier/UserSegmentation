@@ -22,14 +22,3 @@
 .addRow select {
   font-size: 11px;
 }
-
-/* The lookup key picker, under the value it fills in. Resets to its prompt
-   after each pick, so it reads as an action rather than as the field's current
-   state — the value field is what holds that. */
-.keyPick {
-  margin-top: 3px;
-  font-size: 11px;
-  padding: 2px 6px;
-  width: auto;
-  max-width: 100%;
-}
