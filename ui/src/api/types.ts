@@ -115,7 +115,11 @@ export interface ComputedField {
 }
 
 export interface Segment {
+  /** Stable identity, unique within its layer. Not constrained like a layer
+   *  key: a segment is never an object key in the response. */
   id: string;
+  /** Friendly label. Optional, free-form, references nothing. */
+  name?: string;
   /**
    * Dispatch predicate. When present and false the segment is passed over
    * entirely and produces no output — this is how one layer holds

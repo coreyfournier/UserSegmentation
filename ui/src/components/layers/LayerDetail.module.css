@@ -86,3 +86,14 @@
   display: flex;
   gap: 4px;
 }
+
+/* The segment's id beside its friendly name. Shown because the id is what a
+   reason string and a warning carry, so an author matching a response back to
+   a segment needs to see it without opening the editor. */
+.segId {
+  font-size: 11px;
+  color: var(--text-muted);
+  background: var(--bg);
+  padding: 1px 6px;
+  border-radius: 4px;
+}

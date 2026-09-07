@@ -166,14 +166,29 @@ export default function SegmentEditor() {
 
   const handleSave = () => {
     if (!layerKey || !segId || !segRef.current) return;
+    const saving = segRef.current;
     updateSegment.mutate(
-      { layerKey, segId, segment: segRef.current },
+      // Addressed by the id in the URL, which is the one the server still
+      // holds; the payload carries the new one when the author has renamed it.
+      { layerKey, segId, segment: saving },
       {
         // Stays on the page. Saving used to navigate back to the layer list,
         // which threw away the editor you were working in — so testing a change
         // meant walking back in, and any search that got you here was gone.
         // Leaving is a separate decision, made with the Close button.
-        onSuccess: () => setSavedAt(Date.now()),
+        onSuccess: () => {
+          setSavedAt(Date.now());
+          // A rename changes this page's own address. Replacing the URL keeps
+          // the editor open on the same segment rather than leaving it pointed
+          // at an id the server no longer has — the next reload, or any save
+          // after it, would 404.
+          if (saving.id !== segId) {
+            navigate(
+              `/layers/${encodeURIComponent(layerKey)}/segments/${encodeURIComponent(saving.id)}`,
+              { replace: true, state: location.state },
+            );
+          }
+        },
       }
     );
   };
@@ -182,6 +197,9 @@ export default function SegmentEditor() {
   // segment, so closing restores the list exactly as it was — same selected
   // layer, same search. Falls back for a segment reached by a pasted link.
   const backHref = (location.state as { from?: string } | null)?.from ?? '/layers';
+  // Where the layer crumb goes when the editor was reached by a pasted link,
+  // so it still lands on this layer rather than the top of the list.
+  const layersHref = layerKey ? `/layers?layer=${encodeURIComponent(layerKey)}` : '/layers';
 
   return (
     <div className={styles.editor}>
@@ -189,9 +207,19 @@ export default function SegmentEditor() {
         <h2>
           <span className={styles.breadcrumb} onClick={() => navigate(backHref)}>Layers</span>
           {' / '}
-          <span className={styles.breadcrumb}>{layerKey}</span>
+          {/* The layer name carried the breadcrumb styling and no handler — it
+              looked like a link and did nothing. It goes back to the list with
+              this layer selected, which is what backHref already encodes when
+              the editor was opened from there. */}
+          <span
+            className={styles.breadcrumb}
+            onClick={() => navigate(backHref.includes('layer=') ? backHref : layersHref)}
+            title={`Back to ${layer?.name || layerKey}`}
+          >
+            {layer?.name || layerKey}
+          </span>
           {' / '}
-          {seg.id}
+          {seg.name || seg.id}
         </h2>
       </div>
 
@@ -211,6 +239,45 @@ export default function SegmentEditor() {
           </section>
         }
       >
+
+      {/* Identity — first, because the id was previously uneditable through the
+          API at all and invisible here except as breadcrumb text. */}
+      <section className={`card ${styles.section}`}>
+        <h3>Identity</h3>
+        <div className="form-group">
+          <label>Name</label>
+          <input
+            value={seg.name ?? ''}
+            onChange={(e) => update({ name: e.target.value || undefined })}
+            placeholder="e.g. Employee readiness"
+          />
+          <p style={{ fontSize: 11, color: 'var(--text-muted)', margin: '4px 0 0' }}>
+            The friendly label, shown here and in the layer&rsquo;s segment list. Nothing
+            references it, so it can be changed freely.
+          </p>
+        </div>
+        <div className="form-group">
+          <label>Segment ID</label>
+          <input
+            value={seg.id}
+            onChange={(e) => update({ id: e.target.value })}
+            aria-invalid={!seg.id.trim()}
+          />
+          <p style={{ fontSize: 11, color: 'var(--text-muted)', margin: '4px 0 0' }}>
+            The stable identity: unique within this layer, how the admin API addresses this
+            segment, and what appears in a <code>reason</code> and in any warning it
+            produces. Unlike a layer key it is not restricted to letters and digits — a
+            segment is never an object name in the response.
+          </p>
+          {seg.id !== segId && (
+            <p style={{ fontSize: 11, color: 'var(--danger)', margin: '4px 0 0' }}>
+              Renaming from <code>{segId}</code> on save. Nothing inside the config refers
+              to a segment by id, so there is nothing to update — but a saved test or a
+              consumer reading <code>reason</code> may mention the old one.
+            </p>
+          )}
+        </div>
+      </section>
 
       {/* Strategy */}
       <section className={`card ${styles.section}`}>

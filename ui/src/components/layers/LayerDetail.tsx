@@ -66,7 +66,14 @@ export default function LayerDetail({ layer, onEdit, onDelete, onAddSegment }: P
         )}
         {layer.segments.map((seg) => (
           <div key={seg.id} className={styles.segment}>
-            <span className={styles.segLink} onClick={() => openSegment(seg.id)}>{seg.id}</span>
+            {/* The friendly name is what an author scans for; the id is what a
+                reason and a warning carry, so it is shown alongside rather
+                than replaced. A segment without a name is shown by its id,
+                which is then the only name it has. */}
+            <span className={styles.segLink} onClick={() => openSegment(seg.id)}>
+              {seg.name || seg.id}
+            </span>
+            {seg.name && <code className={styles.segId}>{seg.id}</code>}
             <span className={styles.strategy}>{seg.strategy}</span>
             <div className={styles.segActions}>
               <button type="button" className="btn-ghost btn-sm" onClick={() => openSegment(seg.id)}>

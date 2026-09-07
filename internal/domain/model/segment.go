@@ -20,7 +20,18 @@ type StaticConfig struct {
 
 // Segment is a single segment definition within a layer.
 type Segment struct {
+	// ID is the segment's stable identity: unique within its layer, how the
+	// admin API addresses it, and what a reason string and a warning name.
+	//
+	// Unlike a layer key it is not constrained to a C# identifier, because it
+	// is never an object key in the response — the response is keyed by layer,
+	// and a segment appears only as a value inside reason and warning text. So
+	// the existing hyphenated ids stay legal.
 	ID string `json:"id"`
+	// Name is the friendly label, shown in the editor and the segment list.
+	// Optional, free-form, and with no uniqueness rule: it identifies nothing.
+	// A segment without one is shown by its id.
+	Name string `json:"name,omitempty"`
 	// When is an optional dispatch predicate. When present and false, the
 	// segment is passed over entirely and produces no output of any kind —
 	// it is not a reported state. This is how one layer holds per-entity-type

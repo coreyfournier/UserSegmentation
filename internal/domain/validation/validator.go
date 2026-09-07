@@ -69,6 +69,24 @@ func ValidateSnapshot(snap *model.Snapshot) error {
 			}
 		}
 
+		// A segment id must be present and unique within its layer. Neither was
+		// checked at load: only CreateSegment refused a duplicate, so a
+		// hand-edited or imported config could hold two segments with one id —
+		// and findSegment would only ever reach the first, making the second
+		// silently uneditable while still being evaluated.
+		segIDs := make(map[string]struct{}, len(layer.Segments))
+		for _, seg := range layer.Segments {
+			if seg.ID == "" {
+				errs = append(errs, fmt.Sprintf("layer %q: a segment has no id", layer.Key))
+				continue
+			}
+			if _, dup := segIDs[seg.ID]; dup {
+				errs = append(errs, fmt.Sprintf(
+					"layer %q: duplicate segment id %q", layer.Key, seg.ID))
+			}
+			segIDs[seg.ID] = struct{}{}
+		}
+
 		for _, seg := range layer.Segments {
 			// An unknown strategy is silently skipped by the evaluator, so the
 			// segment would just never produce anything. Reject it at load.

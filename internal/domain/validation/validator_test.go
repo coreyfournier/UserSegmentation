@@ -170,3 +170,50 @@ func TestCheckRequiredFields(t *testing.T) {
 		t.Errorf("expected no warnings, got %v", warnings)
 	}
 }
+
+// A segment id must be present and unique within its layer. Neither was
+// checked at load: only CreateSegment refused a duplicate, so an imported or
+// hand-edited config could hold two segments sharing an id — and findSegment
+// only ever reaches the first, leaving the second uneditable while the
+// evaluator still runs it.
+func TestValidate_SegmentIDMustBeUniqueWithinItsLayer(t *testing.T) {
+	dup := func(a, b string) *model.Snapshot {
+		return &model.Snapshot{Layers: []model.Layer{{
+			Key: "tier",
+			Segments: []model.Segment{
+				{ID: a, Strategy: model.StrategyRule, Default: "x"},
+				{ID: b, Strategy: model.StrategyRule, Default: "y"},
+			},
+		}}}
+	}
+
+	err := ValidateSnapshot(dup("same", "same"))
+	if err == nil || !strings.Contains(err.Error(), `duplicate segment id "same"`) {
+		t.Errorf("expected a duplicate-id error, got %v", err)
+	}
+
+	if err := ValidateSnapshot(dup("one", "two")); err != nil {
+		t.Errorf("distinct ids must validate, got %v", err)
+	}
+
+	// The same id under a different layer is fine: a segment is addressed
+	// within its layer, so there is nothing to collide with.
+	twoLayers := &model.Snapshot{Layers: []model.Layer{
+		{Key: "a", Segments: []model.Segment{{ID: "seg", Strategy: model.StrategyRule, Default: "x"}}},
+		{Key: "b", Segments: []model.Segment{{ID: "seg", Strategy: model.StrategyRule, Default: "y"}}},
+	}}
+	if err := ValidateSnapshot(twoLayers); err != nil {
+		t.Errorf("the same id in two layers must validate, got %v", err)
+	}
+}
+
+func TestValidate_SegmentIDIsRequired(t *testing.T) {
+	snap := &model.Snapshot{Layers: []model.Layer{{
+		Key:      "tier",
+		Segments: []model.Segment{{Strategy: model.StrategyRule, Default: "x"}},
+	}}}
+	err := ValidateSnapshot(snap)
+	if err == nil || !strings.Contains(err.Error(), "has no id") {
+		t.Errorf("expected a missing-id error, got %v", err)
+	}
+}

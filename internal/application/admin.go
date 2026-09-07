@@ -222,7 +222,25 @@ func (uc *AdminUseCase) UpdateSegment(layerName, segID string, seg model.Segment
 	if si < 0 {
 		return nil, fmt.Errorf("segment %q not found in layer %q", segID, layerName)
 	}
-	seg.ID = segID // preserve original ID
+	// The id is renameable. It used to be pinned to whatever the request was
+	// addressed to, which made it uneditable through the API at all — and a
+	// segment's id is the label an author reads in every list, so being stuck
+	// with the first thing typed is a poor trade for a guarantee nothing needed.
+	//
+	// Nothing inside the config refers to a segment by id: there is no
+	// dependsOn between segments, saved tests are filed per layer, and the
+	// response is keyed by layer. So a rename has nothing to cascade into — it
+	// only has to stay unique within the layer.
+	if seg.ID == "" {
+		seg.ID = segID
+	}
+	if seg.ID != segID {
+		for i, existing := range snap.Layers[li].Segments {
+			if i != si && existing.ID == seg.ID {
+				return nil, fmt.Errorf("segment %q already exists in layer %q", seg.ID, layerName)
+			}
+		}
+	}
 	snap.Layers[li].Segments[si] = seg
 	return uc.commitSnapshot(snap)
 }
