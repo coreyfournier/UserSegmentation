@@ -48,9 +48,15 @@ export default function LayerTests({ layerKey, schema }: Props) {
   // server on every keystroke. Seeded when a test is selected.
   const [draft, setDraft] = useState<Record<string, unknown>>({});
   // One name field serves both: the selected test's name while editing it, and
-  // the new test's name otherwise. Two separate name inputs shown at once was
-  // what made creating a test unclear.
+  // the new test's name otherwise. Two name inputs shown at once was what made
+  // creating a test unclear in the first place — and what makes one field
+  // workable is Duplicate: with a way to branch from a test, editing the name
+  // can only mean renaming this one, and the hint below it says so.
   const [name, setName] = useState('');
+  // Rendering options carried alongside the draft. The panel has no controls
+  // for them, so without holding them a duplicate would quietly lose whatever
+  // the original was saved with.
+  const [draftMeta, setDraftMeta] = useState<{ languages?: string[]; renderAll?: boolean }>({});
   const [results, setResults] = useState<Record<string, TestRunResult>>({});
   const [running, setRunning] = useState<string[]>([]);
   const [expanded, setExpanded] = useState<string | null>(null);
@@ -71,12 +77,31 @@ export default function LayerTests({ layerKey, schema }: Props) {
     setSelectedId(test.id);
     setName(test.name);
     setDraft(test.context ?? {});
+    setDraftMeta({ languages: test.languages, renderAll: test.renderAll });
   };
 
   const startNew = () => {
     setSelectedId(null);
     setName('');
     setDraft({});
+    setDraftMeta({});
+  };
+
+  /**
+   * Starts a new test from the selected one.
+   *
+   * Deliberately leaves it unsaved rather than creating it outright: the point
+   * of copying a scenario is to change something about it, and a copy that
+   * already exists has to be found and edited afterwards. The languages and
+   * render-all flags come along too — the panel has no controls for them, so
+   * dropping them here would silently make the copy a different test.
+   */
+  const duplicate = () => {
+    if (!selected) return;
+    setSelectedId(null);
+    setName(`${selected.name} copy`);
+    setDraft({ ...(selected.context ?? {}) });
+    setDraftMeta({ languages: selected.languages, renderAll: selected.renderAll });
   };
 
   /**
@@ -149,7 +174,7 @@ export default function LayerTests({ layerKey, schema }: Props) {
     const trimmed = name.trim();
     if (!trimmed) return;
     createTest.mutate(
-      { layer: layerKey, name: trimmed, context: draft },
+      { layer: layerKey, name: trimmed, context: draft, ...draftMeta },
       {
         onSuccess: (snap) => {
           // Select what was just created, so the panel is now editing it
@@ -164,6 +189,8 @@ export default function LayerTests({ layerKey, schema }: Props) {
   };
 
   const ranCount = tests.filter((t) => results[t.id]).length;
+  // A selected test whose name has been edited: the save will rename it.
+  const renaming = !!selected && !!name.trim() && name.trim() !== selected.name;
 
   /** The outcome of a run, shown in full: what resolved, and what it emitted. */
   const renderResult = (r: TestRunResult) => (
@@ -346,11 +373,21 @@ export default function LayerTests({ layerKey, schema }: Props) {
           create one. */}
       <div className={styles.editor}>
         <div className={styles.editorHead}>
-          <strong className={styles.editorTitle}>{selected ? 'Editing test' : 'New test'}</strong>
+          <strong className={styles.editorTitle}>
+            {selected ? `Editing “${selected.name}”` : 'New test'}
+          </strong>
           {selected && (
-            <button type="button" className={styles.linkish} onClick={startNew}>
-              + new test
-            </button>
+            <>
+              {/* Duplicate is what makes the name field unambiguous: with a way
+                  to branch from a test, editing the name can only mean
+                  renaming this one. */}
+              <button type="button" className={styles.linkish} onClick={duplicate}>
+                duplicate
+              </button>
+              <button type="button" className={styles.linkish} onClick={startNew}>
+                + new test
+              </button>
+            </>
           )}
         </div>
 
@@ -362,6 +399,18 @@ export default function LayerTests({ layerKey, schema }: Props) {
           onChange={(e) => setName(e.target.value)}
           placeholder="e.g. high earner, low hours"
         />
+        {/* The ambiguity this answers: with a test selected, typing in the name
+            field looks like it might be starting a new one. It renames, and
+            says so — with the other intent named and one click away. */}
+        {renaming && (
+          <p className={styles.renameHint}>
+            Renames <code>{selected!.name}</code> when you save. To keep both, use{' '}
+            <button type="button" className={styles.linkish} onClick={duplicate}>
+              duplicate
+            </button>{' '}
+            instead.
+          </p>
+        )}
 
         <label className={styles.label}>Context</label>
         <ContextEditor value={draft} onChange={setDraft} schemas={schema ? [schema] : []} />
@@ -382,7 +431,7 @@ export default function LayerTests({ layerKey, schema }: Props) {
             onClick={selected ? save : saveAsNew}
             disabled={!name.trim() || createTest.isPending || updateTest.isPending}
           >
-            {selected ? 'Save changes' : 'Save test'}
+            {selected ? (renaming ? 'Rename & save' : 'Save changes') : 'Save test'}
           </button>
         </div>
 

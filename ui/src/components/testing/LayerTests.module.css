@@ -293,3 +293,13 @@
   color: var(--text-muted);
   margin-bottom: 6px;
 }
+
+/* Says what editing the name will do. The field is the same one used to name a
+   new test, so with a test selected its effect has to be stated rather than
+   inferred. */
+.renameHint {
+  margin: 4px 0 8px;
+  font-size: 11px;
+  color: var(--text-muted);
+  line-height: 1.5;
+}
