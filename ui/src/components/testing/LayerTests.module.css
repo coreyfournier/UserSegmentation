@@ -167,18 +167,19 @@
   margin-bottom: 4px;
 }
 
-/* Drag-resizable rather than capped. A response is as long as it is, and a
-   fixed 220px window meant scrubbing a long one through a letterbox. `height`
-   rather than `max-height`, because a max-height is a ceiling the resize
-   handle cannot lift. `resize` needs a non-visible overflow, which the
-   scrolling already provides. */
+/* No height and no scroller. It sits inside a <details> that is closed by
+   default, so opening it means wanting to read the thing — a 220px window to
+   scrub it through was the third scrollbar on the page, and making that window
+   resizable only made the letterbox adjustable. It grows instead, and the
+   panel scrolls it like everything else.
+
+   Wrapped rather than scrolled sideways: a long JSON line in a narrow panel
+   would otherwise add a horizontal bar to the count. */
 .pre {
   margin: 4px 0 0;
   font-size: 11px;
-  height: 220px;
-  min-height: 60px;
-  resize: vertical;
-  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
   background: var(--bg);
   padding: 8px;
   border-radius: var(--radius);

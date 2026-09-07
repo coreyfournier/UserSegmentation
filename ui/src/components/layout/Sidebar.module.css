@@ -1,6 +1,12 @@
+/* Sticky, because the page scrolls at the window level now and the nav must
+   not scroll away with it. align-self stops the flex container stretching it
+   to the full page height, which would leave sticky nothing to do. */
 .sidebar {
+  position: sticky;
+  top: 0;
+  align-self: flex-start;
   width: 220px;
-  min-height: 100vh;
+  height: 100vh;
   background: var(--bg-sidebar);
   color: var(--text-sidebar);
   padding: 20px 0;

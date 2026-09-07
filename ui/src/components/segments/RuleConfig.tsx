@@ -55,23 +55,49 @@ export default function RuleConfig({
 }: Props) {
   return (
     <div>
-      <div>
+      {/* Each stage is framed and numbered in the order it runs. They used to
+          be four unlabelled divs separated by margin, so Overrides read as a
+          preamble and Rules and Default ran together as one thing — the
+          numbering is what says these are stages of one pass, not a list of
+          settings. */}
+      <Stage step={1} title="Overrides" accent="override">
+        <p className={styles.why}>
+          <strong>Use an override to force an outcome regardless of what the strategy would
+          decide.</strong>{' '}
+          They are the only way to attach a condition to a <code>static</code> or{' '}
+          <code>percentage</code> segment, which are otherwise conditionless — an
+          enterprise account skipping an experiment, a specific subject pinned for a
+          support escalation, a carve-out gated on what an earlier layer resolved
+          (<code>layer:x</code>). Each has an <code>enabled</code> flag, so an exception
+          can be switched off without losing how it was written.
+        </p>
+        <p className={styles.note}>
+          The first override that matches wins and the strategy never runs. Evaluated
+          before computed fields, so only raw input fields are available here.
+        </p>
         <RuleTreeBuilder
           rules={overrides}
           onChange={onOverridesChange}
           schema={overrideSchema}
           layerNames={layerNames}
-          label="Overrides"
+          label="Override Rules"
         />
-        <p style={{ fontSize: 11, color: 'var(--text-muted)', fontStyle: 'italic', margin: '4px 0 0' }}>
-          Evaluated first, before computed fields and rules. Only raw input fields are
-          available here — computed fields cannot be referenced.
+      </Stage>
+
+      {computedSlot && (
+        <Stage step={2} title="Computed fields" accent="computed">
+          <p className={styles.note}>
+            Derived before the rules run and available to them as ordinary fields.
+          </p>
+          {computedSlot}
+        </Stage>
+      )}
+
+      <Stage step={computedSlot ? 3 : 2} title="Rules" accent="rule">
+        <p className={styles.note}>
+          Evaluated in order; the first match wins and decides the segment. Reached only
+          when no override matched.
         </p>
-      </div>
-
-      {computedSlot && <div style={{ marginTop: 24 }}>{computedSlot}</div>}
-
-      <div style={{ marginTop: 24 }}>
         <RuleTreeBuilder
           rules={rules}
           onChange={onRulesChange}
@@ -81,20 +107,20 @@ export default function RuleConfig({
           outputSchema={outputSchema}
           onDeclareOutput={onDeclareOutput}
         />
-      </div>
+      </Stage>
 
       {/* The default is an outcome, not a trailing field: it is what the
           segment resolves to whenever no rule matches, which for most subjects
-          is most of the time. It used to be a bare input at the bottom, easy
-          to skim past — hence the framing and the rule above it. */}
-      <div className={styles.default}>
-        <div className={styles.defaultHead}>
-          <h4 className={styles.defaultTitle}>Default — when no rule matches</h4>
-          {!defaultValue && <span className={styles.unset}>not set</span>}
-        </div>
-        <p className={styles.defaultNote}>
-          With no default, a segment where nothing matches resolves to nothing at all and
-          the layer reports <code>unresolved</code>.
+          is most of the time. */}
+      <Stage
+        step={computedSlot ? 4 : 3}
+        title="Default"
+        accent="default"
+        badge={!defaultValue ? 'not set' : undefined}
+      >
+        <p className={styles.note}>
+          What the segment resolves to when no rule matched. With none set, it resolves to
+          nothing and the layer reports <code>unresolved</code>.
         </p>
 
         <div className="form-group">
@@ -124,7 +150,38 @@ export default function RuleConfig({
             />
           </div>
         )}
-      </div>
+      </Stage>
     </div>
+  );
+}
+
+interface StageProps {
+  step: number;
+  title: string;
+  /** Selects the accent colour, so a stage is recognisable before it is read. */
+  accent: 'override' | 'computed' | 'rule' | 'default';
+  /** Short state worth seeing without reading the body — "not set", so far. */
+  badge?: string;
+  children: ReactNode;
+}
+
+/**
+ * One stage of a segment's evaluation, framed and numbered.
+ *
+ * The number is the point: these are steps of a single pass, in the order the
+ * engine takes them, not four independent panels. Unnumbered and unframed, the
+ * boundary between Rules and Default was invisible and Overrides read as
+ * preamble to the section below it rather than a stage of its own.
+ */
+function Stage({ step, title, accent, badge, children }: StageProps) {
+  return (
+    <section className={`${styles.stage} ${styles[accent]}`}>
+      <div className={styles.stageHead}>
+        <span className={styles.step} aria-hidden="true">{step}</span>
+        <h4 className={styles.stageTitle}>{title}</h4>
+        {badge && <span className={styles.badge}>{badge}</span>}
+      </div>
+      {children}
+    </section>
   );
 }

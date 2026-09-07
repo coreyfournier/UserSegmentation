@@ -464,6 +464,25 @@ export default function SegmentEditor() {
       {seg.strategy !== 'rule' && seg.strategy !== 'checklist' && (
         <section className={`card ${styles.section}`}>
           <h3>Overrides</h3>
+          {/* Stated at more length here than for a rule segment, because this
+              is where overrides matter most: static maps a key and percentage
+              hashes one, and neither can express a condition at all. An
+              override is the only way to attach one. */}
+          <p style={{ fontSize: 12, lineHeight: 1.5, margin: '0 0 8px' }}>
+            <strong>
+              Use an override to force an outcome regardless of what the strategy would
+              decide.
+            </strong>{' '}
+            This is the only place a condition can be attached to a <code>{seg.strategy}</code>{' '}
+            segment — a rollout carve-out, a subject pinned for a support escalation, or a
+            gate on what an earlier layer resolved (<code>layer:x</code>). Each override has
+            an <code>enabled</code> flag, so an exception can be switched off without losing
+            how it was written.
+          </p>
+          <p style={{ fontSize: 11, color: 'var(--text-muted)', margin: '0 0 12px', lineHeight: 1.5 }}>
+            The first override that matches wins and the strategy never runs. Only raw input
+            fields are available.
+          </p>
           <RuleTreeBuilder
             rules={seg.overrides ?? []}
             onChange={(r) => update({ overrides: r })}
@@ -471,9 +490,6 @@ export default function SegmentEditor() {
             layerNames={layerNames}
             label="Override Rules"
           />
-          <p style={{ fontSize: 11, color: 'var(--text-muted)', fontStyle: 'italic', margin: '4px 0 0' }}>
-            Evaluated before the strategy result. Only raw input fields are available.
-          </p>
           {/* No default here. Segment.default is read by the rule strategy
               alone: static has its own default inside its mappings, and
               percentage has no such notion. The editor used to offer one for
