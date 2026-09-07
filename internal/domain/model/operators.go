@@ -28,6 +28,10 @@ const (
 	FieldTypeNumber  FieldType = "number"
 	FieldTypeBoolean FieldType = "boolean"
 	FieldTypeArray   FieldType = "array"
+	// FieldTypeObject is for expression-mode output fields that return a map.
+	// It is deliberately absent from OperatorTypes so it can never appear in a
+	// condition.
+	FieldTypeObject FieldType = "object"
 )
 
 // OperatorTypes maps each operator to the field types it supports.

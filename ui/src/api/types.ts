@@ -1,4 +1,4 @@
-export type FieldType = 'string' | 'number' | 'boolean' | 'array';
+export type FieldType = 'string' | 'number' | 'boolean' | 'array' | 'object';
 export type Operator =
   | 'eq'
   | 'neq'
@@ -20,6 +20,11 @@ export type StrategyType = 'static' | 'rule' | 'percentage' | 'checklist';
  * Checklist layers report satisfied/violated/unevaluable; every other strategy
  * reports the neutral resolution vocabulary. Status is always authoritative —
  * never infer the outcome from `failures.length`.
+ *
+ * One deliberate crossing: `unevaluable` also comes back from any strategy that
+ * could not run for want of a required input — today, a static or percentage
+ * segment whose subjectKey is absent from context. It means the same thing in
+ * both places, so it was widened rather than given a second name.
  */
 export type LayerStatus =
   | 'satisfied'
@@ -32,9 +37,31 @@ export type LayerStatus =
 export interface SchemaField {
   type: FieldType;
   required: boolean;
+  /**
+   * Id of a lookup table whose keys are this field's permitted values, exactly
+   * as `OutputField.lookup` is. It declares the field's domain so a condition
+   * offers the table's keys instead of a free-text box — a declaration, not
+   * enforcement: nothing checks an incoming value at evaluation.
+   */
+  lookup?: string;
 }
 
 export type InputSchema = Record<string, SchemaField>;
+
+export interface OutputField {
+  type: FieldType;
+  /** Id of a lookup table whose keys are this field's permitted values. */
+  lookup?: string;
+  /**
+   * The caller's contract. Enforced twice by the engine: an error at snapshot
+   * load if no authoring path supplies it, and a warning at evaluation if it
+   * is absent anyway. Defaults to false so declaring a field never blocks a
+   * save.
+   */
+  required?: boolean;
+}
+
+export type OutputSchema = Record<string, OutputField>;
 
 export interface Condition {
   field: string;
@@ -53,6 +80,12 @@ export interface Rule {
   rules?: Rule[];
   /** Optional localized message templates keyed by language code (e.g. "en"). */
   messages?: Record<string, string>;
+  /**
+   * This item's authored values for the segment's output schema, keyed by
+   * field name. Only a reporting rule's outputs are read — never an inner
+   * And/Or branch's.
+   */
+  outputs?: Record<string, string>;
 }
 
 export interface Promotion {
@@ -98,12 +131,19 @@ export interface Segment {
   default?: string;
   /** Localized messages rendered when the segment falls back to `default`. */
   defaultMessages?: Record<string, string>;
+  /** Output values the default path authors, the way a rule authors its own.
+   *  Read only by the rule strategy's default branch. */
+  defaultOutputs?: Record<string, string>;
   promotion?: Promotion;
-  inputSchema?: InputSchema;
+  /** Values for output fields that do not vary per reported item. */
+  outputs?: Record<string, string>;
 }
 
 export interface Layer {
-  name: string;
+  /** Stable identity: the response key, what dependsOn holds, what layer:x resolves. */
+  key: string;
+  /** Friendly label. Optional, free-form, references nothing. */
+  name?: string;
   /**
    * Layers this one must follow. A rule referencing `layer:x` must declare x
    * here. If a dependency does not resolve, this layer is skipped rather than
@@ -113,12 +153,16 @@ export interface Layer {
   segments: Segment[];
   /** Fallback locale for message rendering; empty means "en". */
   defaultLanguage?: string;
+  inputSchema?: InputSchema;
+  /** Declares the fields this layer's segments emit with each reported item. */
+  outputSchema?: OutputSchema;
 }
 
 export interface Snapshot {
   version: number;
   layers: Layer[];
   lookups?: LookupTable[];
+  tests?: SavedTest[];
 }
 
 /** One itemised problem from a checklist layer. */
@@ -127,6 +171,8 @@ export interface Failure {
   rule: string;
   message?: string;
   messages?: Record<string, string>;
+  /** The resolved output record for this finding. */
+  outputs?: Record<string, unknown>;
 }
 
 export interface LayerResult {
@@ -137,6 +183,8 @@ export interface LayerResult {
   computed?: Record<string, unknown>;
   messages?: Record<string, string>;
   failures?: Failure[];
+  /** The resolved output record, when a single-value strategy reported one. */
+  outputs?: Record<string, unknown>;
 }
 
 export interface Warning {
@@ -145,8 +193,12 @@ export interface Warning {
   message: string;
 }
 
+/**
+ * No subject_key. The subject key is an ordinary context field named
+ * `subjectKey`, read only by the static and percentage strategies and declared
+ * in the input schema of any layer whose segments use them.
+ */
 export interface EvaluateRequest {
-  subject_key: string;
   context: Record<string, unknown>;
   layers?: string[];
   languages?: string[];
@@ -154,7 +206,6 @@ export interface EvaluateRequest {
 }
 
 export interface EvaluateResponse {
-  subject_key: string;
   layers: Record<string, LayerResult>;
   warnings?: Warning[];
   evaluated_at: string;
@@ -191,11 +242,62 @@ export const UNARY_OPERATORS: Operator[] = ['is_null', 'is_null_or_empty'];
 export interface LookupEntry {
   key: unknown;
   value?: string;
+  /**
+   * Position in the table's ordering. Always persisted, even when inferred
+   * from list position, because a relational store cannot reorder rows
+   * cheaply.
+   */
+  order?: number;
 }
 
 export interface LookupTable {
   id: string;
   name: string;
   keyType: FieldType;
+  /** The author's note on how the table is meant to be used, including any cross-table ordering scheme. */
+  description?: string;
+  /** Include each entry's `order` in the evaluation response. */
+  emitOrder?: boolean;
+  /** Numbers are hand-authored rather than inferred from list position. */
+  customOrder?: boolean;
   entries: LookupEntry[];
+}
+
+/** One thing a search query matched. Mirrors model.SearchHit. */
+export interface SearchHit {
+  kind: 'layer' | 'segment';
+  layer: string;
+  segment?: string;
+  field: 'key' | 'name' | 'id' | 'strategy';
+  value: string;
+}
+
+export interface SearchResult {
+  query: string;
+  hits: SearchHit[];
+  /** The store stopped at its limit and more matches exist. */
+  truncated: boolean;
+}
+
+/**
+ * The context field the static and percentage strategies key off. Mirrors
+ * model.SubjectKeyField — the name is fixed, and a layer holding either
+ * strategy must declare it in its input schema or the engine refuses the
+ * snapshot.
+ */
+export const SUBJECT_KEY_FIELD = 'subjectKey';
+
+/**
+ * A named evaluation input, kept against the layer it exercises. Inputs only —
+ * running one shows the result to read, it does not assert an expectation.
+ * Mirrors model.SavedTest.
+ */
+export interface SavedTest {
+  id: string;
+  /** Key of the layer this test exercises. Immutable after creation. */
+  layer: string;
+  name: string;
+  context: Record<string, unknown>;
+  languages?: string[];
+  renderAll?: boolean;
 }

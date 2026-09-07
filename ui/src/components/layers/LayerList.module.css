@@ -4,3 +4,19 @@
   align-items: center;
   margin-bottom: 20px;
 }
+
+/* Rail beside detail. The rail is fixed-width so the detail pane gets every
+   remaining pixel; below 900px they stack, since a 240px rail plus a usable
+   pane does not fit and a squeezed pane is worse than a scroll. */
+.split {
+  display: grid;
+  grid-template-columns: 240px minmax(0, 1fr);
+  gap: 16px;
+  align-items: start;
+}
+
+@media (max-width: 900px) {
+  .split {
+    grid-template-columns: 1fr;
+  }
+}

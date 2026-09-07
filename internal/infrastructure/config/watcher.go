@@ -74,6 +74,9 @@ func (w *Watcher) check() {
 		log.Printf("[watcher] config validation failed: %v", err)
 		return
 	}
+	for _, warning := range validation.WarnMissingInputSchemas(snap) {
+		log.Printf("[watcher] warning: %s", warning)
+	}
 	w.store.Swap(snap)
 	log.Printf("[watcher] config reloaded (version %d)", snap.Version)
 }

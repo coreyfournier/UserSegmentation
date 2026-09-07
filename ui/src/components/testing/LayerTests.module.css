@@ -1,0 +1,295 @@
+.panel {
+  font-size: 13px;
+}
+
+.head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.scope {
+  display: flex;
+  flex: 1;
+  gap: 2px;
+}
+
+.tab {
+  padding: 3px 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: none;
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+  color: var(--text-muted);
+}
+
+.tabOn {
+  background: var(--bg);
+  color: var(--text);
+  font-weight: 600;
+}
+
+.note {
+  margin: 0 0 10px;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.empty {
+  margin: 0 0 10px;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-bottom: 12px;
+}
+
+/* The layer heading in the all-layers view. Without it a row's name alone does
+   not say which layer it exercises. */
+.group {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 8px 0 2px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.here {
+  text-transform: none;
+  letter-spacing: 0;
+  font-weight: 400;
+  color: var(--primary);
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.pick {
+  flex: 1;
+  min-width: 0;
+  text-align: left;
+  padding: 4px 8px;
+  border: 1px solid transparent;
+  border-radius: var(--radius);
+  background: none;
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pick:hover {
+  background: var(--bg);
+}
+
+.active {
+  background: var(--bg);
+  border-color: var(--border);
+  font-weight: 600;
+}
+
+/* The outcome slot. Fixed width so the column lines up whether or not a row
+   has been run — a jumping column is unreadable when scanning a set of
+   results, which is the whole point of running them together. */
+.outcome {
+  width: 74px;
+  flex: none;
+  border: none;
+  background: none;
+  padding: 0;
+  font: inherit;
+  text-align: right;
+  cursor: pointer;
+}
+
+.outcome:disabled {
+  cursor: default;
+}
+
+.status,
+.fail,
+.pending {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+/* Colours follow the status vocabulary, not a pass/fail reading: a test holds
+   no expectation, so "violated" is an outcome to look at rather than a
+   failure. A real verdict will sit in this same slot and can colour itself. */
+.satisfied,
+.resolved {
+  color: var(--success, #16a34a);
+}
+
+.violated,
+.unevaluable,
+.fail {
+  color: var(--danger);
+}
+
+.unresolved,
+.skipped {
+  color: var(--text-muted);
+}
+
+.pending {
+  color: var(--text-muted);
+}
+
+.detail {
+  margin: 2px 0 6px 8px;
+  padding-left: 8px;
+  border-left: 2px solid var(--border);
+}
+
+.warning {
+  font-size: 11px;
+  color: var(--danger);
+  margin-bottom: 4px;
+}
+
+/* No height and no scroller. It sits inside a <details> that is closed by
+   default, so opening it means wanting to read the thing — a 220px window to
+   scrub it through was the third scrollbar on the page, and making that window
+   resizable only made the letterbox adjustable. It grows instead, and the
+   panel scrolls it like everything else.
+
+   Wrapped rather than scrolled sideways: a long JSON line in a narrow panel
+   would otherwise add a horizontal bar to the count. */
+.pre {
+  margin: 4px 0 0;
+  font-size: 11px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  background: var(--bg);
+  padding: 8px;
+  border-radius: var(--radius);
+}
+
+.context {
+  margin-bottom: 8px;
+}
+
+.label {
+  display: block;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted);
+  margin-bottom: 4px;
+}
+
+.actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.name {
+  flex: 1;
+  min-width: 100px;
+  font-size: 12px;
+  padding: 4px 8px;
+}
+
+/* Authoring half, framed so it reads as a distinct thing from the list above
+   it — creating a test was unclear partly because it looked like more list. */
+.editor {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+
+.editorHead {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.editorTitle {
+  flex: 1;
+  font-size: 12px;
+}
+
+.linkish {
+  border: none;
+  background: none;
+  padding: 0;
+  font: inherit;
+  font-size: 11px;
+  color: var(--primary);
+  cursor: pointer;
+}
+
+.linkish:hover {
+  text-decoration: underline;
+}
+
+.spacer {
+  flex: 1;
+}
+
+/* Result body. Shown outright after a run rather than behind a disclosure:
+   confirming what a change did is the reason to run one. */
+.resultLine {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.outputs {
+  width: 100%;
+  border-collapse: collapse;
+  margin-bottom: 6px;
+}
+
+.outputs td {
+  padding: 2px 6px;
+  font-size: 11px;
+  border-bottom: 1px solid var(--border);
+  vertical-align: top;
+}
+
+.outKey {
+  color: var(--text-muted);
+  white-space: nowrap;
+  width: 1%;
+}
+
+.outVal {
+  font-family: 'Consolas', 'Monaco', monospace;
+  word-break: break-word;
+}
+
+.failures {
+  margin: 0 0 6px;
+  padding-left: 18px;
+  font-size: 11px;
+}
+
+.none {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-bottom: 6px;
+}

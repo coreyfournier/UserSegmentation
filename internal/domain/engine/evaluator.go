@@ -23,6 +23,10 @@ func NewEvaluator(strategies map[string]strategy.Strategy) *Evaluator {
 
 // LayerResult holds the outcome for a single layer.
 type LayerResult struct {
+	// Name is the layer's friendly label, carried through so the response can
+	// put it inside the object its key addresses. Empty when the layer has
+	// none, in which case the key is the only name it has.
+	Name       string
 	Status     model.LayerStatus
 	Assignment *model.Assignment
 	Failures   []model.Failure
@@ -40,7 +44,7 @@ type EvalResult struct {
 // Execution order comes from each layer's DependsOn edges, not from any ordinal
 // field. When filterLayers is set, only those layers and everything they
 // transitively depend on are evaluated; the rest never run.
-func (e *Evaluator) Evaluate(snap *model.Snapshot, subjectKey string, ctx map[string]interface{}, filterLayers []string, languages []string, renderAll bool, now time.Time) *EvalResult {
+func (e *Evaluator) Evaluate(snap *model.Snapshot, ctx map[string]interface{}, filterLayers []string, languages []string, renderAll bool, now time.Time) *EvalResult {
 	result := &EvalResult{
 		Layers: make(map[string]*LayerResult, len(snap.Layers)),
 	}
@@ -85,7 +89,7 @@ func (e *Evaluator) Evaluate(snap *model.Snapshot, subjectKey string, ctx map[st
 		layer := &ordered[i]
 
 		if scope != nil {
-			if _, ok := scope[layer.Name]; !ok {
+			if _, ok := scope[layer.Key]; !ok {
 				continue
 			}
 		}
@@ -94,37 +98,44 @@ func (e *Evaluator) Evaluate(snap *model.Snapshot, subjectKey string, ctx map[st
 		if blocker, blocked := blockedBy(layer, statuses); blocked {
 			lr = &LayerResult{Status: skippedStatus(layer)}
 			lr.Warnings = append(lr.Warnings, model.Warning{
-				Segment: layer.Name,
+				Segment: layer.Key,
 				Field:   blocker,
 				Message: fmt.Sprintf("layer skipped: dependency %q did not resolve", blocker),
 			})
 		} else {
-			lr = e.evaluateLayer(layer, subjectKey, evalCtx, languages, renderAll, lookups, now)
+			lr = e.evaluateLayer(layer, evalCtx, languages, renderAll, lookups, now)
 		}
-		statuses[layer.Name] = lr.Status
+		statuses[layer.Key] = lr.Status
 
 		// Inject the resolved value for downstream layers. Assert layers resolve
 		// no value — dependents gate on status instead.
 		if lr.Assignment != nil && lr.Assignment.Segment != "" {
-			evalCtx["layer:"+layer.Name] = lr.Assignment.Segment
+			evalCtx["layer:"+layer.Key] = lr.Assignment.Segment
 		}
 
 		// Only include in output if it passes the filter
 		if filterSet != nil {
-			if _, ok := filterSet[layer.Name]; !ok {
+			if _, ok := filterSet[layer.Key]; !ok {
 				continue
 			}
 		}
 
-		result.Layers[layer.Name] = lr
+		// Set here rather than in each branch above, so neither the skipped
+		// path nor the evaluated one can forget it.
+		lr.Name = layer.Name
+		result.Layers[layer.Key] = lr
 		result.Warnings = append(result.Warnings, lr.Warnings...)
 	}
 
 	return result
 }
 
-func (e *Evaluator) evaluateLayer(layer *model.Layer, subjectKey string, ctx map[string]interface{}, languages []string, renderAll bool, lookups map[string]model.LookupTable, now time.Time) *LayerResult {
+func (e *Evaluator) evaluateLayer(layer *model.Layer, ctx map[string]interface{}, languages []string, renderAll bool, lookups map[string]model.LookupTable, now time.Time) *LayerResult {
 	lr := &LayerResult{Status: unresolvedStatus(layer)}
+
+	// Resolved once for the layer: it comes from the context, which does not
+	// change between this layer's segments.
+	subjectKey, hasSubjectKey := resolveSubjectKey(ctx)
 
 	// Layer default language for message fallback; empty means English.
 	defaultLang := layer.DefaultLanguage
@@ -147,7 +158,30 @@ func (e *Evaluator) evaluateLayer(layer *model.Layer, subjectKey string, ctx map
 		}
 
 		// Check required fields and collect warnings
-		lr.Warnings = append(lr.Warnings, validation.CheckRequiredFields(seg, ctx)...)
+		lr.Warnings = append(lr.Warnings, validation.CheckRequiredFields(seg, layer.InputSchema, ctx)...)
+
+		// A static or percentage segment cannot be evaluated without a subject
+		// key, and both fail quietly rather than loudly if it is missing:
+		// static falls through to its default, percentage hashes the empty
+		// string and puts every such subject in one bucket. Checked here, once,
+		// before dispatch — so the strategies stay ignorant of the policy and
+		// there is one place it can be wrong.
+		if needsSubjectKey(seg) && !hasSubjectKey {
+			lr.Status = model.StatusUnevaluable
+			// The field is normally declared required, so CheckRequiredFields
+			// just reported it too. Two warnings for one cause is noise, and
+			// the specific one strictly contains the generic one — it names
+			// the strategy and says the segment did not run.
+			lr.Warnings = dropRequiredFieldWarning(lr.Warnings, seg.ID, model.SubjectKeyField)
+			lr.Warnings = append(lr.Warnings, model.Warning{
+				Segment: seg.ID,
+				Field:   model.SubjectKeyField,
+				Message: fmt.Sprintf(
+					"the %s strategy needs %q, which is absent from context; the segment was not evaluated",
+					seg.Strategy, model.SubjectKeyField),
+			})
+			continue
+		}
 
 		evalCtx := &strategy.EvalContext{
 			SubjectKey:      subjectKey,
@@ -156,20 +190,23 @@ func (e *Evaluator) evaluateLayer(layer *model.Layer, subjectKey string, ctx map
 			RenderAll:       renderAll,
 			DefaultLanguage: defaultLang,
 			Lookups:         lookups,
+			OutputSchema:    layer.OutputSchema,
 		}
 
 		// Check overrides first
 		if len(seg.Overrides) > 0 {
-			if res, ok := strategy.EvalOverrides(seg.Overrides, evalCtx); ok {
+			if res, ok := strategy.EvalOverrides(seg, evalCtx); ok {
 				lr.Status = model.StatusResolved
 				lr.Assignment = &model.Assignment{
 					Segment:  res.Segment,
 					Strategy: "override",
 					Reason:   res.Reason,
 					Messages: res.Messages,
+					Outputs:  res.Outputs,
 				}
 				lr.Warnings = append(lr.Warnings, renderWarnings(seg.ID, res.RenderErrors)...)
-				return lr
+				lr.Warnings = append(lr.Warnings, validation.CheckRequiredOutputs(seg, layer.OutputSchema, lr.Assignment, nil)...)
+				return dedupRequiredFieldWarnings(lr)
 			}
 		}
 
@@ -193,17 +230,52 @@ func (e *Evaluator) evaluateLayer(layer *model.Layer, subjectKey string, ctx map
 			}
 			lr.Failures = res.Failures
 			lr.Assignment = &model.Assignment{
-				Segment:     res.Segment,
-				Strategy:    seg.Strategy,
-				Reason:      res.Reason,
+				Segment:  res.Segment,
+				Strategy: seg.Strategy,
+				Reason:   res.Reason,
 				Computed: res.Computed,
-				Messages:    res.Messages,
+				Messages: res.Messages,
+				Outputs:  res.Outputs,
 			}
 			lr.Warnings = append(lr.Warnings, renderWarnings(seg.ID, res.RenderErrors)...)
-			return lr
+			lr.Warnings = append(lr.Warnings, validation.CheckRequiredOutputs(seg, layer.OutputSchema, lr.Assignment, lr.Failures)...)
+			return dedupRequiredFieldWarnings(lr)
 		}
 	}
 
+	return dedupRequiredFieldWarnings(lr)
+}
+
+// requiredFieldMissingMessage is the exact text CheckRequiredFields attaches to
+// every warning it produces (internal/domain/validation/validator.go). It is
+// the only warning kind evaluateLayer de-duplicates.
+const requiredFieldMissingMessage = "required field missing from context"
+
+// dedupRequiredFieldWarnings collapses repeated required-input warnings that
+// share a (Field, Message) pair. CheckRequiredFields runs for every segment
+// that passes its `when` dispatch, and the segment loop only exits once a
+// strategy succeeds — so a rule segment that matches nothing falls through
+// and the next segment is checked too, against the same layer schema, and
+// would report the same missing field a second time. Render errors and
+// output warnings are left untouched: they genuinely differ per segment and
+// per finding, so collapsing those would lose real information.
+func dedupRequiredFieldWarnings(lr *LayerResult) *LayerResult {
+	if len(lr.Warnings) < 2 {
+		return lr
+	}
+	seen := make(map[model.Warning]struct{}, len(lr.Warnings))
+	deduped := lr.Warnings[:0:0]
+	for _, w := range lr.Warnings {
+		if w.Message == requiredFieldMissingMessage {
+			key := model.Warning{Field: w.Field, Message: w.Message}
+			if _, ok := seen[key]; ok {
+				continue
+			}
+			seen[key] = struct{}{}
+		}
+		deduped = append(deduped, w)
+	}
+	lr.Warnings = deduped
 	return lr
 }
 
@@ -216,21 +288,21 @@ func topoSort(layers []model.Layer) ([]model.Layer, error) {
 
 	for i := range layers {
 		l := &layers[i]
-		if _, dup := byName[l.Name]; dup {
-			return nil, fmt.Errorf("duplicate layer name %q", l.Name)
+		if _, dup := byName[l.Key]; dup {
+			return nil, fmt.Errorf("duplicate layer key %q", l.Key)
 		}
-		byName[l.Name] = l
-		indegree[l.Name] = 0
+		byName[l.Key] = l
+		indegree[l.Key] = 0
 	}
 
 	for i := range layers {
 		l := &layers[i]
 		for _, dep := range l.DependsOn {
 			if _, ok := byName[dep]; !ok {
-				return nil, fmt.Errorf("layer %q depends on unknown layer %q", l.Name, dep)
+				return nil, fmt.Errorf("layer %q depends on unknown layer %q", l.Key, dep)
 			}
-			indegree[l.Name]++
-			dependents[dep] = append(dependents[dep], l.Name)
+			indegree[l.Key]++
+			dependents[dep] = append(dependents[dep], l.Key)
 		}
 	}
 
@@ -277,7 +349,7 @@ func dependencyClosure(layers []model.Layer, requested []string) map[string]stru
 
 	byName := make(map[string]*model.Layer, len(layers))
 	for i := range layers {
-		byName[layers[i].Name] = &layers[i]
+		byName[layers[i].Key] = &layers[i]
 	}
 
 	scope := make(map[string]struct{}, len(requested))
@@ -355,12 +427,26 @@ func unresolvedStatus(layer *model.Layer) model.LayerStatus {
 }
 
 // renderWarnings converts message render errors into layer warnings.
+//
+// An error with Field set came from resolving an output field (evaluateOutputs
+// in strategy/output.go), not from rendering a message template — it gets a
+// distinct message naming the field, so a caller debugging a diagnostics
+// segment learns which output field vanished instead of being pointed at
+// message templates that were never involved.
 func renderWarnings(segmentID string, errs []strategy.RenderError) []model.Warning {
 	if len(errs) == 0 {
 		return nil
 	}
 	warnings := make([]model.Warning, 0, len(errs))
 	for _, re := range errs {
+		if re.Field != "" {
+			warnings = append(warnings, model.Warning{
+				Segment: segmentID,
+				Field:   re.Field,
+				Message: fmt.Sprintf("output %q failed to resolve: %s", re.Field, re.Err),
+			})
+			continue
+		}
 		warnings = append(warnings, model.Warning{
 			Segment: segmentID,
 			Field:   re.Language,

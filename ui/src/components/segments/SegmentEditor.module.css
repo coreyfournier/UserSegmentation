@@ -1,5 +1,9 @@
+/* No page-wide cap. The readable-width cap belongs to the form column inside
+   SplitPane, which carries its own width; capping the page as well meant a
+   wide monitor showed a 900px page and a wall of empty space to its right,
+   with the tests panel unable to reach into any of it. */
 .editor {
-  max-width: 900px;
+  min-width: 0;
 }
 
 .toolbar {
@@ -25,6 +29,32 @@
   font-size: 16px;
 }
 
+.layerNote {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin: 0 0 12px;
+}
+
+.readonlyTable {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.readonlyTable th {
+  text-align: left;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted);
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--border);
+}
+
+.readonlyTable td {
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--border);
+  font-size: 13px;
+}
+
 .footer {
   display: flex;
   justify-content: flex-end;
@@ -32,4 +62,21 @@
   margin-top: 24px;
   padding-top: 16px;
   border-top: 1px solid var(--border);
+}
+
+/* Confirms the save landed, now that saving no longer leaves the page and the
+   navigation itself is no longer the acknowledgement. */
+.saved {
+  font-size: 12px;
+  color: var(--text-muted);
+  align-self: center;
+}
+
+.testCard {
+  padding: 14px 16px;
+  margin-bottom: 0;
+}
+
+.testCard h3 {
+  margin-top: 0;
 }

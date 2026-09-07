@@ -1,15 +1,25 @@
 import { useState, useRef } from 'react';
-import type { InputSchema, FieldType } from '../../api/types';
+import type { InputSchema, FieldType, LookupTable, SchemaField } from '../../api/types';
+import LookupLink from '../lookups/LookupLink';
 import styles from './InputSchemaEditor.module.css';
 
 interface Props {
   value?: InputSchema;
   onChange: (s?: InputSchema) => void;
+  /** Tables a field can be bound to, offered filtered by the field's type. */
+  lookups?: LookupTable[];
+  /** Called instead of the local delete, so the owner can warn when removing
+   *  the layer's last field would turn off rule-field validation entirely. */
+  onRemoveField?: (field: string) => void;
+  /** Called instead of applying a type change directly, so the owner can warn
+   *  when rules use the field with an operator the new type does not support.
+   *  The owner applies the change itself once the author confirms. */
+  onChangeFieldType?: (field: string, next: FieldType) => void;
 }
 
 const TYPES: FieldType[] = ['string', 'number', 'boolean', 'array'];
 
-export default function InputSchemaEditor({ value, onChange }: Props) {
+export default function InputSchemaEditor({ value, onChange, lookups = [], onRemoveField, onChangeFieldType }: Props) {
   const schema = value ?? {};
   const entries = Object.entries(schema);
   const [newField, setNewField] = useState('');
@@ -17,10 +27,35 @@ export default function InputSchemaEditor({ value, onChange }: Props) {
   const [newReq, setNewReq] = useState(false);
   const addRowRef = useRef<HTMLTableRowElement>(null);
 
+  const patch = (field: string, partial: Partial<SchemaField>) => {
+    const merged: SchemaField = { ...schema[field], ...partial };
+    // A lookup binding is only meaningful while the types agree — the same
+    // rule OutputSchemaEditor applies, and the same one the engine enforces at
+    // load, so a retype drops the binding rather than saving one that fails.
+    if (merged.lookup) {
+      const table = lookups.find((t) => t.id === merged.lookup);
+      if (!table || table.keyType !== merged.type) delete merged.lookup;
+    }
+    onChange({ ...schema, [field]: merged });
+  };
+
+  const changeType = (field: string, next: FieldType) => {
+    if (next === schema[field]?.type) return;
+    if (onChangeFieldType) {
+      onChangeFieldType(field, next);
+      return;
+    }
+    patch(field, { type: next });
+  };
+
   const remove = (field: string) => {
+    if (onRemoveField) {
+      onRemoveField(field);
+      return;
+    }
     const s = { ...schema };
     delete s[field];
-    onChange(Object.keys(s).length ? s : {});
+    onChange(Object.keys(s).length ? s : undefined);
   };
 
   const add = () => {
@@ -45,23 +80,59 @@ export default function InputSchemaEditor({ value, onChange }: Props) {
   };
 
   const toggleRequired = (field: string) => {
-    onChange({
-      ...schema,
-      [field]: { ...schema[field], required: !schema[field].required },
-    });
+    patch(field, { required: !schema[field].required });
   };
 
   return (
     <div>
       <table className={styles.table}>
         <thead>
-          <tr><th>Field</th><th>Type</th><th>Required</th><th></th></tr>
+          <tr><th>Field</th><th>Type</th><th>Lookup</th><th>Required</th><th></th></tr>
         </thead>
         <tbody>
-          {entries.map(([f, sf]) => (
+          {entries.map(([f, sf]) => {
+            const candidates = lookups.filter((t) => t.keyType === sf.type);
+            return (
             <tr key={f}>
               <td>{f}</td>
-              <td>{sf.type}</td>
+              <td>
+                {/* Editable after the fact. A type chosen while adding a field
+                    is a guess as often as not, and the only way to correct it
+                    used to be deleting the field and re-adding it — which loses
+                    the required flag and, when it is the layer's last field,
+                    silently turns rule-field validation off for every segment.
+                    Changing it can invalidate rules that use an operator the
+                    new type does not support, so the owner is given the chance
+                    to warn first. */}
+                <select
+                  value={sf.type}
+                  aria-label={`${f} type`}
+                  onChange={(e) => changeType(f, e.target.value as FieldType)}
+                >
+                  {TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
+                </select>
+              </td>
+              <td>
+                {/* Binding a field to a table declares its domain, so a
+                    condition on it offers the table's keys instead of a
+                    free-text box. Only tables whose key type agrees are
+                    offered — the engine rejects a mismatched binding at load. */}
+                <select
+                  value={sf.lookup ?? ''}
+                  onChange={(e) => patch(f, { lookup: e.target.value || undefined })}
+                  disabled={candidates.length === 0}
+                  title={candidates.length === 0 ? `No lookup table has key type "${sf.type}"` : undefined}
+                  aria-label={`${f} lookup`}
+                >
+                  <option value="">—</option>
+                  {candidates.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+                </select>
+                {sf.lookup && (
+                  <div style={{ fontSize: 10, marginTop: 2 }}>
+                    <LookupLink table={lookups.find((t) => t.id === sf.lookup)} />
+                  </div>
+                )}
+              </td>
               <td>
                 <input
                   type="checkbox"
@@ -70,9 +141,10 @@ export default function InputSchemaEditor({ value, onChange }: Props) {
                   style={{ width: 'auto' }}
                 />
               </td>
-              <td><button className="btn-danger btn-sm" onClick={() => remove(f)}>x</button></td>
+              <td><button type="button" className="btn-danger btn-sm" onClick={() => remove(f)}>x</button></td>
             </tr>
-          ))}
+            );
+          })}
           <tr ref={addRowRef} onBlur={handleRowBlur}>
             <td><input value={newField} onChange={(e) => setNewField(e.target.value)} onKeyDown={handleKeyDown} placeholder="field name" /></td>
             <td>
@@ -80,10 +152,11 @@ export default function InputSchemaEditor({ value, onChange }: Props) {
                 {TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
               </select>
             </td>
+            <td style={{ fontSize: 10, color: 'var(--text-muted)' }}>after adding</td>
             <td>
               <input type="checkbox" checked={newReq} onChange={(e) => setNewReq(e.target.checked)} style={{ width: 'auto' }} />
             </td>
-            <td><button className="btn-primary btn-sm" onClick={add}>+</button></td>
+            <td><button type="button" className="btn-primary btn-sm" onClick={add}>+</button></td>
           </tr>
         </tbody>
       </table>

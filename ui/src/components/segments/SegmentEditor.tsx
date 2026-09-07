@@ -1,32 +1,56 @@
 import { useState, useEffect, useRef } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
-import { useLayers } from '../../api/layers';
+import { useLocation, useNavigate, useParams } from 'react-router-dom';
+import { useLayers, useUpdateLayer } from '../../api/layers';
+import { useLookups } from '../../api/lookups';
 import { useUpdateSegment } from '../../api/segments';
-import type { Segment, StrategyType, InputSchema } from '../../api/types';
+import type { FieldType, Segment, StrategyType, InputSchema, OutputField } from '../../api/types';
+import { SUBJECT_KEY_FIELD } from '../../api/types';
 import StrategyPicker from './StrategyPicker';
 import StaticConfig from './StaticConfig';
 import PercentageConfig from './PercentageConfig';
 import ComputedFieldsEditor from './ComputedFieldsEditor';
 import RuleConfig from './RuleConfig';
 import RuleTreeBuilder from '../rules/RuleTreeBuilder';
-import MessagesEditor from '../rules/MessagesEditor';
 import PredicateEditor from '../rules/PredicateEditor';
 import PromotionEditor from '../promotion/PromotionEditor';
-import InputSchemaEditor from '../schema/InputSchemaEditor';
+import EmittedFieldsReference from '../schema/EmittedFieldsReference';
+import LookupLink from '../lookups/LookupLink';
+import LayerTests from '../testing/LayerTests';
+import SplitPane from '../common/SplitPane';
+import OutputValuesEditor from '../rules/OutputValuesEditor';
+import { fieldCoverage, supportsOutputSchema } from '../schema/outputSchemaRules';
+import { describeBreak, segmentRetypeBreaks } from '../rules/operatorRules';
+import ConfirmDialog from '../common/ConfirmDialog';
 import ErrorBanner from '../common/ErrorBanner';
 import styles from './SegmentEditor.module.css';
 
 export default function SegmentEditor() {
-  const { name: layerName, id: segId } = useParams<{ name: string; id: string }>();
+  const { key: layerKey, id: segId } = useParams<{ key: string; id: string }>();
   const navigate = useNavigate();
+  const location = useLocation();
+  // When the last save happened, so the button can confirm it landed.
+  const [savedAt, setSavedAt] = useState<number | null>(null);
+  // A pending computed-field retype the author has been warned about but not
+  // yet confirmed. Holds the apply callback so confirming performs the exact
+  // change that was described, rather than one reconstructed from indices.
+  const [pendingComputedRetype, setPendingComputedRetype] = useState<
+    { field: string; next: FieldType; broken: string[]; apply: () => void } | null
+  >(null);
   const { data: layers } = useLayers();
+  const { data: lookups } = useLookups();
   const updateSegment = useUpdateSegment();
+  // Resolves a field's lookup id to the table, for the read-only schema tables.
+  const lookupById = (id?: string) => (id ? (lookups ?? []).find((t) => t.id === id) : undefined);
+  const updateLayer = useUpdateLayer();
 
-  const layer = layers?.find((l) => l.name === layerName);
+  const layer = layers?.find((l) => l.key === layerKey);
   const original = layer?.segments.find((s) => s.id === segId);
   // A rule may only reference layers this one declares a dependency on, so the
   // picker offers exactly those — the UI cannot build a config validation rejects.
   const layerNames = layer?.dependsOn ?? [];
+  // "Edit on the layer" must open this segment's own layer, not just the list —
+  // LayerList reads this query param on mount and opens that layer's edit modal.
+  const editLayerHref = layerKey ? `/layers?edit=${encodeURIComponent(layerKey)}` : '/layers';
 
   const [seg, setSeg] = useState<Segment | null>(null);
   const segRef = useRef(seg);
@@ -41,7 +65,57 @@ export default function SegmentEditor() {
   const update = (partial: Partial<Segment>) =>
     setSeg((prev) => (prev ? { ...prev, ...partial } : prev));
 
+  // Output schema is declared on the layer, not the segment, so "declare a new
+  // field inline while authoring a check's value" (from OutputValuesEditor,
+  // via onDeclareOutput below) patches the layer instead of local segment
+  // state — the same convenience, aimed at where the declaration now lives.
+  const declareOutput = (name: string, field: OutputField) => {
+    if (!layer) return;
+    updateLayer.mutate({
+      key: layer.key,
+      layer: {
+        key: layer.key,
+        name: layer.name,
+        dependsOn: layer.dependsOn,
+        defaultLanguage: layer.defaultLanguage,
+        inputSchema: layer.inputSchema,
+        outputSchema: { ...(layer.outputSchema ?? {}), [name]: field },
+      },
+    });
+  };
+
+  // Static and percentage read the subject key from context, and the engine
+  // refuses a snapshot where the layer does not declare it. Declaring it here
+  // is the same convenience as declareOutput above — the field lives on the
+  // layer, so picking the strategy patches the layer rather than local state.
+  //
+  // Deliberately an immediate write, matching declareOutput: the alternative is
+  // staging it until the segment is saved, and a save that fails validation
+  // because of a field the author was never shown is worse than a layer write
+  // they can see in the read-only schema table above.
+  const ensureSubjectKey = (strategy: StrategyType) => {
+    if (strategy !== 'static' && strategy !== 'percentage') return;
+    if (!layer || layer.inputSchema?.[SUBJECT_KEY_FIELD]) return;
+    updateLayer.mutate({
+      key: layer.key,
+      layer: {
+        key: layer.key,
+        name: layer.name,
+        dependsOn: layer.dependsOn,
+        defaultLanguage: layer.defaultLanguage,
+        inputSchema: {
+          ...(layer.inputSchema ?? {}),
+          // Required so an absent value is reported by the existing
+          // missing-input warning as well as by the strategy's own check.
+          [SUBJECT_KEY_FIELD]: { type: 'string', required: true },
+        },
+        outputSchema: layer.outputSchema,
+      },
+    });
+  };
+
   const switchStrategy = (strategy: StrategyType) => {
+    ensureSubjectKey(strategy);
     setSeg((prev) => {
       if (!prev) return prev;
       const next: Partial<Segment> = { strategy };
@@ -62,37 +136,81 @@ export default function SegmentEditor() {
   };
 
   // Computed and checklist both compute fields before rules run, so merge them
-  // into the schema used for the rule field autocomplete.
+  // into the schema used for the rule field autocomplete. The input schema
+  // itself comes from the layer — a segment declares none of its own, exactly
+  // what the engine reads.
   const effectiveSchema = (s: Segment): InputSchema | undefined => {
-    if (!s.computed?.length) return s.inputSchema;
-    const merged: InputSchema = { ...s.inputSchema };
+    const base = layer?.inputSchema;
+    if (!s.computed?.length) return base;
+    const merged: InputSchema = { ...base };
     for (const def of s.computed) {
       if (def.name) merged[def.name] = { type: def.type, required: false };
     }
     return merged;
   };
 
+  // Retyping a computed field can strand a rule that compares it: gte is legal
+  // on a number and not on a boolean, and the engine refuses the whole snapshot
+  // for it. A formula like "10 >= 1" is exactly how that happens — it reads as a
+  // comparison, so the field is easily left as the type dropdown's default and
+  // compared with gte, then later declared the boolean it always was. Without
+  // this the first sign is a save rejected over a rule the author never touched.
+  const handleComputedRetype = (field: string, next: FieldType, apply: () => void) => {
+    const broken = segmentRetypeBreaks(seg, field, next);
+    if (broken.length === 0) {
+      apply();
+      return;
+    }
+    setPendingComputedRetype({ field, next, broken: broken.map(describeBreak), apply });
+  };
+
   const handleSave = () => {
-    if (!layerName || !segId || !segRef.current) return;
+    if (!layerKey || !segId || !segRef.current) return;
     updateSegment.mutate(
-      { layerName, segId, segment: segRef.current },
-      { onSuccess: () => navigate('/layers') }
+      { layerKey, segId, segment: segRef.current },
+      {
+        // Stays on the page. Saving used to navigate back to the layer list,
+        // which threw away the editor you were working in — so testing a change
+        // meant walking back in, and any search that got you here was gone.
+        // Leaving is a separate decision, made with the Close button.
+        onSuccess: () => setSavedAt(Date.now()),
+      }
     );
   };
+
+  // Where Close returns to. LayerList hands over its own URL when it opens a
+  // segment, so closing restores the list exactly as it was — same selected
+  // layer, same search. Falls back for a segment reached by a pasted link.
+  const backHref = (location.state as { from?: string } | null)?.from ?? '/layers';
 
   return (
     <div className={styles.editor}>
       <div className={styles.toolbar}>
         <h2>
-          <span className={styles.breadcrumb} onClick={() => navigate('/layers')}>Layers</span>
+          <span className={styles.breadcrumb} onClick={() => navigate(backHref)}>Layers</span>
           {' / '}
-          <span className={styles.breadcrumb}>{layerName}</span>
+          <span className={styles.breadcrumb}>{layerKey}</span>
           {' / '}
           {seg.id}
         </h2>
       </div>
 
       {updateSegment.error && <ErrorBanner message={(updateSegment.error as Error).message} />}
+      {updateLayer.error && <ErrorBanner message={(updateLayer.error as Error).message} />}
+
+      {/* Two columns where there is room: the segment on the left, its tests
+          pinned on the right and resizable by the divider between them. Below
+          that width they stack and the tests fall to the bottom, which is
+          where they were before. */}
+      <SplitPane
+        storageKey="segment-editor.form-width"
+        side={
+          <section className={`card ${styles.testCard}`}>
+            <h3>Tests</h3>
+            {layerKey && <LayerTests layerKey={layerKey} schema={layer?.inputSchema} />}
+          </section>
+        }
+      >
 
       {/* Strategy */}
       <section className={`card ${styles.section}`}>
@@ -106,13 +224,131 @@ export default function SegmentEditor() {
         <PromotionEditor value={seg.promotion} onChange={(p) => update({ promotion: p })} />
       </section>
 
-      {/* Input Schema */}
-      <section className={`card ${styles.section}`}>
+      {/* Input Schema — declared on the layer, not here. Shown read-only so an
+          author does not conclude this segment's rules are unchecked. */}
+      <section id="input-schema" className={`card ${styles.section}`}>
         <h3>Input Schema</h3>
-        <InputSchemaEditor
-          value={seg.inputSchema}
-          onChange={(s) => update({ inputSchema: s })}
-        />
+        <p className={styles.layerNote}>
+          Declared on layer <strong>{layerKey}</strong> — every segment in it shares this
+          schema.{' '}
+          <button type="button" className="btn-ghost btn-sm" onClick={() => navigate(editLayerHref)}>
+            Edit on the layer
+          </button>
+        </p>
+        {layer?.inputSchema && Object.keys(layer.inputSchema).length > 0 ? (
+          <table className={styles.readonlyTable}>
+            <thead>
+              <tr><th>Field</th><th>Type</th><th>Lookup</th><th>Required</th></tr>
+            </thead>
+            <tbody>
+              {Object.entries(layer.inputSchema).map(([f, sf]) => (
+                <tr key={f}>
+                  <td>{f}</td>
+                  <td>{sf.type}</td>
+                  <td><LookupLink table={lookupById(sf.lookup)} /></td>
+                  <td>{sf.required ? 'yes' : '—'}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        ) : (
+          <p style={{ fontSize: 12, color: 'var(--text-muted)', margin: 0 }}>
+            No input schema declared on this layer yet.
+          </p>
+        )}
+      </section>
+
+      {/* Output Schema — after the input schema, because an output value
+          interpolates the fields declared there. Also declared on the layer;
+          shown read-only for the same reason as the input schema above. */}
+      <section className={`card ${styles.section}`}>
+        <h3>Output Schema</h3>
+        {supportsOutputSchema(seg.strategy) ? (
+          <>
+            <p className={styles.layerNote}>
+              Declared on layer <strong>{layerKey}</strong> — every segment in it shares this
+              schema.{' '}
+              <button type="button" className="btn-ghost btn-sm" onClick={() => navigate(editLayerHref)}>
+                Edit on the layer
+              </button>
+            </p>
+            {layer?.outputSchema && Object.keys(layer.outputSchema).length > 0 ? (
+              <table className={styles.readonlyTable}>
+                <thead>
+                  <tr><th>Field</th><th>Type</th><th>Lookup</th><th>Required</th></tr>
+                </thead>
+                <tbody>
+                  {Object.entries(layer.outputSchema).map(([name, f]) => (
+                    <tr key={name}>
+                      <td>{name}</td>
+                      <td>{f.type}</td>
+                      <td><LookupLink table={lookupById(f.lookup)} /></td>
+                      <td>{f.required ? 'yes' : '—'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            ) : (
+              <p style={{ fontSize: 12, color: 'var(--text-muted)', margin: 0 }}>
+                No output schema declared on this layer yet — values authored below have
+                nothing to attach to until one is.
+              </p>
+            )}
+            {layer?.outputSchema && Object.keys(layer.outputSchema).length > 0 && (() => {
+              const layerOutputSchema = layer.outputSchema!;
+              return (
+                <div style={{ marginTop: 16 }}>
+                  <label style={{ fontSize: 12, fontWeight: 600 }}>Segment Values</label>
+                  <p style={{ fontSize: 11, color: 'var(--text-muted)', margin: '4px 0 8px' }}>
+                    Set a value once here to satisfy a field for every reporting rule at once —
+                    the only way to satisfy a required field when this segment declares a{' '}
+                    <code>default</code>, since the default path reads no rule values at all.
+                  </p>
+                  <OutputValuesEditor
+                    outputs={seg.outputs}
+                    schema={layerOutputSchema}
+                    onChange={(o) => update({ outputs: o })}
+                    onDeclare={declareOutput}
+                    coverage={(name) => fieldCoverage(seg, layerOutputSchema, name)}
+                  />
+                </div>
+              );
+            })()}
+            <div style={{ marginTop: 12 }}>
+              <EmittedFieldsReference />
+            </div>
+            <details style={{ marginTop: 8 }}>
+              <summary style={{ cursor: 'pointer', fontSize: 12, color: 'var(--text-muted)' }}>
+                Fields available to output values
+              </summary>
+              <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 8 }}>
+                {Object.keys(effectiveSchema(seg) ?? {}).length === 0 ? (
+                  <p style={{ margin: 0 }}>
+                    None declared yet — <a href="#input-schema">see the input schema above</a>.
+                  </p>
+                ) : (
+                  <>
+                    <p style={{ margin: '0 0 6px' }}>
+                      From the layer's <a href="#input-schema">input schema</a> and this
+                      segment's computed fields:
+                    </p>
+                    <ul style={{ margin: 0, paddingLeft: 18 }}>
+                      {Object.entries(effectiveSchema(seg) ?? {}).map(([f, sf]) => (
+                        <li key={f}><code>{f}</code> — {sf.type}</li>
+                      ))}
+                    </ul>
+                  </>
+                )}
+              </div>
+            </details>
+          </>
+        ) : (
+          <p style={{ fontSize: 12, color: 'var(--text-muted)', margin: 0 }}>
+            A <code>{seg.strategy}</code> segment resolves a segment value rather than reporting
+            an item, so it emits no record and an output schema would do nothing. Output schemas
+            apply to <code>checklist</code> and <code>rule</code> segments.
+          </p>
+        )}
       </section>
 
       {/* Applicability — after the schema, because the condition picks its
@@ -122,7 +358,7 @@ export default function SegmentEditor() {
         <PredicateEditor
           value={seg.when}
           onChange={(when) => update({ when })}
-          schema={seg.inputSchema}
+          schema={layer?.inputSchema}
           layerNames={layerNames}
           hint={
             'Dispatch condition for the whole segment, tested against the fields declared ' +
@@ -151,15 +387,21 @@ export default function SegmentEditor() {
             onDefaultChange={(v) => update({ default: v })}
             defaultMessages={seg.defaultMessages}
             onDefaultMessagesChange={(m) => update({ defaultMessages: m })}
+            defaultOutputs={seg.defaultOutputs}
+            onDefaultOutputsChange={(o) => update({ defaultOutputs: o })}
+            computed={seg.computed}
             ruleSchema={effectiveSchema(seg)}
-            overrideSchema={seg.inputSchema}
+            overrideSchema={layer?.inputSchema}
             layerNames={layerNames}
+            outputSchema={layer?.outputSchema}
+            onDeclareOutput={declareOutput}
             computedSlot={
               <div className="form-group">
                 <label>Computed Fields</label>
                 <ComputedFieldsEditor
                   value={seg.computed ?? []}
                   onChange={(c) => update({ computed: c })}
+                  onChangeType={handleComputedRetype}
                 />
                 <p style={{ fontSize: 11, color: 'var(--text-muted)', margin: '4px 0 0' }}>
                   Optional. Values derived before the rules run, available to rule
@@ -184,6 +426,7 @@ export default function SegmentEditor() {
               <ComputedFieldsEditor
                 value={seg.computed ?? []}
                 onChange={(c) => update({ computed: c })}
+                onChangeType={handleComputedRetype}
               />
               <p style={{ fontSize: 11, color: 'var(--text-muted)', margin: '4px 0 0' }}>
                 Computed fields are available to the checks and to their messages.
@@ -200,6 +443,8 @@ export default function SegmentEditor() {
                 layerNames={layerNames}
                 label="Checks"
                 perRuleMessages
+                outputSchema={layer?.outputSchema}
+                onDeclareOutput={declareOutput}
                 hint={
                   'Each check states a condition that describes a problem; when it holds, its ' +
                   'message is reported. Drag the handle to reorder or regroup. And/Or build ' +
@@ -219,37 +464,74 @@ export default function SegmentEditor() {
       {seg.strategy !== 'rule' && seg.strategy !== 'checklist' && (
         <section className={`card ${styles.section}`}>
           <h3>Overrides</h3>
+          {/* Stated at more length here than for a rule segment, because this
+              is where overrides matter most: static maps a key and percentage
+              hashes one, and neither can express a condition at all. An
+              override is the only way to attach one. */}
+          <p style={{ fontSize: 12, lineHeight: 1.5, margin: '0 0 8px' }}>
+            <strong>
+              Use an override to force an outcome regardless of what the strategy would
+              decide.
+            </strong>{' '}
+            This is the only place a condition can be attached to a <code>{seg.strategy}</code>{' '}
+            segment — a rollout carve-out, a subject pinned for a support escalation, or a
+            gate on what an earlier layer resolved (<code>layer:x</code>). Each override has
+            an <code>enabled</code> flag, so an exception can be switched off without losing
+            how it was written.
+          </p>
+          <p style={{ fontSize: 11, color: 'var(--text-muted)', margin: '0 0 12px', lineHeight: 1.5 }}>
+            The first override that matches wins and the strategy never runs. Only raw input
+            fields are available.
+          </p>
           <RuleTreeBuilder
             rules={seg.overrides ?? []}
             onChange={(r) => update({ overrides: r })}
-            schema={seg.inputSchema}
+            schema={layer?.inputSchema}
             layerNames={layerNames}
             label="Override Rules"
           />
-          <p style={{ fontSize: 11, color: 'var(--text-muted)', fontStyle: 'italic', margin: '4px 0 0' }}>
-            Evaluated before the strategy result. Only raw input fields are available.
-          </p>
-          <div style={{ marginTop: 16 }}>
-            <label>Default Value</label>
-            <input
-              value={seg.default ?? ''}
-              onChange={(e) => update({ default: e.target.value || undefined })}
-            />
-            <MessagesEditor
-              value={seg.defaultMessages}
-              onChange={(m) => update({ defaultMessages: m })}
-            />
-          </div>
+          {/* No default here. Segment.default is read by the rule strategy
+              alone: static has its own default inside its mappings, and
+              percentage has no such notion. The editor used to offer one for
+              these strategies, writing a field nothing would ever read. */}
         </section>
       )}
 
-      {/* Footer */}
+      {/* Footer, inside the form column: these act on the segment, and a
+          right-aligned footer spanning an uncapped page would put Save at the
+          far edge of a wide monitor, nowhere near the form. */}
       <div className={styles.footer}>
-        <button className="btn-ghost" onClick={() => navigate('/layers')}>Cancel</button>
-        <button className="btn-primary" onClick={handleSave} disabled={updateSegment.isPending}>
+        {/* "Close" rather than "Cancel": saving no longer leaves the page, so
+            this is how you leave — and it discards nothing that was saved. */}
+        <button type="button" className="btn-ghost" onClick={() => navigate(backHref)}>Close</button>
+        {savedAt !== null && !updateSegment.isPending && (
+          <span className={styles.saved} role="status">Saved</span>
+        )}
+        <button type="button" className="btn-primary" onClick={handleSave} disabled={updateSegment.isPending}>
           {updateSegment.isPending ? 'Saving...' : 'Save'}
         </button>
       </div>
+
+      </SplitPane>
+
+      <ConfirmDialog
+        open={!!pendingComputedRetype}
+        title="Change computed field type"
+        confirmLabel="Change type"
+        message={
+          pendingComputedRetype
+            ? `Changing "${pendingComputedRetype.field}" to ${pendingComputedRetype.next} leaves ` +
+              `${pendingComputedRetype.broken.length} condition(s) using an operator that type does ` +
+              `not allow, and the save will be refused until they are fixed — ` +
+              `${pendingComputedRetype.broken.join('; ')}.`
+            : ''
+        }
+        onConfirm={() => {
+          pendingComputedRetype?.apply();
+          setPendingComputedRetype(null);
+        }}
+        onCancel={() => setPendingComputedRetype(null)}
+      />
     </div>
   );
 }

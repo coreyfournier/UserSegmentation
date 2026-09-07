@@ -18,7 +18,7 @@ export default function App() {
         <Routes>
           <Route element={<AppShell />}>
             <Route path="/layers" element={<LayersPage />} />
-            <Route path="/layers/:name/segments/:id" element={<SegmentPage />} />
+            <Route path="/layers/:key/segments/:id" element={<SegmentPage />} />
             <Route path="/lookups" element={<LookupsPage />} />
             <Route path="/testing" element={<TestingPage />} />
             <Route path="/config" element={<ImportExportPage />} />

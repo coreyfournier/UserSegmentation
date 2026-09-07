@@ -33,32 +33,33 @@ func (uc *EvaluateUseCase) Execute(req EvaluateRequest) (*EvaluateResponse, erro
 		ctx = make(map[string]interface{})
 	}
 
-	result := uc.evaluator.Evaluate(snap, req.SubjectKey, ctx, req.Layers, req.Languages, req.RenderAll, now)
+	result := uc.evaluator.Evaluate(snap, ctx, req.Layers, req.Languages, req.RenderAll, now)
 
 	resp := &EvaluateResponse{
-		SubjectKey:  req.SubjectKey,
 		Layers:      make(map[string]LayerResultDTO, len(result.Layers)),
 		EvaluatedAt: now.UTC().Format(time.RFC3339Nano),
 		DurationUS:  time.Since(start).Microseconds(),
 	}
 
-	for name, lr := range result.Layers {
-		dto := LayerResultDTO{Status: string(lr.Status)}
+	for key, lr := range result.Layers {
+		dto := LayerResultDTO{Name: lr.Name, Status: string(lr.Status)}
 		if a := lr.Assignment; a != nil {
 			dto.Segment = a.Segment
 			dto.Strategy = a.Strategy
 			dto.Reason = a.Reason
 			dto.Computed = a.Computed
 			dto.Messages = a.Messages
+			dto.Outputs = a.Outputs
 		}
 		for _, f := range lr.Failures {
 			dto.Failures = append(dto.Failures, FailureDTO{
 				Rule:     f.Rule,
 				Message:  f.Message,
 				Messages: f.Messages,
+				Outputs:  f.Outputs,
 			})
 		}
-		resp.Layers[name] = dto
+		resp.Layers[key] = dto
 	}
 
 	for _, w := range result.Warnings {

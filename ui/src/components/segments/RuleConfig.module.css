@@ -1,0 +1,100 @@
+/* A stage of evaluation: framed, numbered and colour-keyed.
+   The four used to be unlabelled divs separated by margin, which left
+   Overrides reading as a preamble and no visible boundary at all between
+   Rules and Default. */
+.stage {
+  position: relative;
+  margin-bottom: 20px;
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg);
+}
+
+.stage:last-child {
+  margin-bottom: 0;
+}
+
+.stageHead {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+/* The number carries the ordering claim, so it reads as a step rather than a
+   decoration. */
+.step {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  font-size: 11px;
+  font-weight: 700;
+  color: #fff;
+  background: var(--text-muted);
+  flex: none;
+}
+
+.stageTitle {
+  margin: 0;
+  font-size: 14px;
+  flex: 1;
+}
+
+/* State worth seeing without reading the body. Red because an unset default is
+   a real outcome — the layer reports unresolved — not an unfinished form. */
+.badge {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--danger);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+/* Why you would reach for this stage at all, as opposed to what it does. */
+.why {
+  margin: 0 0 8px;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+/* How it behaves: ordering, what it can see, what happens on a match. */
+.note {
+  margin: 0 0 12px;
+  font-size: 11px;
+  color: var(--text-muted);
+  line-height: 1.5;
+}
+
+/* One accent per stage, so the four are told apart before they are read. */
+.override {
+  border-left-color: #a855f7;
+}
+.override .step {
+  background: #a855f7;
+}
+
+.computed {
+  border-left-color: #0891b2;
+}
+.computed .step {
+  background: #0891b2;
+}
+
+.rule {
+  border-left-color: var(--primary);
+}
+.rule .step {
+  background: var(--primary);
+}
+
+.default {
+  border-left-color: #f59e0b;
+}
+.default .step {
+  background: #f59e0b;
+}

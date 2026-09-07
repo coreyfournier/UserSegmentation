@@ -6,6 +6,11 @@ export function useLookups() {
   return useQuery({
     queryKey: ['lookups'],
     queryFn: () => apiFetch<LookupTable[]>('/v1/admin/lookups'),
+    // Overrides the client-wide default (off). A schema's lookup link opens the
+    // table in a new tab precisely so entries can be added there; without this
+    // the author returns to a form still showing the table as it was, and a key
+    // they just created is missing from the value picker.
+    refetchOnWindowFocus: true,
   });
 }
 

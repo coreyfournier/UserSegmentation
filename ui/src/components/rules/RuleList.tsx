@@ -1,5 +1,5 @@
 import { Fragment } from 'react';
-import type { Rule, InputSchema } from '../../api/types';
+import type { Rule, InputSchema, OutputField, OutputSchema } from '../../api/types';
 import RuleNode from './RuleNode';
 import RuleDropZone from './RuleDropZone';
 import type { RulePath } from './ruleTree';
@@ -14,6 +14,9 @@ interface Props {
   layerNames?: string[];
   /** True when every rule reports its own message (checklist), not just the winner. */
   perRuleMessages?: boolean;
+  /** The segment's output schema. Present only when the segment declares one. */
+  outputSchema?: OutputSchema;
+  onDeclareOutput?: (name: string, field: OutputField) => void;
 }
 
 /**
@@ -29,6 +32,8 @@ export default function RuleList({
   schema,
   layerNames,
   perRuleMessages = false,
+  outputSchema,
+  onDeclareOutput,
 }: Props) {
   const update = (index: number, rule: Rule) => {
     const next = [...rules];
@@ -69,6 +74,8 @@ export default function RuleList({
             schema={schema}
             layerNames={layerNames}
             perRuleMessages={perRuleMessages}
+            outputSchema={outputSchema}
+            onDeclareOutput={onDeclareOutput}
           />
         </Fragment>
       ))}

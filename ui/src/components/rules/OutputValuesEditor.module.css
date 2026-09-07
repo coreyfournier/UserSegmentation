@@ -1,0 +1,24 @@
+.grid {
+  display: grid;
+  grid-template-columns: minmax(120px, auto) 1fr auto;
+  gap: 4px 8px;
+  align-items: start;
+  margin-top: 6px;
+}
+.grid select {
+  font-size: 11px;
+  width: 100%;
+}
+.err {
+  font-size: 10px;
+  color: var(--danger);
+}
+.addRow {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  margin-top: 6px;
+}
+.addRow select {
+  font-size: 11px;
+}

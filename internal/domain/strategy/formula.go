@@ -48,6 +48,12 @@ var mathOptions = []expr.Option{
 	}),
 }
 
+// ExprOptions returns the option set every expression in this engine compiles
+// with. Validation compiles with these too: an env-constrained compile rejects
+// pow(2, 3) without them, so a validator using a different set would reject
+// config that runs perfectly well.
+func ExprOptions() []expr.Option { return mathOptions }
+
 // Formulas are compiled once and cached for the process. The cache is
 // package-level so any RuleStrategy value benefits, including the throwaway
 // ones created inline.

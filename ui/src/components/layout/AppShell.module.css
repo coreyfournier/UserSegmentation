@@ -3,9 +3,12 @@
   min-height: 100vh;
 }
 
+/* No scroller of its own. The content used to scroll inside the window, which
+   put the page's scrollbar inboard — a bar that looks like part of the app,
+   stacked against the panel's own. Scrolling at the window level puts it back
+   at the window edge, where every other page keeps it. */
 .content {
   flex: 1;
+  min-width: 0;
   padding: 32px;
-  overflow-y: auto;
-  max-height: 100vh;
 }

@@ -23,7 +23,7 @@ func (m *mockConfigSource) Load() (*model.Snapshot, error) {
 func TestReloadUseCase_Success(t *testing.T) {
 	s := store.NewMemory()
 	snap := &model.Snapshot{Version: 1, Layers: []model.Layer{
-		{Name: "test", Segments: []model.Segment{}},
+		{Key: "test", Segments: []model.Segment{}},
 	}}
 	src := &mockConfigSource{snap: snap}
 	uc := NewReloadUseCase(src, s)
@@ -59,7 +59,10 @@ func TestReloadUseCase_ValidationError(t *testing.T) {
 		Version: 1,
 		Layers: []model.Layer{
 			{
-				Name:  "bad",
+				Key: "bad",
+				InputSchema: model.InputSchema{
+					"age": {Type: model.FieldTypeString, Required: true}, // gt doesn't support string
+				},
 				Segments: []model.Segment{
 					{
 						ID:       "s1",
@@ -72,9 +75,6 @@ func TestReloadUseCase_ValidationError(t *testing.T) {
 								},
 								SuccessEvent: "young",
 							},
-						},
-						InputSchema: model.InputSchema{
-							"age": {Type: model.FieldTypeString, Required: true}, // gt doesn't support string
 						},
 					},
 				},

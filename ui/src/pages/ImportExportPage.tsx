@@ -60,8 +60,8 @@ export default function ImportExportPage() {
       {success && <div className={styles.success}>{success}</div>}
 
       <div className={styles.actions}>
-        <button className="btn-primary" onClick={handleExport}>Export Current Config</button>
-        {jsonText && <button className="btn-ghost" onClick={handleDownload}>Download JSON</button>}
+        <button type="button" className="btn-primary" onClick={handleExport}>Export Current Config</button>
+        {jsonText && <button type="button" className="btn-ghost" onClick={handleDownload}>Download JSON</button>}
       </div>
 
       <div className="form-group">
@@ -74,7 +74,7 @@ export default function ImportExportPage() {
         />
       </div>
 
-      <button
+      <button type="button"
         className="btn-primary"
         onClick={handleImport}
         disabled={!jsonText || loading}

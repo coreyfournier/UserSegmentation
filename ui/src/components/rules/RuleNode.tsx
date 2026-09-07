@@ -1,7 +1,8 @@
 import { useRef } from 'react';
-import type { Rule, InputSchema, CompositeOperator } from '../../api/types';
+import type { Rule, InputSchema, CompositeOperator, OutputField, OutputSchema } from '../../api/types';
 import ConditionEditor from './ConditionEditor';
 import MessagesEditor from './MessagesEditor';
+import OutputValuesEditor from './OutputValuesEditor';
 import RuleList from './RuleList';
 import { useRuleDrag } from './RuleDragContext';
 import { describeRule, samePath, type RulePath } from './ruleTree';
@@ -23,9 +24,12 @@ interface Props {
   layerNames?: string[];
   /** True when every rule reports its own message (checklist), not just the winner. */
   perRuleMessages?: boolean;
+  /** The segment's output schema. Present only when the segment declares one. */
+  outputSchema?: OutputSchema;
+  onDeclareOutput?: (name: string, field: OutputField) => void;
 }
 
-export default function RuleNode({ rule, path, onChange, onDelete, index, total, onMove, depth = 0, schema, layerNames, perRuleMessages = false }: Props) {
+export default function RuleNode({ rule, path, onChange, onDelete, index, total, onMove, depth = 0, schema, layerNames, perRuleMessages = false, outputSchema, onDeclareOutput }: Props) {
   const color = DEPTH_COLORS[depth % DEPTH_COLORS.length];
   const isLeaf = !!rule.condition;
 
@@ -95,7 +99,7 @@ export default function RuleNode({ rule, path, onChange, onDelete, index, total,
         )}
         {onMove && (
           <span className={styles.moveButtons}>
-            <button
+            <button type="button"
               className="btn-ghost btn-sm"
               onClick={() => onMove(-1)}
               disabled={index === 0}
@@ -104,7 +108,7 @@ export default function RuleNode({ rule, path, onChange, onDelete, index, total,
             >
               ▲
             </button>
-            <button
+            <button type="button"
               className="btn-ghost btn-sm"
               onClick={() => onMove(1)}
               disabled={total !== undefined && index !== undefined && index === total - 1}
@@ -169,7 +173,7 @@ export default function RuleNode({ rule, path, onChange, onDelete, index, total,
           />
           <span>enabled</span>
         </label>
-        <button className="btn-danger btn-sm" onClick={onDelete}>x</button>
+        <button type="button" className="btn-danger btn-sm" onClick={onDelete}>x</button>
       </div>
 
       {isLeaf && rule.condition && (
@@ -181,6 +185,24 @@ export default function RuleNode({ rule, path, onChange, onDelete, index, total,
             layerNames={layerNames}
           />
         </div>
+      )}
+
+      {/* Only a reporting rule emits a record, so only a reporting rule gets
+          output values — and "reporting" means top-level, in both strategies.
+          A checklist reports every top-level rule, leaf or And/Or group alike;
+          a rule segment reports whichever top-level rule wins. Nothing nested
+          reports in either: an And/Or group reports once, under its own name,
+          and its branches only contribute to that one condition. Depth is the
+          test, not leafness — gating on (perRuleMessages || !isLeaf) would let
+          a leaf inside a checklist's And/Or group author values the engine
+          never reads, which is dead config nothing would flag. */}
+      {onDeclareOutput && depth === 0 && (
+        <OutputValuesEditor
+          outputs={rule.outputs}
+          schema={outputSchema ?? {}}
+          onChange={(o) => onChange({ ...rule, outputs: o })}
+          onDeclare={onDeclareOutput}
+        />
       )}
 
       {/* Under first-match strategies only the winning top-level rule's message
@@ -209,10 +231,12 @@ export default function RuleNode({ rule, path, onChange, onDelete, index, total,
             schema={schema}
             layerNames={layerNames}
             perRuleMessages={perRuleMessages}
+            outputSchema={outputSchema}
+            onDeclareOutput={onDeclareOutput}
           />
           <div className={styles.addButtons}>
-            <button className="btn-ghost btn-sm" onClick={addLeaf}>+ Add Check</button>
-            <button className="btn-ghost btn-sm" onClick={addGroup}>+ Add Group</button>
+            <button type="button" className="btn-ghost btn-sm" onClick={addLeaf}>+ Add Check</button>
+            <button type="button" className="btn-ghost btn-sm" onClick={addGroup}>+ Add Group</button>
           </div>
         </div>
       )}

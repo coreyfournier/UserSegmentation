@@ -51,8 +51,8 @@ func (uc *AdminUseCase) CreateLayer(layer model.Layer) (*model.Snapshot, error) 
 
 	snap := uc.cloneSnapshot()
 	for _, l := range snap.Layers {
-		if l.Name == layer.Name {
-			return nil, fmt.Errorf("layer %q already exists", layer.Name)
+		if l.Key == layer.Key {
+			return nil, fmt.Errorf("layer %q already exists", layer.Key)
 		}
 	}
 	if layer.Segments == nil {
@@ -62,37 +62,86 @@ func (uc *AdminUseCase) CreateLayer(layer model.Layer) (*model.Snapshot, error) 
 	return uc.commitSnapshot(snap)
 }
 
-// UpdateLayer updates an existing layer's name, dependencies and default
-// language (preserving segments). Renaming cascades into any dependsOn edge
-// that pointed at the old name, so a depended-upon layer stays renameable.
-func (uc *AdminUseCase) UpdateLayer(name string, updated model.Layer) (*model.Snapshot, error) {
+// UpdateLayer updates an existing layer's key, friendly name, dependencies,
+// default language, input schema and output schema (preserving segments).
+// Every named field is replaced wholesale with the incoming value, including
+// the two schemas: a layer whose inputSchema or outputSchema is absent from
+// the request has that schema cleared, not preserved. This matches how the
+// other fields here are already treated — a PUT replaces the whole object
+// rather than merging — and it is the shape the layer editor UI (which always
+// sends a complete layer) relies on.
+//
+// Changing the key cascades into every internal reference — dependsOn edges,
+// layer:<key> condition fields, and ${layer:<key>} tokens in messages and
+// output values — in this one transaction. What it cannot reach is an external
+// consumer reading the old key out of the response; that break is real and is
+// the caller's to weigh, which is why the UI states it before saving.
+//
+// Renaming the friendly name cascades into nothing, because nothing references
+// it. That is the entire point of the split.
+//
+// Replacing a layer's schemas can invalidate its own segments — a rule reading
+// a field the new schema no longer declares now fails validation.
+// commitSnapshot validates the whole snapshot before saving, so such an update
+// is rejected and the stored snapshot is left unchanged. The same is true of a
+// cascade: if rewriting the references produces invalid config, nothing is
+// saved and the key change is refused whole.
+func (uc *AdminUseCase) UpdateLayer(key string, updated model.Layer) (*model.Snapshot, error) {
 	uc.mu.Lock()
 	defer uc.mu.Unlock()
 
 	snap := uc.cloneSnapshot()
-	idx := uc.findLayer(snap, name)
+	idx := uc.findLayer(snap, key)
 	if idx < 0 {
-		return nil, fmt.Errorf("layer %q not found", name)
+		return nil, fmt.Errorf("layer %q not found", key)
 	}
 
-	snap.Layers[idx].Name = updated.Name
-	snap.Layers[idx].DependsOn = updated.DependsOn
-	snap.Layers[idx].DefaultLanguage = updated.DefaultLanguage
-
-	if updated.Name != name {
-		for i := range snap.Layers {
-			if i == idx {
-				continue
-			}
-			for j, dep := range snap.Layers[i].DependsOn {
-				if dep == name {
-					snap.Layers[i].DependsOn[j] = updated.Name
-				}
-			}
+	// An incoming layer with no key keeps the one it is addressed by, so a
+	// caller updating only the schemas does not have to restate it.
+	newKey := updated.Key
+	if newKey == "" {
+		newKey = key
+	}
+	if newKey != key {
+		if msg := model.ValidateLayerKey(newKey); msg != "" {
+			return nil, fmt.Errorf("layer %q: %s", newKey, msg)
+		}
+		if uc.findLayer(snap, newKey) >= 0 {
+			return nil, fmt.Errorf("layer %q already exists", newKey)
 		}
 	}
 
+	snap.Layers[idx].Key = newKey
+	snap.Layers[idx].Name = updated.Name
+	snap.Layers[idx].DependsOn = updated.DependsOn
+	snap.Layers[idx].DefaultLanguage = updated.DefaultLanguage
+	snap.Layers[idx].InputSchema = updated.InputSchema
+	snap.Layers[idx].OutputSchema = updated.OutputSchema
+
+	// Cascade after the layer's own fields are in place, so a dependsOn edge
+	// the caller just sent naming the old key is rewritten too rather than
+	// being left behind by a cascade that ran first.
+	rekeyLayer(snap, key, newKey)
+
 	return uc.commitSnapshot(snap)
+}
+
+// PreviewRekey reports what changing a layer's key would rewrite, without
+// changing anything. The editor shows this before saving so a key change is
+// made with its blast radius visible rather than discovered afterwards.
+func (uc *AdminUseCase) PreviewRekey(oldKey, newKey string) ([]RekeyRef, error) {
+	uc.mu.Lock()
+	defer uc.mu.Unlock()
+
+	if msg := model.ValidateLayerKey(newKey); msg != "" {
+		return nil, fmt.Errorf("layer %q: %s", newKey, msg)
+	}
+	// Run against a clone: the cascade rewrites in place, and this must not.
+	snap := uc.cloneSnapshot()
+	if uc.findLayer(snap, oldKey) < 0 {
+		return nil, fmt.Errorf("layer %q not found", oldKey)
+	}
+	return rekeyLayer(snap, oldKey, newKey), nil
 }
 
 // DeleteLayer removes a layer by name. A layer other layers depend on cannot be
@@ -115,7 +164,7 @@ func (uc *AdminUseCase) DeleteLayer(name string) (*model.Snapshot, error) {
 		}
 		for _, dep := range snap.Layers[i].DependsOn {
 			if dep == name {
-				dependents = append(dependents, snap.Layers[i].Name)
+				dependents = append(dependents, snap.Layers[i].Key)
 				break
 			}
 		}
@@ -124,6 +173,17 @@ func (uc *AdminUseCase) DeleteLayer(name string) (*model.Snapshot, error) {
 		return nil, fmt.Errorf("layer %q cannot be deleted: %s depend on it",
 			name, strings.Join(dependents, ", "))
 	}
+
+	// A test is filed under a layer, so it goes with it. Leaving it would name
+	// a layer that no longer exists, which validation rejects — the delete
+	// would fail on data the author did not think they were touching.
+	kept := snap.Tests[:0:0]
+	for _, t := range snap.Tests {
+		if t.Layer != name {
+			kept = append(kept, t)
+		}
+	}
+	snap.Tests = kept
 
 	snap.Layers = append(snap.Layers[:idx], snap.Layers[idx+1:]...)
 	return uc.commitSnapshot(snap)
@@ -207,9 +267,9 @@ func (uc *AdminUseCase) commitSnapshot(snap *model.Snapshot) (*model.Snapshot, e
 	return snap, nil
 }
 
-func (uc *AdminUseCase) findLayer(snap *model.Snapshot, name string) int {
+func (uc *AdminUseCase) findLayer(snap *model.Snapshot, key string) int {
 	for i, l := range snap.Layers {
-		if l.Name == name {
+		if l.Key == key {
 			return i
 		}
 	}

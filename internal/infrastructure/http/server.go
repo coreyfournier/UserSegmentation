@@ -14,6 +14,7 @@ func NewServer(
 	batchUC *application.BatchEvaluateUseCase,
 	reloadUC *application.ReloadUseCase,
 	adminUC *application.AdminUseCase,
+	searchUC *application.SearchUseCase,
 	store ports.SegmentStore,
 ) *http.Server {
 	mux := http.NewServeMux()
@@ -28,18 +29,24 @@ func NewServer(
 	admin := NewAdminHandler(adminUC)
 	mux.HandleFunc("GET /v1/admin/layers", admin.ListLayers)
 	mux.HandleFunc("POST /v1/admin/layers", admin.CreateLayer)
-	mux.HandleFunc("PUT /v1/admin/layers/{name}", admin.UpdateLayer)
-	mux.HandleFunc("DELETE /v1/admin/layers/{name}", admin.DeleteLayer)
-	mux.HandleFunc("GET /v1/admin/layers/{name}/segments", admin.ListSegments)
-	mux.HandleFunc("POST /v1/admin/layers/{name}/segments", admin.CreateSegment)
-	mux.HandleFunc("PUT /v1/admin/layers/{name}/segments/{id}", admin.UpdateSegment)
-	mux.HandleFunc("DELETE /v1/admin/layers/{name}/segments/{id}", admin.DeleteSegment)
+	mux.HandleFunc("PUT /v1/admin/layers/{key}", admin.UpdateLayer)
+	mux.HandleFunc("DELETE /v1/admin/layers/{key}", admin.DeleteLayer)
+	mux.HandleFunc("GET /v1/admin/layers/{key}/rekey-preview", admin.PreviewRekey)
+	mux.HandleFunc("GET /v1/admin/layers/{key}/segments", admin.ListSegments)
+	mux.HandleFunc("POST /v1/admin/layers/{key}/segments", admin.CreateSegment)
+	mux.HandleFunc("PUT /v1/admin/layers/{key}/segments/{id}", admin.UpdateSegment)
+	mux.HandleFunc("DELETE /v1/admin/layers/{key}/segments/{id}", admin.DeleteSegment)
 	mux.HandleFunc("GET /v1/admin/lookups", admin.ListLookups)
 	mux.HandleFunc("POST /v1/admin/lookups", admin.CreateLookup)
 	mux.HandleFunc("PUT /v1/admin/lookups/{id}", admin.UpdateLookup)
 	mux.HandleFunc("DELETE /v1/admin/lookups/{id}", admin.DeleteLookup)
 	mux.HandleFunc("POST /v1/admin/import", admin.ImportSnapshot)
 	mux.HandleFunc("GET /v1/admin/export", admin.ExportSnapshot)
+	mux.HandleFunc("GET /v1/admin/tests", admin.ListTests)
+	mux.HandleFunc("POST /v1/admin/tests", admin.CreateTest)
+	mux.HandleFunc("PUT /v1/admin/tests/{id}", admin.UpdateTest)
+	mux.HandleFunc("DELETE /v1/admin/tests/{id}", admin.DeleteTest)
+	mux.Handle("GET /v1/admin/search", &SearchHandler{uc: searchUC})
 
 	handler := CORS(PanicRecovery(Timing(Logging(mux))))
 

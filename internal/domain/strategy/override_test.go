@@ -16,7 +16,7 @@ func TestEvalOverrides_Match(t *testing.T) {
 	}
 
 	ctx := &EvalContext{Context: map[string]interface{}{"plan": "enterprise"}}
-	res, ok := EvalOverrides(overrides, ctx)
+	res, ok := EvalOverrides(&model.Segment{Overrides: overrides}, ctx)
 	if !ok || res.Segment != "vip-segment" {
 		t.Errorf("expected vip-segment, got %v %v", res, ok)
 	}
@@ -32,7 +32,7 @@ func TestEvalOverrides_NoMatch(t *testing.T) {
 	}
 
 	ctx := &EvalContext{Context: map[string]interface{}{"plan": "free"}}
-	_, ok := EvalOverrides(overrides, ctx)
+	_, ok := EvalOverrides(&model.Segment{Overrides: overrides}, ctx)
 	if ok {
 		t.Error("expected no match")
 	}
@@ -49,7 +49,7 @@ func TestEvalOverrides_Disabled(t *testing.T) {
 	}
 
 	ctx := &EvalContext{Context: map[string]interface{}{"plan": "enterprise"}}
-	_, ok := EvalOverrides(overrides, ctx)
+	_, ok := EvalOverrides(&model.Segment{Overrides: overrides}, ctx)
 	if ok {
 		t.Error("expected disabled override to be skipped")
 	}

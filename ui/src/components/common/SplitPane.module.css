@@ -1,0 +1,59 @@
+.split {
+  display: grid;
+  gap: 0;
+  align-items: start;
+}
+
+.stacked {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.main {
+  min-width: 0;
+}
+
+/* Sticky so the side column stays reachable from anywhere in a long page, and
+   scrolls inside itself rather than making the page taller. It takes whatever
+   width the form column does not, so a wider monitor gives the results more
+   room rather than more margin. */
+.side {
+  position: sticky;
+  top: 16px;
+  max-height: calc(100vh - 32px);
+  overflow-y: auto;
+  min-width: 0;
+}
+
+/* The divider is a 16px target around a 1px line: a hairline is honest about
+   where the boundary is but miserable to hit with a pointer. */
+.divider {
+  width: 16px;
+  align-self: stretch;
+  cursor: col-resize;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: 24px;
+  background: none;
+  border: none;
+}
+
+.grip {
+  width: 1px;
+  height: 40px;
+  background: var(--border);
+  border-radius: 1px;
+}
+
+.divider:hover .grip,
+.dragging .grip {
+  width: 3px;
+  background: var(--primary);
+}
+
+.divider:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: -2px;
+}

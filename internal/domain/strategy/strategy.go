@@ -12,6 +12,9 @@ type EvalContext struct {
 	DefaultLanguage string
 	// Lookups maps lookup table id to table, for in_lookup / not_in_lookup operators.
 	Lookups map[string]model.LookupTable
+	// OutputSchema is the layer's — the only place it is declared. Strategies
+	// never look it up themselves.
+	OutputSchema model.OutputSchema
 	// CollectFailures reports every rule that matches instead of stopping at
 	// the first. A rule still fires on a match; only what happens then differs.
 	// Set internally by ChecklistStrategy — it is not a config field.
@@ -25,6 +28,9 @@ type Result struct {
 	Computed     map[string]interface{}
 	Messages     map[string]string
 	RenderErrors []RenderError
+	// Outputs are the declared output fields resolved for the reported item —
+	// the winning rule under first-match, or the segment default.
+	Outputs map[string]interface{}
 	// Failures is populated only in collect mode.
 	Failures []model.Failure
 	// Status is set by ChecklistStrategy; other strategies leave it empty and the

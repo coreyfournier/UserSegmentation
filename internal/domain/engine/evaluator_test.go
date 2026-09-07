@@ -24,7 +24,7 @@ func TestEvaluator_StaticLayer(t *testing.T) {
 	snap := &model.Snapshot{
 		Layers: []model.Layer{
 			{
-				Name:  "base-tier",
+				Key: "baseTier",
 				Segments: []model.Segment{
 					{
 						ID:       "tier",
@@ -40,14 +40,14 @@ func TestEvaluator_StaticLayer(t *testing.T) {
 	}
 
 	e := newTestEvaluator(0)
-	result := e.Evaluate(snap, "vip", map[string]interface{}{}, nil, nil, false, time.Now())
-	if result.Layers["base-tier"] == nil || result.Layers["base-tier"].Assignment.Segment != "platinum" {
-		t.Errorf("expected platinum, got %v", result.Layers["base-tier"])
+	result := e.Evaluate(snap, map[string]interface{}{"subjectKey": "vip"}, nil, nil, false, time.Now())
+	if result.Layers["baseTier"] == nil || result.Layers["baseTier"].Assignment.Segment != "platinum" {
+		t.Errorf("expected platinum, got %v", result.Layers["baseTier"])
 	}
 
-	result = e.Evaluate(snap, "other", map[string]interface{}{}, nil, nil, false, time.Now())
-	if result.Layers["base-tier"] == nil || result.Layers["base-tier"].Assignment.Segment != "standard" {
-		t.Errorf("expected standard, got %v", result.Layers["base-tier"])
+	result = e.Evaluate(snap, map[string]interface{}{"subjectKey": "other"}, nil, nil, false, time.Now())
+	if result.Layers["baseTier"] == nil || result.Layers["baseTier"].Assignment.Segment != "standard" {
+		t.Errorf("expected standard, got %v", result.Layers["baseTier"])
 	}
 }
 
@@ -55,7 +55,7 @@ func TestEvaluator_CrossLayerDependency(t *testing.T) {
 	snap := &model.Snapshot{
 		Layers: []model.Layer{
 			{
-				Name:  "base-tier",
+				Key: "baseTier",
 				Segments: []model.Segment{
 					{
 						ID:       "tier",
@@ -68,7 +68,7 @@ func TestEvaluator_CrossLayerDependency(t *testing.T) {
 				},
 			},
 			{
-				Name:  "promotions",
+				Key: "promotions",
 				Segments: []model.Segment{
 					{
 						ID:       "promo",
@@ -77,7 +77,7 @@ func TestEvaluator_CrossLayerDependency(t *testing.T) {
 							{
 								RuleName:     "pro-promo",
 								SuccessEvent: "special-offer",
-								Condition:   &model.Condition{Field: "layer:base-tier", Operator: model.OpEq, Value: "pro"},
+								Condition:    &model.Condition{Field: "layer:baseTier", Operator: model.OpEq, Value: "pro"},
 							},
 						},
 						Default: "none",
@@ -90,13 +90,13 @@ func TestEvaluator_CrossLayerDependency(t *testing.T) {
 	e := newTestEvaluator(0)
 
 	// VIP user gets pro tier, then promo matches
-	result := e.Evaluate(snap, "vip", map[string]interface{}{}, nil, nil, false, time.Now())
+	result := e.Evaluate(snap, map[string]interface{}{"subjectKey": "vip"}, nil, nil, false, time.Now())
 	if result.Layers["promotions"] == nil || result.Layers["promotions"].Assignment.Segment != "special-offer" {
 		t.Errorf("expected special-offer, got %v", result.Layers["promotions"])
 	}
 
 	// Non-VIP gets free tier, promo defaults to none
-	result = e.Evaluate(snap, "other", map[string]interface{}{}, nil, nil, false, time.Now())
+	result = e.Evaluate(snap, map[string]interface{}{"subjectKey": "other"}, nil, nil, false, time.Now())
 	if result.Layers["promotions"] == nil || result.Layers["promotions"].Assignment.Segment != "none" {
 		t.Errorf("expected none, got %v", result.Layers["promotions"])
 	}
@@ -108,7 +108,7 @@ func TestEvaluator_PromotionTimeGating(t *testing.T) {
 	snap := &model.Snapshot{
 		Layers: []model.Layer{
 			{
-				Name:  "promos",
+				Key: "promos",
 				Segments: []model.Segment{
 					{
 						ID:       "future-promo",
@@ -130,7 +130,7 @@ func TestEvaluator_PromotionTimeGating(t *testing.T) {
 
 	// Now is before effective_from, segment should be skipped. The layer still
 	// reports a status — it resolved to nothing rather than being absent.
-	result := e.Evaluate(snap, "user", map[string]interface{}{"x": "y"}, nil, nil, false, time.Now())
+	result := e.Evaluate(snap, map[string]interface{}{"subjectKey": "user", "x": "y"}, nil, nil, false, time.Now())
 	lr, ok := result.Layers["promos"]
 	if !ok {
 		t.Fatal("expected the layer to report a status")
@@ -144,7 +144,7 @@ func TestEvaluator_PromotionTimeGating(t *testing.T) {
 
 	// Now is after effective_from (use past as effective_from)
 	snap.Layers[0].Segments[0].Promotion.EffectiveFrom = &past
-	result = e.Evaluate(snap, "user", map[string]interface{}{"x": "y"}, nil, nil, false, time.Now())
+	result = e.Evaluate(snap, map[string]interface{}{"subjectKey": "user", "x": "y"}, nil, nil, false, time.Now())
 	if result.Layers["promos"] == nil || result.Layers["promos"].Assignment.Segment != "promo" {
 		t.Errorf("expected promo, got %v", result.Layers["promos"])
 	}
@@ -153,13 +153,13 @@ func TestEvaluator_PromotionTimeGating(t *testing.T) {
 func TestEvaluator_LayerFilter(t *testing.T) {
 	snap := &model.Snapshot{
 		Layers: []model.Layer{
-			{Name: "a", Segments: []model.Segment{{ID: "s", Strategy: "static", Static: &model.StaticConfig{Default: "a-val"}}}},
-			{Name: "b", Segments: []model.Segment{{ID: "s", Strategy: "static", Static: &model.StaticConfig{Default: "b-val"}}}},
+			{Key: "a", Segments: []model.Segment{{ID: "s", Strategy: "static", Static: &model.StaticConfig{Default: "a-val"}}}},
+			{Key: "b", Segments: []model.Segment{{ID: "s", Strategy: "static", Static: &model.StaticConfig{Default: "b-val"}}}},
 		},
 	}
 
 	e := newTestEvaluator(0)
-	result := e.Evaluate(snap, "user", nil, []string{"b"}, nil, false, time.Now())
+	result := e.Evaluate(snap, map[string]interface{}{"subjectKey": "user"}, []string{"b"}, nil, false, time.Now())
 	if _, ok := result.Layers["a"]; ok {
 		t.Error("expected layer 'a' to be filtered out")
 	}
@@ -172,7 +172,7 @@ func TestEvaluator_OverrideTakesPriority(t *testing.T) {
 	snap := &model.Snapshot{
 		Layers: []model.Layer{
 			{
-				Name:  "test",
+				Key: "test",
 				Segments: []model.Segment{
 					{
 						ID:       "seg",
@@ -182,7 +182,7 @@ func TestEvaluator_OverrideTakesPriority(t *testing.T) {
 							{
 								RuleName:     "vip-override",
 								SuccessEvent: "override-val",
-								Condition:   &model.Condition{Field: "plan", Operator: model.OpEq, Value: "enterprise"},
+								Condition:    &model.Condition{Field: "plan", Operator: model.OpEq, Value: "enterprise"},
 							},
 						},
 					},
@@ -194,7 +194,7 @@ func TestEvaluator_OverrideTakesPriority(t *testing.T) {
 	e := newTestEvaluator(0)
 
 	// Override matches
-	result := e.Evaluate(snap, "user", map[string]interface{}{"plan": "enterprise"}, nil, nil, false, time.Now())
+	result := e.Evaluate(snap, map[string]interface{}{"subjectKey": "user", "plan": "enterprise"}, nil, nil, false, time.Now())
 	if result.Layers["test"] == nil || result.Layers["test"].Assignment.Segment != "override-val" {
 		t.Errorf("expected override-val, got %v", result.Layers["test"])
 	}
@@ -203,7 +203,7 @@ func TestEvaluator_OverrideTakesPriority(t *testing.T) {
 	}
 
 	// Override doesn't match, falls through to static
-	result = e.Evaluate(snap, "user", map[string]interface{}{"plan": "free"}, nil, nil, false, time.Now())
+	result = e.Evaluate(snap, map[string]interface{}{"subjectKey": "user", "plan": "free"}, nil, nil, false, time.Now())
 	if result.Layers["test"] == nil || result.Layers["test"].Assignment.Segment != "normal" {
 		t.Errorf("expected normal, got %v", result.Layers["test"])
 	}

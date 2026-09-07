@@ -7,6 +7,17 @@ import (
 	"github.com/segmentation-service/segmentation/internal/domain/model"
 )
 
+// normalizeOrder stamps list position onto each entry unless the table authors
+// its own numbers. The result is always persisted, so no store has to infer it.
+func normalizeOrder(t *model.LookupTable) {
+	if t.CustomOrder {
+		return
+	}
+	for i := range t.Entries {
+		t.Entries[i].Order = i
+	}
+}
+
 // LookupReferencedError indicates a lookup table cannot be deleted because rules
 // still reference it.
 type LookupReferencedError struct {
@@ -36,6 +47,9 @@ func (uc *AdminUseCase) CreateLookup(table model.LookupTable) (*model.Snapshot, 
 		return nil, fmt.Errorf("lookup name is required")
 	}
 	snap := uc.cloneSnapshot()
+	if clash := nameClash(snap.Lookups, table.Name, ""); clash != "" {
+		return nil, fmt.Errorf("a lookup named %q already exists (id %q)", table.Name, clash)
+	}
 
 	taken := make(map[string]bool, len(snap.Lookups))
 	for _, t := range snap.Lookups {
@@ -48,12 +62,14 @@ func (uc *AdminUseCase) CreateLookup(table model.LookupTable) (*model.Snapshot, 
 	if table.Entries == nil {
 		table.Entries = []model.LookupEntry{}
 	}
+	normalizeOrder(&table)
 	snap.Lookups = append(snap.Lookups, table)
 	return uc.commitSnapshot(snap)
 }
 
-// UpdateLookup updates a lookup table's display name and entries. The id and
-// keyType are immutable and preserved from the existing table.
+// UpdateLookup updates a lookup table's display name, description, ordering
+// flags (emitOrder, customOrder), and entries. The id and keyType are
+// immutable and preserved from the existing table.
 func (uc *AdminUseCase) UpdateLookup(id string, updated model.LookupTable) (*model.Snapshot, error) {
 	uc.mu.Lock()
 	defer uc.mu.Unlock()
@@ -72,13 +88,21 @@ func (uc *AdminUseCase) UpdateLookup(id string, updated model.LookupTable) (*mod
 	if strings.TrimSpace(updated.Name) == "" {
 		return nil, fmt.Errorf("lookup name is required")
 	}
+	// Excluding this table's own id, so saving without renaming is not a clash.
+	if clash := nameClash(snap.Lookups, updated.Name, id); clash != "" {
+		return nil, fmt.Errorf("a lookup named %q already exists (id %q)", updated.Name, clash)
+	}
 	entries := updated.Entries
 	if entries == nil {
 		entries = []model.LookupEntry{}
 	}
 	// Preserve immutable id and keyType.
 	snap.Lookups[idx].Name = updated.Name
+	snap.Lookups[idx].Description = updated.Description
+	snap.Lookups[idx].EmitOrder = updated.EmitOrder
+	snap.Lookups[idx].CustomOrder = updated.CustomOrder
 	snap.Lookups[idx].Entries = entries
+	normalizeOrder(&snap.Lookups[idx])
 	return uc.commitSnapshot(snap)
 }
 
@@ -171,4 +195,26 @@ func uniqueSlug(base string, taken map[string]bool) string {
 			return candidate
 		}
 	}
+}
+
+// nameClash returns the id of an existing lookup whose name collides with the
+// one proposed, or "" when the name is free. exceptID is the table being
+// updated, so re-saving it without a rename is not a clash with itself.
+//
+// Comparison is trimmed and case-insensitive. Only the id is a reference — a
+// field binds to a lookup by id, and two tables named "severity" would work
+// perfectly well as far as the engine is concerned. But the author picks from
+// a dropdown that shows the name, so two identical entries are indistinguishable
+// there, and uniqueSlug quietly makes the ids differ so nothing else complains.
+func nameClash(tables []model.LookupTable, name, exceptID string) string {
+	want := strings.ToLower(strings.TrimSpace(name))
+	for _, t := range tables {
+		if t.ID == exceptID {
+			continue
+		}
+		if strings.ToLower(strings.TrimSpace(t.Name)) == want {
+			return t.ID
+		}
+	}
+	return ""
 }

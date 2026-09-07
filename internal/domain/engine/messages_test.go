@@ -19,7 +19,7 @@ func newMessageEvaluator() *Evaluator {
 func TestEvaluator_RuleMessageRendered(t *testing.T) {
 	snap := &model.Snapshot{
 		Layers: []model.Layer{{
-			Name: "l",
+			Key: "l",
 			Segments: []model.Segment{{
 				ID: "s", Strategy: "rule",
 				Rules: []model.Rule{{
@@ -32,7 +32,7 @@ func TestEvaluator_RuleMessageRendered(t *testing.T) {
 		}},
 	}
 	e := newMessageEvaluator()
-	res := e.Evaluate(snap, "u", map[string]interface{}{"plan": "pro", "Name": "Bob"}, nil, []string{"es"}, false, time.Now())
+	res := e.Evaluate(snap, map[string]interface{}{"subjectKey": "u", "plan": "pro", "Name": "Bob"}, nil, []string{"es"}, false, time.Now())
 	a := res.Layers["l"].Assignment
 	if a == nil || a.Segment != "won" {
 		t.Fatalf("expected won, got %v", a)
@@ -48,7 +48,7 @@ func TestEvaluator_RuleMessageRendered(t *testing.T) {
 func TestEvaluator_OverrideMessageRendered(t *testing.T) {
 	snap := &model.Snapshot{
 		Layers: []model.Layer{{
-			Name: "l",
+			Key: "l",
 			Segments: []model.Segment{{
 				ID: "s", Strategy: "static",
 				Static: &model.StaticConfig{Default: "normal"},
@@ -61,7 +61,7 @@ func TestEvaluator_OverrideMessageRendered(t *testing.T) {
 		}},
 	}
 	e := newMessageEvaluator()
-	res := e.Evaluate(snap, "u", map[string]interface{}{"plan": "ent"}, nil, []string{"en"}, false, time.Now())
+	res := e.Evaluate(snap, map[string]interface{}{"subjectKey": "u", "plan": "ent"}, nil, []string{"en"}, false, time.Now())
 	a := res.Layers["l"].Assignment
 	if a == nil || a.Strategy != "override" || a.Messages["en"] != "Override for ent" {
 		t.Fatalf("got %v (messages %v)", a, a.Messages)
@@ -71,7 +71,7 @@ func TestEvaluator_OverrideMessageRendered(t *testing.T) {
 func TestEvaluator_DefaultMessageRendered(t *testing.T) {
 	snap := &model.Snapshot{
 		Layers: []model.Layer{{
-			Name: "l",
+			Key: "l",
 			Segments: []model.Segment{{
 				ID: "s", Strategy: "rule",
 				Rules: []model.Rule{{
@@ -84,7 +84,7 @@ func TestEvaluator_DefaultMessageRendered(t *testing.T) {
 		}},
 	}
 	e := newMessageEvaluator()
-	res := e.Evaluate(snap, "u", map[string]interface{}{"plan": "free"}, nil, []string{"en"}, false, time.Now())
+	res := e.Evaluate(snap, map[string]interface{}{"subjectKey": "u", "plan": "free"}, nil, []string{"en"}, false, time.Now())
 	a := res.Layers["l"].Assignment
 	if a == nil || a.Segment != "none" || a.Messages["en"] != "No match, sorry" {
 		t.Fatalf("got %v (messages %v)", a, a.Messages)
@@ -94,7 +94,7 @@ func TestEvaluator_DefaultMessageRendered(t *testing.T) {
 func TestEvaluator_MessageUsesComputedField(t *testing.T) {
 	snap := &model.Snapshot{
 		Layers: []model.Layer{{
-			Name: "l",
+			Key: "l",
 			Segments: []model.Segment{{
 				ID: "s", Strategy: model.StrategyRule,
 				Computed: []model.ComputedField{
@@ -110,7 +110,7 @@ func TestEvaluator_MessageUsesComputedField(t *testing.T) {
 		}},
 	}
 	e := newMessageEvaluator()
-	res := e.Evaluate(snap, "u", map[string]interface{}{"CTTotal": 20.0}, nil, []string{"en"}, false, time.Now())
+	res := e.Evaluate(snap, map[string]interface{}{"subjectKey": "u", "CTTotal": 20.0}, nil, []string{"en"}, false, time.Now())
 	a := res.Layers["l"].Assignment
 	if a == nil || a.Messages["en"] != "You pay 4" {
 		t.Fatalf("expected computed field in message, got %v (messages %v)", a, a.Messages)
@@ -120,7 +120,7 @@ func TestEvaluator_MessageUsesComputedField(t *testing.T) {
 func TestEvaluator_MessageFallbackToLayerDefaultLanguage(t *testing.T) {
 	snap := &model.Snapshot{
 		Layers: []model.Layer{{
-			Name: "l", DefaultLanguage: "en",
+			Key: "l", DefaultLanguage: "en",
 			Segments: []model.Segment{{
 				ID: "s", Strategy: "rule",
 				Rules: []model.Rule{{
@@ -133,7 +133,7 @@ func TestEvaluator_MessageFallbackToLayerDefaultLanguage(t *testing.T) {
 		}},
 	}
 	e := newMessageEvaluator()
-	res := e.Evaluate(snap, "u", map[string]interface{}{"plan": "pro"}, nil, []string{"es"}, false, time.Now())
+	res := e.Evaluate(snap, map[string]interface{}{"subjectKey": "u", "plan": "pro"}, nil, []string{"es"}, false, time.Now())
 	a := res.Layers["l"].Assignment
 	if a == nil || a.Messages["es"] != "English only" {
 		t.Fatalf("expected fallback to en content under es, got %v", a.Messages)
@@ -143,7 +143,7 @@ func TestEvaluator_MessageFallbackToLayerDefaultLanguage(t *testing.T) {
 func TestEvaluator_MessageRenderErrorProducesWarning(t *testing.T) {
 	snap := &model.Snapshot{
 		Layers: []model.Layer{{
-			Name: "l",
+			Key: "l",
 			Segments: []model.Segment{{
 				ID: "s", Strategy: "rule",
 				Rules: []model.Rule{{
@@ -156,7 +156,7 @@ func TestEvaluator_MessageRenderErrorProducesWarning(t *testing.T) {
 		}},
 	}
 	e := newMessageEvaluator()
-	res := e.Evaluate(snap, "u", map[string]interface{}{"plan": "pro"}, nil, []string{"en"}, false, time.Now())
+	res := e.Evaluate(snap, map[string]interface{}{"subjectKey": "u", "plan": "pro"}, nil, []string{"en"}, false, time.Now())
 	a := res.Layers["l"].Assignment
 	if a == nil || !strings.Contains(a.Messages["en"], "${1 +}") {
 		t.Fatalf("expected raw token preserved, got %v", a.Messages)
@@ -175,7 +175,7 @@ func TestEvaluator_MessageRenderErrorProducesWarning(t *testing.T) {
 func TestEvaluator_NoMessagesWhenNoLanguagesRequested(t *testing.T) {
 	snap := &model.Snapshot{
 		Layers: []model.Layer{{
-			Name: "l",
+			Key: "l",
 			Segments: []model.Segment{{
 				ID: "s", Strategy: "rule",
 				Rules: []model.Rule{{
@@ -188,7 +188,7 @@ func TestEvaluator_NoMessagesWhenNoLanguagesRequested(t *testing.T) {
 		}},
 	}
 	e := newMessageEvaluator()
-	res := e.Evaluate(snap, "u", map[string]interface{}{"plan": "pro"}, nil, nil, false, time.Now())
+	res := e.Evaluate(snap, map[string]interface{}{"subjectKey": "u", "plan": "pro"}, nil, nil, false, time.Now())
 	if a := res.Layers["l"].Assignment; a == nil || len(a.Messages) != 0 {
 		t.Fatalf("expected no messages without languages, got %v", a.Messages)
 	}
@@ -197,7 +197,7 @@ func TestEvaluator_NoMessagesWhenNoLanguagesRequested(t *testing.T) {
 func TestEvaluator_RenderAllReturnsAllLocales(t *testing.T) {
 	snap := &model.Snapshot{
 		Layers: []model.Layer{{
-			Name: "l",
+			Key: "l",
 			Segments: []model.Segment{{
 				ID: "s", Strategy: "rule",
 				Rules: []model.Rule{{
@@ -210,7 +210,7 @@ func TestEvaluator_RenderAllReturnsAllLocales(t *testing.T) {
 		}},
 	}
 	e := newMessageEvaluator()
-	res := e.Evaluate(snap, "u", map[string]interface{}{"plan": "pro"}, nil, nil, true, time.Now())
+	res := e.Evaluate(snap, map[string]interface{}{"subjectKey": "u", "plan": "pro"}, nil, nil, true, time.Now())
 	a := res.Layers["l"].Assignment
 	if a == nil || len(a.Messages) != 2 {
 		t.Fatalf("expected renderAll to return both locales, got %v", a.Messages)

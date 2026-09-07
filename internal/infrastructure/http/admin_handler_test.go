@@ -21,18 +21,22 @@ type mockStore struct {
 	snap *model.Snapshot
 }
 
-func (m *mockStore) Get() *model.Snapshot  { return m.snap }
+func (m *mockStore) Get() *model.Snapshot   { return m.snap }
 func (m *mockStore) Swap(s *model.Snapshot) { m.snap = s }
 
 func newTestAdmin() (*AdminHandler, *mockStore) {
 	store := &mockStore{snap: &model.Snapshot{
 		Version: 1,
 		Layers: []model.Layer{
-			{Name: "test-layer", Segments: []model.Segment{
-				{ID: "seg-1", Strategy: "static", Static: &model.StaticConfig{
-					Mappings: map[string]string{}, Default: "default",
+			{Key: "testLayer",
+				// Required by the static segment below: that strategy reads the
+				// subject key from context.
+				InputSchema: model.InputSchema{model.SubjectKeyField: {Type: model.FieldTypeString}},
+				Segments: []model.Segment{
+					{ID: "seg-1", Strategy: "static", Static: &model.StaticConfig{
+						Mappings: map[string]string{}, Default: "default",
+					}},
 				}},
-			}},
 		},
 	}}
 	uc := application.NewAdminUseCase(store, &mockSink{})
@@ -50,14 +54,14 @@ func TestAdminHandler_ListLayers(t *testing.T) {
 	}
 	var layers []model.Layer
 	json.NewDecoder(w.Body).Decode(&layers)
-	if len(layers) != 1 || layers[0].Name != "test-layer" {
+	if len(layers) != 1 || layers[0].Key != "testLayer" {
 		t.Errorf("unexpected layers: %v", layers)
 	}
 }
 
 func TestAdminHandler_CreateLayer(t *testing.T) {
 	h, _ := newTestAdmin()
-	body, _ := json.Marshal(model.Layer{Name: "new-layer"})
+	body, _ := json.Marshal(model.Layer{Key: "newLayer"})
 	req := httptest.NewRequest("POST", "/v1/admin/layers", bytes.NewReader(body))
 	w := httptest.NewRecorder()
 	h.CreateLayer(w, req)
@@ -69,7 +73,7 @@ func TestAdminHandler_CreateLayer(t *testing.T) {
 
 func TestAdminHandler_CreateLayerDuplicate(t *testing.T) {
 	h, _ := newTestAdmin()
-	body, _ := json.Marshal(model.Layer{Name: "test-layer"})
+	body, _ := json.Marshal(model.Layer{Key: "testLayer"})
 	req := httptest.NewRequest("POST", "/v1/admin/layers", bytes.NewReader(body))
 	w := httptest.NewRecorder()
 	h.CreateLayer(w, req)
@@ -82,7 +86,7 @@ func TestAdminHandler_CreateLayerDuplicate(t *testing.T) {
 func TestAdminHandler_DeleteLayer(t *testing.T) {
 	h, _ := newTestAdmin()
 	req := httptest.NewRequest("DELETE", "/v1/admin/layers/test-layer", nil)
-	req.SetPathValue("name", "test-layer")
+	req.SetPathValue("key", "testLayer")
 	w := httptest.NewRecorder()
 	h.DeleteLayer(w, req)
 
@@ -94,7 +98,7 @@ func TestAdminHandler_DeleteLayer(t *testing.T) {
 func TestAdminHandler_DeleteLayerNotFound(t *testing.T) {
 	h, _ := newTestAdmin()
 	req := httptest.NewRequest("DELETE", "/v1/admin/layers/nope", nil)
-	req.SetPathValue("name", "nope")
+	req.SetPathValue("key", "nope")
 	w := httptest.NewRecorder()
 	h.DeleteLayer(w, req)
 
@@ -110,7 +114,7 @@ func TestAdminHandler_CreateSegment(t *testing.T) {
 	}}
 	body, _ := json.Marshal(seg)
 	req := httptest.NewRequest("POST", "/v1/admin/layers/test-layer/segments", bytes.NewReader(body))
-	req.SetPathValue("name", "test-layer")
+	req.SetPathValue("key", "testLayer")
 	w := httptest.NewRecorder()
 	h.CreateSegment(w, req)
 
@@ -122,7 +126,7 @@ func TestAdminHandler_CreateSegment(t *testing.T) {
 func TestAdminHandler_DeleteSegment(t *testing.T) {
 	h, _ := newTestAdmin()
 	req := httptest.NewRequest("DELETE", "/v1/admin/layers/test-layer/segments/seg-1", nil)
-	req.SetPathValue("name", "test-layer")
+	req.SetPathValue("key", "testLayer")
 	req.SetPathValue("id", "seg-1")
 	w := httptest.NewRecorder()
 	h.DeleteSegment(w, req)
@@ -162,7 +166,7 @@ func TestAdminHandler_ExportImport(t *testing.T) {
 func TestAdminHandler_ListSegments(t *testing.T) {
 	h, _ := newTestAdmin()
 	req := httptest.NewRequest("GET", "/v1/admin/layers/test-layer/segments", nil)
-	req.SetPathValue("name", "test-layer")
+	req.SetPathValue("key", "testLayer")
 	w := httptest.NewRecorder()
 	h.ListSegments(w, req)
 

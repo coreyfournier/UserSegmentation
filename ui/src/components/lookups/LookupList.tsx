@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useLookups, useCreateLookup, useUpdateLookup, useDeleteLookup } from '../../api/lookups';
 import type { LookupTable } from '../../api/types';
 import Modal from '../common/Modal';
@@ -17,6 +18,23 @@ export default function LookupList() {
   const [editing, setEditing] = useState<LookupTable | null>(null);
   const [deleting, setDeleting] = useState<string | null>(null);
 
+  // /lookups?edit=<id> opens that table's editor directly, so a lookup link on
+  // a schema lands on the table rather than on the list. Same derive-at-render
+  // shape as LayerList: an explicit click wins once set, and closing clears
+  // both. Matching on id, which is what the link carries and what is stable.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const editParam = searchParams.get('edit');
+  const editingFromQuery = editParam ? lookups?.find((t) => t.id === editParam) ?? null : null;
+  const activeEditing = editing ?? editingFromQuery;
+  const closeEditModal = () => {
+    setEditing(null);
+    if (searchParams.has('edit')) {
+      const next = new URLSearchParams(searchParams);
+      next.delete('edit');
+      setSearchParams(next, { replace: true });
+    }
+  };
+
   if (isLoading) return <p>Loading...</p>;
   if (error) return <ErrorBanner message={(error as Error).message} />;
 
@@ -26,7 +44,7 @@ export default function LookupList() {
     <div>
       <div className={styles.toolbar}>
         <h2>Lookup Tables</h2>
-        <button className="btn-primary" onClick={() => setShowCreate(true)}>+ Add Lookup</button>
+        <button type="button" className="btn-primary" onClick={() => setShowCreate(true)}>+ Add Lookup</button>
       </div>
 
       {createLookup.error && <ErrorBanner message={(createLookup.error as Error).message} />}
@@ -44,8 +62,8 @@ export default function LookupList() {
             <span className={styles.count}>{t.entries?.length ?? 0} entries</span>
           </div>
           <div className={styles.actions}>
-            <button className="btn-ghost btn-sm" onClick={() => setEditing(t)}>Edit</button>
-            <button className="btn-danger btn-sm" onClick={() => setDeleting(t.id)}>Delete</button>
+            <button type="button" className="btn-ghost btn-sm" onClick={() => setEditing(t)}>Edit</button>
+            <button type="button" className="btn-danger btn-sm" onClick={() => setDeleting(t.id)}>Delete</button>
           </div>
         </div>
       ))}
@@ -54,7 +72,14 @@ export default function LookupList() {
         <LookupForm
           onSubmit={(table) =>
             createLookup.mutate(
-              { name: table.name, keyType: table.keyType, entries: table.entries },
+              {
+                name: table.name,
+                keyType: table.keyType,
+                description: table.description,
+                emitOrder: table.emitOrder,
+                customOrder: table.customOrder,
+                entries: table.entries,
+              },
               { onSuccess: () => setShowCreate(false) }
             )
           }
@@ -62,18 +87,28 @@ export default function LookupList() {
         />
       </Modal>
 
-      <Modal open={!!editing} onClose={() => setEditing(null)} title="Edit Lookup Table">
-        {editing && (
+      <Modal open={!!activeEditing} onClose={closeEditModal} title="Edit Lookup Table">
+        {activeEditing && (
           <LookupForm
-            initial={editing}
+            initial={activeEditing}
             submitLabel="Save"
             onSubmit={(table) =>
               updateLookup.mutate(
-                { id: editing.id, table: { ...editing, name: table.name, entries: table.entries } },
-                { onSuccess: () => setEditing(null) }
+                {
+                  id: activeEditing.id,
+                  table: {
+                    ...activeEditing,
+                    name: table.name,
+                    description: table.description,
+                    emitOrder: table.emitOrder,
+                    customOrder: table.customOrder,
+                    entries: table.entries,
+                  },
+                },
+                { onSuccess: closeEditModal }
               )
             }
-            onCancel={() => setEditing(null)}
+            onCancel={closeEditModal}
           />
         )}
       </Modal>
@@ -81,7 +116,7 @@ export default function LookupList() {
       <ConfirmDialog
         open={!!deleting}
         title="Delete Lookup Table"
-        message={`Delete lookup "${deleting}"? This is blocked if any rule references it.`}
+        message={`Delete lookup "${deleting}"? This is blocked if any rule or output schema field references it.`}
         onConfirm={() => {
           if (deleting) deleteLookup.mutate(deleting);
           setDeleting(null);

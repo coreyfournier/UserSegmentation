@@ -34,19 +34,29 @@ export default function LookupForm({ initial, onSubmit, onCancel, submitLabel = 
   const [name, setName] = useState(initial?.name ?? '');
   const [keyType, setKeyType] = useState<FieldType>(initial?.keyType ?? 'string');
   const [entries, setEntries] = useState<LookupEntry[]>(initial?.entries ?? []);
+  const [description, setDescription] = useState(initial?.description ?? '');
+  const [emitOrder, setEmitOrder] = useState(!!initial?.emitOrder);
+  const [customOrder, setCustomOrder] = useState(!!initial?.customOrder);
 
   const setKey = (i: number, raw: string) =>
     setEntries((es) => es.map((e, idx) => (idx === i ? { ...e, key: coerceKey(raw, keyType) } : e)));
   const setValue = (i: number, value: string) =>
     setEntries((es) => es.map((e, idx) => (idx === i ? { ...e, value: value || undefined } : e)));
-  const addEntry = () => setEntries((es) => [...es, { key: '', value: '' }]);
+  const addEntry = () =>
+    setEntries((es) => [
+      ...es,
+      customOrder
+        // Continue past the current maximum rather than colliding on 0.
+        ? { key: '', value: '', order: es.reduce((m, e) => Math.max(m, e.order ?? 0), -1) + 1 }
+        : { key: '', value: '' },
+    ]);
   const removeEntry = (i: number) => setEntries((es) => es.filter((_, idx) => idx !== i));
 
   return (
     <form
       onSubmit={(e) => {
         e.preventDefault();
-        onSubmit({ id: initial?.id, name, keyType, entries });
+        onSubmit({ id: initial?.id, name, keyType, description, emitOrder, customOrder, entries });
       }}
     >
       <div className="form-group">
@@ -75,16 +85,67 @@ export default function LookupForm({ initial, onSubmit, onCancel, submitLabel = 
       </div>
 
       <div className="form-group">
+        <label>Description</label>
+        <textarea
+          value={description}
+          onChange={(e) => setDescription(e.target.value)}
+          rows={2}
+          placeholder="How this table is meant to be used — including any cross-table ordering scheme"
+        />
+        <p style={{ fontSize: 11, color: 'var(--text-muted)', margin: '4px 0 0' }}>
+          Ordering invariants are documented here rather than validated. Nothing checks that
+          numbers are unique or contiguous — gaps are the mechanism for interleaving several
+          tables into one ordering.
+        </p>
+      </div>
+
+      <div className="form-group">
+        <label style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+          <input type="checkbox" checked={emitOrder} onChange={(e) => setEmitOrder(e.target.checked)} style={{ width: 'auto' }} />
+          Emit order in the evaluation response
+        </label>
+        <label style={{ display: 'flex', gap: 6, alignItems: 'center', marginTop: 6 }}>
+          <input
+            type="checkbox"
+            checked={customOrder}
+            onChange={(e) => {
+              const on = e.target.checked;
+              setCustomOrder(on);
+              setEntries((es) =>
+                on
+                  // Seed from current position so the first save changes nothing.
+                  ? es.map((entry, i) => ({ ...entry, order: entry.order ?? i }))
+                  // Leaving custom mode discards authored numbers for position.
+                  : es.map((entry) => {
+                      const rest = { ...entry };
+                      delete rest.order;
+                      return rest;
+                    }),
+              );
+            }}
+            style={{ width: 'auto' }}
+          />
+          Hand-author order numbers
+        </label>
+        <p style={{ fontSize: 11, color: 'var(--text-muted)', margin: '4px 0 0' }}>
+          {customOrder
+            ? 'The list is authored by number, so drag-to-reorder is off. Numbers may skip — that is how one ordering spans several tables.'
+            : 'Order is inferred from list position. Turn this on to hand-author the numbers instead.'}
+        </p>
+      </div>
+
+      <div className="form-group">
         <label>Entries</label>
         {entries.length > 0 && (
-          <div className={styles.entryHead}>
+          <div className={customOrder ? `${styles.entryHead} ${styles.ordered}` : styles.entryHead}>
             <span className={styles.colLabel}>Key (matched)</span>
             <span className={styles.colLabel}>Value (description, optional)</span>
+            {customOrder && <span className={styles.colLabel}>Order</span>}
             <span />
           </div>
         )}
         {entries.map((e, i) => (
-          <div key={i} className={styles.entryRow}>
+          <div key={i} className={customOrder ? `${styles.entryRow} ${styles.ordered}` : styles.entryRow}>
             <input
               type={keyType === 'number' ? 'number' : 'text'}
               value={e.key === undefined || e.key === null ? '' : String(e.key)}
@@ -97,6 +158,17 @@ export default function LookupForm({ initial, onSubmit, onCancel, submitLabel = 
               onChange={(ev) => setValue(i, ev.target.value)}
               placeholder="value (optional)"
             />
+            {customOrder && (
+              <input
+                type="number"
+                value={e.order ?? i}
+                onChange={(ev) => setEntries((es) =>
+                  es.map((x, j) => (j === i ? { ...x, order: Number(ev.target.value) } : x)),
+                )}
+                style={{ width: 70 }}
+                aria-label={`order for entry ${i + 1}`}
+              />
+            )}
             <button type="button" className="btn-danger btn-sm" onClick={() => removeEntry(i)}>x</button>
           </div>
         ))}

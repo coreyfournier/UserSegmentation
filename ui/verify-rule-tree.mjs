@@ -19,7 +19,9 @@ execFileSync(
   process.platform === 'win32' ? 'npx.cmd' : 'npx',
   ['tsc', 'src/components/rules/ruleTree.ts', '--outDir', out,
    '--module', 'esnext', '--target', 'es2022', '--moduleResolution', 'bundler'],
-  { cwd: here, stdio: 'inherit' }
+  // shell:true on Windows — Node 22 rejects execFileSync against npx.cmd with
+  // EINVAL otherwise, which silently made this whole verifier unrunnable.
+  { cwd: here, stdio: 'inherit', shell: process.platform === 'win32' }
 );
 // Emitted .js needs this marker to be loaded as ESM.
 writeFileSync(join(out, 'package.json'), '{"type":"module"}');

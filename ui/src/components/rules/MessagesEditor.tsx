@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import ExpandableField from '../common/ExpandableField';
 import styles from './MessagesEditor.module.css';
 
 interface Props {
@@ -90,14 +91,14 @@ export default function MessagesEditor({ value, onChange, hint }: Props) {
                   aria-label="language code"
                   aria-invalid={blocked}
                 />
-                <input
+                <ExpandableField
                   className={styles.text}
                   value={text}
                   onChange={(e) => setText(i, e.target.value)}
                   placeholder="Message with ${variables} and ${formulas}"
                   aria-label="message text"
                 />
-                <button className="btn-danger btn-sm" onClick={() => remove(i)}>x</button>
+                <button type="button" className="btn-danger btn-sm" onClick={() => remove(i)}>x</button>
               </div>
             );
           })}
@@ -107,7 +108,7 @@ export default function MessagesEditor({ value, onChange, hint }: Props) {
               <code>en</code>) or this text is discarded on save.
             </p>
           )}
-          <button className="btn-ghost btn-sm" onClick={add}>+ Add message</button>
+          <button type="button" className="btn-ghost btn-sm" onClick={add}>+ Add message</button>
         </div>
       )}
     </div>

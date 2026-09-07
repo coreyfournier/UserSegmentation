@@ -54,6 +54,7 @@ Export and import full configuration snapshots as JSON for backup or environment
 - **Four strategies** — Static (map lookup), Rule (composite tree, optionally with expr-lang computed fields), Percentage (FNV-1a hash bucketing), [Checklist](#checklist-strategy) (validation gates that itemise every problem at once)
 - **Nested entity context** — Rules address a document by path (`company.payFrequency`, `employee.hireDate`), so an entity and its parent travel in one request
 - **Computed fields** — Derive named values from context before rule evaluation via expr-lang formulas (e.g. `abs(Rating) * -1 + Bonus`); results included in the API response
+- **Output schema** — A `rule` or `checklist` segment declares typed fields resolved into a structured record per finding via literal, template, or expr-lang values; see [Output Schema](#output-schema)
 - **Overrides** — Rule-based overrides evaluated before the primary strategy
 - **Lookup tables** — Centralized, named key/value tables referenced by rules via `in_lookup` / `not_in_lookup`; replaces inline value lists so shared sets are maintained in one place
 - **Localized messages** — Optional message templates on rules, overrides, and defaults with `${…}` variable/formula interpolation, resolved per requested language with a layer-level fallback
@@ -62,6 +63,43 @@ Export and import full configuration snapshots as JSON for backup or environment
 - **Hot-reload** — File-polling watcher (500ms) with validation before swap
 - **Lock-free reads** — `atomic.Pointer` for zero-contention concurrent access
 - **Sub-millisecond latency** — Typical evaluation in ~25-50 microseconds
+
+## Production readiness
+
+**This is a proof of concept.** The engine and its evaluation semantics are the point; the
+configuration store is not production infrastructure.
+
+### What exists today
+
+- **Store** — one JSON file. `FileSource.Save` writes to a temp file and renames, so an
+  individual save is atomic, and `docker-compose` bind-mounts `./config:/config` so it
+  survives a container restart. Reads are served from an in-memory `atomic.Pointer[Snapshot]`.
+- **Version** — `Snapshot.Version` is a counter incremented on every save (`commitSnapshot`)
+  and reported by `GET /v1/health`. It identifies the current snapshot; it is not a history.
+- **Activation** — `internal/infrastructure/config/watcher.go` polls the file every 500ms,
+  validates, and swaps atomically. An edit is live within half a second of being saved.
+
+### What production needs
+
+1. **A real datastore.** A single file has no concurrency control. `cloneSnapshot` reads the
+   whole snapshot, mutates the copy, and commits with no compare-and-swap on `Version`, so two
+   concurrent editors silently last-write-wins.
+2. **Version history.** The counter records that something changed, not what. There is no diff,
+   no previous snapshot, and no rollback short of restoring the file by hand.
+3. **Change control.** No author attribution, no review or approval step, and no audit trail of
+   who changed which rule.
+4. **Migrations.** The config shape has already changed once — `assert` became `checklist` and
+   the polarity flipped. `internal/infrastructure/config/migration_test.go` only asserts that
+   the shipped config loads and validates; there is no migration machinery for configs written
+   against an older shape.
+5. **Staged activation.** `Rule.IsEnabled()` returns `true` when `enabled` is absent, so a newly
+   authored rule goes live on save. There is no default-off gate, no environment promotion, and
+   no dry-run.
+
+Item 5 has the widest blast radius: a rule saved mid-edit is evaluated for real subjects within
+500ms. Until a gate exists, treat every save to a shared config as a production deploy, and
+author anything user-facing with `"enabled": false` before switching it on deliberately.
+`Segment.promotion` can date-gate a whole segment, but there is no per-rule equivalent.
 
 ## Architecture
 
@@ -154,6 +192,16 @@ Evaluate a single user across all (or selected) layers.
         "AdjustedScore": 7.5,
         "IsHighValue": true
       }
+    },
+    "payroll-diagnostics": {
+      "status": "violated",
+      "failures": [
+        {
+          "rule": "advanceLimitBelowFloor",
+          "message": "Advance limit is below the minimum.",
+          "outputs": { "type": "limit-below-floor", "severity": { "key": "high", "value": "High severity", "order": 3 } }
+        }
+      ]
     }
   },
   "warnings": [],
@@ -163,6 +211,8 @@ Evaluate a single user across all (or selected) layers.
 ```
 
 Optional request fields `languages` (array of locale codes) and `render_all` (bool) control [localized message](#localized-messages) rendering; when set, each layer result also includes a `messages` map.
+
+A segment declaring an [output schema](#output-schema) adds an `outputs` object: on the layer result for a `rule` segment's winning result, and on each item of `failures` for a `checklist`. It is only ever present when the segment declares `outputSchema` — its absence means no schema was declared, not that resolution failed silently.
 
 Every layer result carries a `status`. It is authoritative — a consumer never needs to inspect `failures.length` to learn whether something is wrong.
 
@@ -200,10 +250,10 @@ See `config/segments.json` for a complete example with all strategies, promotion
 | Strategy | Description |
 |---|---|
 | `static` | Direct subject key → segment mapping with default |
-| `rule` | Composite AND/OR rule tree; first match wins. May declare [computed fields](#computed-fields) evaluated before the conditions |
+| `rule` | Composite AND/OR rule tree; first match wins. May declare [computed fields](#computed-fields) evaluated before the conditions, and an [output schema](#output-schema) resolved for the winning rule |
 | `percentage` | FNV-1a hash bucketing with weighted segments (deterministic — same subject always gets the same bucket given the same salt and weights) |
 
-| `checklist` | Validation gate. Every rule states a condition for a problem; each one that holds is itemised. See [Checklist Strategy](#checklist-strategy) |
+| `checklist` | Validation gate. Every rule states a condition for a problem; each one that holds is itemised, with its own [output schema](#output-schema) record if one is declared. See [Checklist Strategy](#checklist-strategy) |
 
 ### Condition or computation?
 
@@ -313,7 +363,15 @@ Attach optional, localized messages to any top-level **rule**, **override**, or 
 
 **Why:** keep the human-readable, translatable messaging next to the rule that produces it, and render it with live values from the evaluation context — no second lookup or downstream string-building.
 
-**How:** a `messages` map keys each locale to a template. Templates support `${ … }` interpolation, where the contents are any [expr-lang](https://expr-lang.org/) expression evaluated against the (enriched) context — so both plain variables (`${TransferFee}`) and expressions (`${CTTotal > 30 ? 'free' : 'partial'}`) work.
+**How:** a `messages` map keys each locale to a template. Each `${ … }` token resolves in two steps, in this order: first, if the token's text names a field the layer's `inputSchema` declares, that field's value is used as-is — the context is a flat map whose keys may contain dots, so `${company.ein}` reads the single key `"company.ein"` rather than doing member access on a `company` object (which is why a *condition* on a dotted field has always worked, while a template on the same field used not to). Otherwise the token is compiled as an [expr-lang](https://expr-lang.org/) expression, so both plain variables (`${TransferFee}`) and compound expressions (`${CTTotal > 30 ? 'free' : 'partial'}`) work — a token is not merely a field reference.
+
+Both steps are checked at config load, not left to fail at evaluation: a token that names neither a declared field nor a compilable expression is rejected, naming the layer, segment, rule and token:
+
+```
+layer "payroll" segment "p" rule "r1" errorMessage: token "${nam}": unknown name nam
+```
+
+A layer that declares no `inputSchema` skips this check entirely — with no fields declared there is nothing to check a token against, so tokens there are accepted unchecked rather than all rejected.
 
 ```json
 {
@@ -359,7 +417,7 @@ Centralized, named tables of typed keys that rules match against — instead of 
 
 **Why:** maintain a shared set of values (zip codes, plan ids, SKUs) in one place. Rules reference a table by a **stable internal id**, so you can rename its display name or edit its entries without touching any rule.
 
-**How:** tables live at the top level of the config under `lookups`. Each table has an immutable `id` (auto-slugged from the display `name` at creation), a `keyType` (`string` or `number`, immutable), and `entries` of `key` (the matched value) plus an optional `value` (a human-readable description of the key). Rules reference a table with the `in_lookup` / `not_in_lookup` operators, whose condition `value` is the table id. The field's type must match the table's `keyType`.
+**How:** tables live at the top level of the config under `lookups`. Each table has an immutable `id` (auto-slugged from the display `name` at creation), a `keyType` (`string` or `number`, immutable), an optional `description`, and `entries` of `key` (the matched value) plus an optional `value` (a human-readable description of the key). Rules reference a table with the `in_lookup` / `not_in_lookup` operators, whose condition `value` is the table id. The field's type must match the table's `keyType`.
 
 ```json
 {
@@ -377,12 +435,11 @@ Centralized, named tables of typed keys that rules match against — instead of 
   "layers": [
     {
       "name": "geo",
-      "order": 1,
+      "inputSchema": { "zip": { "type": "string", "required": true } },
       "segments": [
         {
           "id": "region",
           "strategy": "rule",
-          "inputSchema": { "zip": { "type": "string", "required": true } },
           "rules": [
             {
               "ruleName": "premium",
@@ -402,31 +459,49 @@ At evaluation the table's keys are treated exactly like an inline array — `in_
 
 Manage tables via the **Lookups** admin screen (or the `/v1/admin/lookups` CRUD endpoints). A table cannot be deleted while any rule references it — the API returns `409` listing the referencing rules.
 
+#### Ordering
+
+Every entry carries a persisted `order` — always written, even when it is only inferred from list position, because a relational store cannot cheaply reorder rows the way an in-memory array can. Two independent flags on the table control what that number means and whether it is visible:
+
+| Flag | Controls |
+|---|---|
+| `emitOrder` | whether `order` appears in the evaluation response (see [Output Schema](#output-schema)) |
+| `customOrder` | whether the numbers are hand-authored, rather than inferred from list position |
+
+All four combinations are meaningful — a table can be ordered for admin display without emitting that order, and inferred positions can be emitted without ever being hand-authored. Keeping the flags independent avoids forcing an author to hand-number a table merely to get its order into the response.
+
+**Gaps and duplicates are deliberately unvalidated.** Hand-authored numbers are how one ordering spans several tables: give severity the values 1, 3, 5 and diagnosis type the values 2, 4, 6, and a single sort over the union of both tables interleaves them correctly — something a declared `orderBy: [severity, type]` could never do, since it can only place one whole dimension ahead of the other. Nothing checks that ranges stay disjoint or that numbers stay unique, within a table or across a group; a collision produces a tie, which a stable sort then breaks by encounter order. `description` is where an author records the scheme they are relying on, for whoever edits the table next.
+
 ### Computed Fields
 
 A `rule` or `checklist` segment may declare `computed` fields: named values derived from [expr-lang](https://expr-lang.org/) formulas before the conditions run. Formulas are evaluated in declaration order — a later formula can reference an earlier result. Computed values overwrite any `inputSchema` fields of the same name, and are returned with the result.
 
 ```json
 {
-  "id": "pricing-tier",
-  "strategy": "rule",
-  "computed": [
-    { "name": "AdjustedScore", "type": "number", "formula": "abs(Rating) * Weight" },
-    { "name": "IsHighValue",   "type": "boolean", "formula": "Revenue > 10000 && AdjustedScore > 5" }
-  ],
+  "name": "pricing",
   "inputSchema": {
     "Rating":  { "type": "number", "required": true },
     "Weight":  { "type": "number", "required": true },
     "Revenue": { "type": "number", "required": false }
   },
-  "rules": [
+  "segments": [
     {
-      "ruleName": "high-value",
-      "successEvent": "premium",
-      "condition": { "field": "IsHighValue", "operator": "eq", "value": true }
+      "id": "pricing-tier",
+      "strategy": "rule",
+      "computed": [
+        { "name": "AdjustedScore", "type": "number", "formula": "abs(Rating) * Weight" },
+        { "name": "IsHighValue",   "type": "boolean", "formula": "Revenue > 10000 && AdjustedScore > 5" }
+      ],
+      "rules": [
+        {
+          "ruleName": "high-value",
+          "successEvent": "premium",
+          "condition": { "field": "IsHighValue", "operator": "eq", "value": true }
+        }
+      ],
+      "default": "standard"
     }
-  ],
-  "default": "standard"
+  ]
 }
 ```
 
@@ -450,6 +525,105 @@ This service additionally registers the following math functions:
 | `pow(x, y)` | x raised to the power y |
 | `sin(x)` | Sine (x in radians) |
 | `cos(x)` | Cosine (x in radians) |
+
+### Output Schema
+
+A layer may declare `outputSchema` for its `rule` and `checklist` segments: named fields resolved into a structured record on every reported result, instead of a bare rule name and message. A `checklist` finding carries its own record; a `rule` segment's winning result carries one on the layer result. Raw JSON was the only way to author one until the layer editor grew a dedicated tab for it.
+
+**Why:** without it, a consumer reconstructs a typed object from `segment` + `reason` + `computed` (or `rule` + `message`) by hand, per finding. An output schema authors that mapping once, in config, next to the rule that produces it — the same locality argument [Localized Messages](#localized-messages) already makes for message text.
+
+```json
+{
+  "name": "payroll-diagnostics",
+  "outputSchema": {
+    "type":      { "type": "string" },
+    "severity":  { "type": "string", "lookup": "diagnosis-severity", "required": true },
+    "message":   { "type": "string" },
+    "shortfall": { "type": "number" }
+  },
+  "segments": [
+    {
+      "id": "payroll-diagnostics",
+      "strategy": "checklist",
+      "computed": [
+        { "name": "MaxAllowed", "type": "number", "formula": "min(EarnedWages * 0.5, StateCap)" }
+      ],
+      "rules": [
+        {
+          "ruleName": "advanceLimitBelowFloor",
+          "condition": { "field": "MaxAllowed", "operator": "lt", "value": 25 },
+          "errorMessage": "Advance limit is below the minimum.",
+          "outputs": {
+            "type": "limit-below-floor",
+            "severity": "high",
+            "message": "Advance limit of ${MaxAllowed} is below the $25 minimum.",
+            "shortfall": "25 - MaxAllowed"
+          }
+        }
+      ]
+    }
+  ]
+}
+```
+
+**Response (excerpt, `MaxAllowed` = 20):**
+```json
+{
+  "failures": [
+    {
+      "rule": "advanceLimitBelowFloor",
+      "message": "Advance limit is below the minimum.",
+      "outputs": {
+        "type": "limit-below-floor",
+        "severity": { "key": "high", "value": "High severity", "order": 3 },
+        "message": "Advance limit of 20 is below the $25 minimum.",
+        "shortfall": 5
+      }
+    }
+  ]
+}
+```
+
+#### Eval modes
+
+How an authored value becomes a value is derived from the field's declared `type`, not authored separately: a `string` field's value is a template (text with `${ … }` tokens); every other type's value is a single whole [expr-lang](https://expr-lang.org/) expression, emitted as whatever the expression returns. A `string` field's `${ … }` tokens resolve exactly as in [Localized Messages](#localized-messages) — declared field first, expr-lang expression otherwise — and are validated at load the same way, rejecting an unknown name with the same `layer`/`segment`/`rule`/token message.
+
+#### Type rules
+
+Enforced at config load, not left to fail at evaluation:
+
+- An authored value need not look like a literal to be accepted — `{"type":"number"}` authored as `"3"` still emits the JSON number `3`, because `3` is itself a valid expression. Validation compiles the value the same way evaluation does, so a value that loads is a value that will also evaluate.
+- A stale `"eval"` key (from before the mode was derived from the type) is rejected at load, naming the field and telling you to remove it.
+
+#### Where values are authored
+
+- **Per reporting rule**, in that rule's own `outputs` — for a value that differs per finding.
+- **Once, on the segment**, in its `outputs` — for a field that does not vary, covering every rule at once.
+
+A rule's own value wins when both are present. Only **top-level** rules carry `outputs` and report; a nested `And`/`Or` branch is part of another rule's condition, not a reporting unit of its own, so it carries no output values (see [A group is one item](#a-group-is-one-item)). An authored key the layer's `outputSchema` does not declare is rejected at load — the evaluator reads the schema, not what was authored, so an undeclared key would otherwise be silently dropped with no diagnostic at runtime.
+
+#### `required`
+
+The caller's contract that a field will be present in the emitted record. It is checked at two points because they answer different questions:
+
+| | Snapshot load | Evaluation |
+|---|---|---|
+| Asks | did an authoring path supply a value? | did the caller actually receive one? |
+| On failure | **error** — the config is rejected | **warning** — evaluation continues |
+
+At load, a required field is satisfied if the segment's own `outputs` supplies it; failing that, every **enabled** top-level rule must supply it (disabled rules are exempt, so a work-in-progress rule cannot block an unrelated save). A segment with a `default` can only be satisfied at the segment level, since the default branch has no rule to read a value from.
+
+Config validity cannot guarantee runtime presence — a `template` or `expression` can still fail against the actual request context, and degradation (below) drops the field regardless of `required`. The evaluation-time warning is what covers that gap.
+
+**Two exemptions.** `static` and `percentage` segments never populate a result's outputs at all, so `outputSchema` — `required` included — has no effect on them.
+
+#### Lookup-bound fields
+
+Setting a field's `lookup` to a table id turns its authored value from a bare key into `{ "key": ..., "value": "..." }` in the emitted record — plus `"order"` when the table sets `emitOrder` — so a consumer can sort and display a finding without a second read of the table. The field's declared `type` must match the table's `keyType`; a mismatch is rejected at load. See [Ordering](#ordering) for how `order` itself is controlled.
+
+#### Degradation
+
+A field whose value fails to render or evaluate is recorded as an error, and that one field is simply omitted from the record — the finding still reports. There is no partial value: a failing template degrades the whole field, not just the unresolved token, unlike a [localized message](#localized-messages), which leaves the raw `${…}` in place. A required-field check tests presence, and a half-rendered string would still be present — so an output value is all-or-nothing, whether it is templated or evaluated as an expression.
 
 ### Checklist Strategy
 
@@ -481,10 +655,10 @@ Three round trips for problems that were all visible on the first pass. `rule` s
 ```json
 {
   "name": "company-identity",
+  "inputSchema": { "company.ein": { "type": "string", "required": true } },
   "segments": [{
     "id": "all-types",
     "strategy": "checklist",
-    "inputSchema": { "company.ein": { "type": "string", "required": true } },
     "rules": [
       {
         "ruleName": "companyMissingFederalEIN",
@@ -706,40 +880,45 @@ Computes the total EWA transfer spend for CT-state employees in the current batc
 - Otherwise → standard $4 fee
 
 <details>
-<summary>Segment config JSON</summary>
+<summary>Layer config JSON</summary>
 
 ```json
 {
-  "id": "ct-fee",
-  "strategy": "rule",
-  "computed": [
-    {
-      "name": "CTTotal",
-      "type": "number",
-      "formula": "sum(map(filter(Employees, {.State == \"CT\"}), {.TransferSpendThisMonth}))"
-    },
-    {
-      "name": "TransferFee",
-      "type": "number",
-      "formula": "CTTotal > 30.0 ? 0.0 : (CTTotal + 4.0 > 30.0 ? 30.0 - CTTotal : 4.0)"
-    }
-  ],
+  "name": "ct-fee",
   "inputSchema": {
     "Employees": { "type": "array", "required": true }
   },
-  "rules": [
+  "segments": [
     {
-      "ruleName": "fee-waived",
-      "successEvent": "fee-waived",
-      "condition": { "field": "CTTotal", "operator": "gt", "value": 30 }
-    },
-    {
-      "ruleName": "fee-partial",
-      "successEvent": "fee-partial",
-      "condition": { "field": "CTTotal", "operator": "gt", "value": 26 }
+      "id": "ct-fee",
+      "strategy": "rule",
+      "computed": [
+        {
+          "name": "CTTotal",
+          "type": "number",
+          "formula": "sum(map(filter(Employees, {.State == \"CT\"}), {.TransferSpendThisMonth}))"
+        },
+        {
+          "name": "TransferFee",
+          "type": "number",
+          "formula": "CTTotal > 30.0 ? 0.0 : (CTTotal + 4.0 > 30.0 ? 30.0 - CTTotal : 4.0)"
+        }
+      ],
+      "rules": [
+        {
+          "ruleName": "fee-waived",
+          "successEvent": "fee-waived",
+          "condition": { "field": "CTTotal", "operator": "gt", "value": 30 }
+        },
+        {
+          "ruleName": "fee-partial",
+          "successEvent": "fee-partial",
+          "condition": { "field": "CTTotal", "operator": "gt", "value": 26 }
+        }
+      ],
+      "default": "fee-standard"
     }
-  ],
-  "default": "fee-standard"
+  ]
 }
 ```
 
@@ -799,27 +978,11 @@ Three scenarios, same config:
 A logistic risk model for pricing and approving an earned wage advance. Age-decayed signals feed a log-odds accumulator; the resulting default probability determines the risk-adjusted maximum offer. The binding constraint (risk ceiling vs. net-pay cap) is surfaced as a segment for downstream routing.
 
 <details>
-<summary>Segment config JSON</summary>
+<summary>Layer config JSON</summary>
 
 ```json
 {
-  "id": "ewa-risk",
-  "strategy": "rule",
-  "computed": [
-    {
-      "name": "Z", "type": "number",
-      "formula": "w0 + sum(map(Signals, {.weight * .score * exp(-.age_sec / .tau_sec)}))"
-    },
-    { "name": "P",              "type": "number", "formula": "1.0 / (1.0 + exp(-Z))" },
-    { "name": "M",              "type": "number", "formula": "Fee - AchCost" },
-    {
-      "name": "RiskCeiling", "type": "number",
-      "formula": "(M * (1.0 - P) - AchCost * P) / (P + Lambda * P * (1.0 - P))"
-    },
-    { "name": "NetPayCap",      "type": "number", "formula": "Alpha * NetPay" },
-    { "name": "Offered",        "type": "number", "formula": "max(0.0, min(RiskCeiling, NetPayCap))" },
-    { "name": "BindingLimit",   "type": "string", "formula": "RiskCeiling < NetPayCap ? \"risk-ceiling\" : \"net-pay-cap\"" }
-  ],
+  "name": "ewa-risk",
   "inputSchema": {
     "Signals":  { "type": "array",  "required": true  },
     "w0":       { "type": "number", "required": true  },
@@ -829,19 +992,40 @@ A logistic risk model for pricing and approving an earned wage advance. Age-deca
     "Alpha":    { "type": "number", "required": true  },
     "NetPay":   { "type": "number", "required": true  }
   },
-  "rules": [
+  "segments": [
     {
-      "ruleName": "below-minimum",
-      "successEvent": "decline",
-      "condition": { "field": "Offered", "operator": "lt", "value": 1 }
-    },
-    {
-      "ruleName": "risk-limited",
-      "successEvent": "approve-risk-ceiling",
-      "condition": { "field": "BindingLimit", "operator": "eq", "value": "risk-ceiling" }
+      "id": "ewa-risk",
+      "strategy": "rule",
+      "computed": [
+        {
+          "name": "Z", "type": "number",
+          "formula": "w0 + sum(map(Signals, {.weight * .score * exp(-.age_sec / .tau_sec)}))"
+        },
+        { "name": "P",              "type": "number", "formula": "1.0 / (1.0 + exp(-Z))" },
+        { "name": "M",              "type": "number", "formula": "Fee - AchCost" },
+        {
+          "name": "RiskCeiling", "type": "number",
+          "formula": "(M * (1.0 - P) - AchCost * P) / (P + Lambda * P * (1.0 - P))"
+        },
+        { "name": "NetPayCap",      "type": "number", "formula": "Alpha * NetPay" },
+        { "name": "Offered",        "type": "number", "formula": "max(0.0, min(RiskCeiling, NetPayCap))" },
+        { "name": "BindingLimit",   "type": "string", "formula": "RiskCeiling < NetPayCap ? \"risk-ceiling\" : \"net-pay-cap\"" }
+      ],
+      "rules": [
+        {
+          "ruleName": "below-minimum",
+          "successEvent": "decline",
+          "condition": { "field": "Offered", "operator": "lt", "value": 1 }
+        },
+        {
+          "ruleName": "risk-limited",
+          "successEvent": "approve-risk-ceiling",
+          "condition": { "field": "BindingLimit", "operator": "eq", "value": "risk-ceiling" }
+        }
+      ],
+      "default": "approve-net-pay-cap"
     }
-  ],
-  "default": "approve-net-pay-cap"
+  ]
 }
 ```
 
@@ -897,7 +1081,6 @@ The segment editor shows: strategy = Expression, promotion window = Jul 4–31 2
 ```json
 {
   "name": "transfer-fee",
-  "order": 7,
   "defaultLanguage": "en",
   "segments": [
     {

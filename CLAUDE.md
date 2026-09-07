@@ -5,8 +5,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Build & Run Commands
 
 ```bash
-# Go is installed at C:\Users\Corey\go (zip install)
-export PATH="/c/Users/Corey/go/bin:$PATH"
+# Go is on PATH already — no export needed.
+# Verified: go1.26.5 windows/amd64 at /c/Program Files/Go/bin/go
+go version
 
 # Build
 go build ./...
@@ -79,4 +80,4 @@ Rules follow a recursive tree structure (`internal/domain/model/rule.go`). A **l
 
 ## Config Format
 
-`config/segments.json` defines layers (ordered), each containing segments with a strategy (`static`, `rule`, or `percentage`), optional `overrides`, `promotion` time bounds, and `inputSchema` for validation.
+`config/segments.json` defines layers (execution order comes from each layer's `dependsOn` edges, topologically sorted — not an ordinal), each declaring `inputSchema` and `outputSchema` once for all its segments, and each containing segments with a strategy (`static`, `rule`, `percentage`, or `checklist`), optional `overrides`, and `promotion` time bounds.

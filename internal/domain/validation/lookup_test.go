@@ -10,16 +10,19 @@ import (
 func snapWithLookup(t model.LookupTable, seg model.Segment) *model.Snapshot {
 	return &model.Snapshot{
 		Lookups: []model.LookupTable{t},
-		Layers:  []model.Layer{{Name: "l", Segments: []model.Segment{seg}}},
+		Layers: []model.Layer{{
+			Key:         "l",
+			InputSchema: model.InputSchema{"zip": {Type: model.FieldTypeString}},
+			Segments:    []model.Segment{seg},
+		}},
 	}
 }
 
 func zipRuleSegment(op model.Operator, tableID string) model.Segment {
 	return model.Segment{
 		ID: "s", Strategy: "rule",
-		InputSchema: model.InputSchema{"zip": {Type: model.FieldTypeString}},
 		Rules: []model.Rule{{
-			RuleName:   "r",
+			RuleName:  "r",
 			Condition: &model.Condition{Field: "zip", Operator: op, Value: tableID},
 		}},
 	}

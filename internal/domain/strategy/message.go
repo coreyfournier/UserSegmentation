@@ -6,13 +6,19 @@ import (
 	"sync"
 
 	"github.com/expr-lang/expr"
+	"github.com/segmentation-service/segmentation/internal/domain/model"
 )
 
-// RenderError describes a failed ${ ... } token interpolation in a message.
+// RenderError describes a failed ${ ... } token interpolation in a message, or
+// a failed output field resolution. Field is set only for the latter: it
+// names the output field whose value could not be resolved, so a caller
+// debugging a diagnostics segment learns which field vanished instead of
+// being pointed at message templates that were never involved.
 type RenderError struct {
 	Language string `json:"language"`
 	Token    string `json:"token"`
 	Err      string `json:"err"`
+	Field    string `json:"field,omitempty"`
 }
 
 // RenderResult holds rendered messages keyed by language and any interpolation errors.
@@ -128,7 +134,13 @@ func renderTemplate(tmpl string, env map[string]interface{}) (string, []tokenErr
 		token := tmpl[start : end+1] // includes ${ ... }
 		exprStr := strings.TrimSpace(tmpl[start+2 : end])
 
-		val, err := evalMessageExpr(exprStr, env)
+		// A declared field wins before expr is consulted. The context is a flat
+		// map whose keys may contain dots — "company.ein" is one key, not member
+		// access — and ResolveField is what conditions already use to read it.
+		// Handing the same string straight to expr instead reads it as member
+		// access on an unbound "company" and fails, which is why a condition on
+		// a dotted field works today while a template on the same field does not.
+		val, err := resolveTokenValue(exprStr, env)
 		if err != nil {
 			sb.WriteString(token)
 			bad = append(bad, tokenErr{token: token, err: err.Error()})
@@ -138,6 +150,13 @@ func renderTemplate(tmpl string, env map[string]interface{}) (string, []tokenErr
 		i = end + 1
 	}
 	return sb.String(), bad
+}
+
+func resolveTokenValue(exprStr string, env map[string]interface{}) (interface{}, error) {
+	if v, ok := model.ResolveField(env, exprStr); ok {
+		return v, nil
+	}
+	return evalMessageExpr(exprStr, env)
 }
 
 func evalMessageExpr(expression string, env map[string]interface{}) (interface{}, error) {

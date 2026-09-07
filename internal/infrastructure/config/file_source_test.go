@@ -16,7 +16,7 @@ func TestFileSource_Load(t *testing.T) {
 	data := []byte(`{
 		"version": 5,
 		"layers": [
-			{"name": "test", "segments": []}
+			{"key": "test", "segments": []}
 		]
 	}`)
 	if err := os.WriteFile(path, data, 0644); err != nil {
@@ -31,7 +31,7 @@ func TestFileSource_Load(t *testing.T) {
 	if snap.Version != 5 {
 		t.Errorf("expected version 5, got %d", snap.Version)
 	}
-	if len(snap.Layers) != 1 || snap.Layers[0].Name != "test" {
+	if len(snap.Layers) != 1 || snap.Layers[0].Key != "test" {
 		t.Errorf("unexpected layers: %v", snap.Layers)
 	}
 }
@@ -42,8 +42,8 @@ func TestFileSource_LoadReadsDependsOn(t *testing.T) {
 	data := []byte(`{
 		"version": 1,
 		"layers": [
-			{"name": "b", "dependsOn": ["a"], "segments": []},
-			{"name": "a", "segments": []}
+			{"key": "b", "dependsOn": ["a"], "segments": []},
+			{"key": "a", "segments": []}
 		]
 	}`)
 	if err := os.WriteFile(path, data, 0644); err != nil {
@@ -56,7 +56,7 @@ func TestFileSource_LoadReadsDependsOn(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Declaration order on disk is preserved; the evaluator topologically sorts.
-	if snap.Layers[0].Name != "b" || len(snap.Layers[0].DependsOn) != 1 || snap.Layers[0].DependsOn[0] != "a" {
+	if snap.Layers[0].Key != "b" || len(snap.Layers[0].DependsOn) != 1 || snap.Layers[0].DependsOn[0] != "a" {
 		t.Errorf("dependsOn not loaded: %+v", snap.Layers)
 	}
 }
@@ -69,7 +69,7 @@ func TestFileSource_RejectsLegacyOrder(t *testing.T) {
 	data := []byte(`{
 		"version": 1,
 		"layers": [
-			{"name": "stale", "order": 1, "segments": []}
+			{"key": "stale", "order": 1, "segments": []}
 		]
 	}`)
 	if err := os.WriteFile(path, data, 0644); err != nil {
@@ -88,12 +88,12 @@ func TestFileSource_RejectsLegacyOrder(t *testing.T) {
 // evaluating false forever.
 func TestFileSource_RejectsLegacyExpressionKeys(t *testing.T) {
 	cases := map[string]string{
-		"rule condition": `{"version":1,"layers":[{"name":"l","segments":[
+		"rule condition": `{"version":1,"layers":[{"key":"l","segments":[
 			{"id":"s","strategy":"rule","rules":[
 				{"ruleName":"r","expression":{"field":"a","operator":"eq","value":1}}
 			]}
 		]}]}`,
-		"computed field list": `{"version":1,"layers":[{"name":"l","segments":[
+		"computed field list": `{"version":1,"layers":[{"key":"l","segments":[
 			{"id":"s","strategy":"computed","expressions":[{"name":"X","type":"number","formula":"1"}]}
 		]}]}`,
 	}
@@ -122,7 +122,7 @@ func TestFileSource_AllowsUnnamedNestedRules(t *testing.T) {
 	data := []byte(`{
 		"version": 1,
 		"layers": [
-			{"name": "gates", "segments": [
+			{"key": "gates", "segments": [
 				{"id": "g", "strategy": "checklist", "rules": [
 					{"ruleName": "depositAccountMissing", "operator": "Or", "rules": [
 						{"ruleName": "", "condition": {"field": "hasDeposit", "operator": "is_null"}},
@@ -149,12 +149,12 @@ func TestFileSource_RejectsDuplicateChecklistRuleName(t *testing.T) {
 	data := []byte(`{
 		"version": 1,
 		"layers": [
-			{"name": "gate-one", "segments": [
+			{"key": "gateOne", "segments": [
 				{"id": "s", "strategy": "checklist", "rules": [
 					{"ruleName": "sameName", "condition": {"field": "a", "operator": "eq", "value": 1}}
 				]}
 			]},
-			{"name": "gate-two", "segments": [
+			{"key": "gateTwo", "segments": [
 				{"id": "s", "strategy": "checklist", "rules": [
 					{"ruleName": "sameName", "condition": {"field": "b", "operator": "eq", "value": 2}}
 				]}
@@ -199,7 +199,7 @@ func TestFileSource_Save(t *testing.T) {
 	snap := &model.Snapshot{
 		Version: 10,
 		Layers: []model.Layer{
-			{Name: "saved", Segments: []model.Segment{}},
+			{Key: "saved", Segments: []model.Segment{}},
 		},
 	}
 	if err := fs.Save(snap); err != nil {
@@ -214,7 +214,7 @@ func TestFileSource_Save(t *testing.T) {
 	if loaded.Version != 10 {
 		t.Errorf("expected version 10, got %d", loaded.Version)
 	}
-	if len(loaded.Layers) != 1 || loaded.Layers[0].Name != "saved" {
+	if len(loaded.Layers) != 1 || loaded.Layers[0].Key != "saved" {
 		t.Errorf("unexpected layers after Save: %v", loaded.Layers)
 	}
 	if loaded.LastModified == nil {
@@ -236,7 +236,7 @@ func TestFileSource_SaveAtomic(t *testing.T) {
 
 	// Overwrite with new version
 	updated := &model.Snapshot{Version: 2, Layers: []model.Layer{
-		{Name: "new", Segments: []model.Segment{}},
+		{Key: "new", Segments: []model.Segment{}},
 	}}
 	if err := fs.Save(updated); err != nil {
 		t.Fatalf("Save failed: %v", err)

@@ -76,6 +76,18 @@
   padding: 1px 6px;
 }
 
+.outputs {
+  margin-top: 4px;
+  padding-left: 10px;
+  border-left: 2px solid var(--border, #334155);
+}
+.output {
+  display: flex;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
 .warnings {
   margin-top: 16px;
   padding: 12px;

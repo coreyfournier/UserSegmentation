@@ -1,0 +1,16 @@
+/* A textarea that reads as a one-line input until the author drags it taller.
+   The global `textarea` rule targets the large standalone boxes and imposes a
+   100px floor, which is wrong for a field sitting in a dense row. */
+.field {
+  /* Height comes from rows={1} — one line of whatever font size and padding
+     the call site applies. Hardcoding a pixel height instead would be wrong
+     everywhere the caller restyles the field: MessagesEditor's .text runs at
+     12px with 4px padding, so a fixed 39px would tower over the language input
+     beside it. */
+  min-height: 0;
+  resize: vertical;
+  /* A textarea sits on the text baseline by default and rides several pixels
+     below the inputs, selects and buttons on its row. */
+  vertical-align: top;
+  display: block;
+}

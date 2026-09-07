@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"flag"
+	"fmt"
 	"log"
 	"os"
 	"os/signal"
@@ -12,10 +13,13 @@ import (
 	"github.com/segmentation-service/segmentation/internal/application"
 	"github.com/segmentation-service/segmentation/internal/domain/engine"
 	"github.com/segmentation-service/segmentation/internal/domain/model"
+	"github.com/segmentation-service/segmentation/internal/domain/ports"
 	"github.com/segmentation-service/segmentation/internal/domain/strategy"
+	"github.com/segmentation-service/segmentation/internal/domain/validation"
 	infraConfig "github.com/segmentation-service/segmentation/internal/infrastructure/config"
 	"github.com/segmentation-service/segmentation/internal/infrastructure/hash"
 	infraHTTP "github.com/segmentation-service/segmentation/internal/infrastructure/http"
+	"github.com/segmentation-service/segmentation/internal/infrastructure/search"
 	"github.com/segmentation-service/segmentation/internal/infrastructure/store"
 )
 
@@ -30,9 +34,12 @@ func main() {
 	fileSource := infraConfig.NewFileSource(*configPath)
 
 	// Initial load
-	snap, err := fileSource.Load()
+	snap, warnings, err := loadAndValidate(fileSource)
 	if err != nil {
-		log.Fatalf("failed to load config: %v", err)
+		log.Fatalf("%v", err)
+	}
+	for _, w := range warnings {
+		log.Printf("[config] warning: %s", w)
 	}
 	memStore.Swap(snap)
 	log.Printf("loaded config version %d with %d layers", snap.Version, len(snap.Layers))
@@ -53,6 +60,10 @@ func main() {
 	batchUC := application.NewBatchEvaluateUseCase(evaluateUC)
 	reloadUC := application.NewReloadUseCase(fileSource, memStore)
 	adminUC := application.NewAdminUseCase(memStore, fileSource)
+	// The one line that changes when the config moves to a database: swap the
+	// snapshot scan for a store-backed Searcher. Nothing above or below it
+	// knows which is in use.
+	searchUC := application.NewSearchUseCase(search.NewSnapshotSearcher(memStore))
 
 	// Config watcher
 	watcher := infraConfig.NewWatcher(fileSource, memStore, *configPath, 500*time.Millisecond)
@@ -60,7 +71,7 @@ func main() {
 	defer watcher.Stop()
 
 	// HTTP server
-	srv := infraHTTP.NewServer(*addr, evaluateUC, batchUC, reloadUC, adminUC, memStore)
+	srv := infraHTTP.NewServer(*addr, evaluateUC, batchUC, reloadUC, adminUC, searchUC, memStore)
 
 	// Graceful shutdown
 	go func() {
@@ -77,4 +88,23 @@ func main() {
 	if err := srv.ListenAndServe(); err != nil && err.Error() != "http: Server closed" {
 		log.Fatalf("server error: %v", err)
 	}
+}
+
+// loadAndValidate loads a snapshot from source and validates it before it can
+// ever reach a store. The reload endpoint and the file watcher both already
+// validate on every subsequent load; without this, the process's very first
+// snapshot — the one most likely to be hand-edited, stale, or still carrying
+// fields from before a config migration — would boot and serve with no
+// checks run at all. It returns the advisory warnings from
+// validation.WarnMissingInputSchemas alongside the snapshot: these are not
+// errors and must not block startup, only be surfaced.
+func loadAndValidate(source ports.ConfigSource) (*model.Snapshot, []string, error) {
+	snap, err := source.Load()
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to load config: %w", err)
+	}
+	if err := validation.ValidateSnapshot(snap); err != nil {
+		return nil, nil, fmt.Errorf("config is invalid: %w", err)
+	}
+	return snap, validation.WarnMissingInputSchemas(snap), nil
 }

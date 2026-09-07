@@ -5,13 +5,19 @@
 }
 
 /* Two input columns + a remove button. min-width:0 lets the inputs shrink
-   inside the grid instead of the key column hogging the row. */
+   inside the grid instead of the key column hogging the row. A third,
+   fixed-width order column is added only in custom-order mode. */
 .entryHead,
 .entryRow {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1.6fr) 28px;
   gap: 8px;
   align-items: center;
+}
+
+.entryHead.ordered,
+.entryRow.ordered {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.6fr) 70px 28px;
 }
 
 .entryHead {

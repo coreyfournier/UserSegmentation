@@ -24,7 +24,7 @@ func setupTestServer() (*http.ServeMux, *store.Memory) {
 		Version: 1,
 		Layers: []model.Layer{
 			{
-				Name:  "base-tier",
+				Key: "baseTier",
 				Segments: []model.Segment{
 					{
 						ID:       "tier",
@@ -61,7 +61,7 @@ func setupTestServer() (*http.ServeMux, *store.Memory) {
 func TestEvaluateHandler_Success(t *testing.T) {
 	mux, _ := setupTestServer()
 
-	body := `{"subject_key":"vip","context":{}}`
+	body := `{"context":{"subjectKey":"vip"}}`
 	req := httptest.NewRequest("POST", "/v1/evaluate", bytes.NewBufferString(body))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
@@ -73,12 +73,18 @@ func TestEvaluateHandler_Success(t *testing.T) {
 
 	var resp application.EvaluateResponse
 	json.Unmarshal(w.Body.Bytes(), &resp)
-	if resp.Layers["base-tier"].Segment != "platinum" {
-		t.Errorf("expected platinum, got %s", resp.Layers["base-tier"].Segment)
+	if resp.Layers["baseTier"].Segment != "platinum" {
+		t.Errorf("expected platinum, got %s", resp.Layers["baseTier"].Segment)
 	}
 }
 
-func TestEvaluateHandler_MissingSubjectKey(t *testing.T) {
+// A request with no subject key is accepted. It used to be a flat 400 for
+// every caller, including the many whose layers hold no strategy that could
+// read one. The absence is now the concern of the two strategies that need it,
+// reported per layer as unevaluable with a warning naming the field — so a
+// caller evaluating unrelated layers gets its answer, and one that needed the
+// key is told exactly which segment wanted it.
+func TestEvaluateHandler_NoSubjectKeyIsAcceptedAndWarned(t *testing.T) {
 	mux, _ := setupTestServer()
 
 	body := `{"context":{}}`
@@ -86,15 +92,37 @@ func TestEvaluateHandler_MissingSubjectKey(t *testing.T) {
 	w := httptest.NewRecorder()
 	mux.ServeHTTP(w, req)
 
-	if w.Code != http.StatusBadRequest {
-		t.Errorf("expected 400, got %d", w.Code)
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var resp application.EvaluateResponse
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	// The test server's only layer holds a static segment, which does need it.
+	lr, ok := resp.Layers["baseTier"]
+	if !ok {
+		t.Fatalf("expected the layer in the response, got %+v", resp.Layers)
+	}
+	if lr.Status != string(model.StatusUnevaluable) {
+		t.Errorf("expected %q, got %q", model.StatusUnevaluable, lr.Status)
+	}
+	var warned bool
+	for _, warning := range resp.Warnings {
+		if warning.Field == model.SubjectKeyField {
+			warned = true
+		}
+	}
+	if !warned {
+		t.Errorf("expected a warning naming %q, got %+v", model.SubjectKeyField, resp.Warnings)
 	}
 }
 
 func TestBatchHandler_Success(t *testing.T) {
 	mux, _ := setupTestServer()
 
-	body := `{"subjects":[{"subject_key":"vip","context":{}},{"subject_key":"other","context":{}}]}`
+	body := `{"subjects":[{"context":{"subjectKey":"vip"}},{"context":{"subjectKey":"other"}}]}`
 	req := httptest.NewRequest("POST", "/v1/evaluate/batch", bytes.NewBufferString(body))
 	w := httptest.NewRecorder()
 	mux.ServeHTTP(w, req)
