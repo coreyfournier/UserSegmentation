@@ -53,20 +53,65 @@ export default function LookupList() {
 
       {tables.length === 0 && <p style={{ color: 'var(--text-muted)' }}>No lookup tables yet.</p>}
 
-      {tables.map((t) => (
-        <div key={t.id} className={styles.card}>
-          <div className={styles.info}>
-            <span className={styles.name}>{t.name}</span>
-            <code className={styles.id}>{t.id}</code>
-            <span className={styles.badge}>{t.keyType}</span>
-            <span className={styles.count}>{t.entries?.length ?? 0} entries</span>
-          </div>
-          <div className={styles.actions}>
-            <button type="button" className="btn-ghost btn-sm" onClick={() => setEditing(t)}>Edit</button>
-            <button type="button" className="btn-danger btn-sm" onClick={() => setDeleting(t.id)}>Delete</button>
-          </div>
-        </div>
-      ))}
+      {/* A table rather than a row of cards. These are all the same shape —
+          name, id, key type, size, two ordering flags — so the interesting
+          question is how they compare, and a column answers that at a glance
+          where a card makes it a reading exercise.
+
+          The ordering flags are shown, not edited: turning one on rearranges
+          what the response carries, and customOrder also decides whether the
+          entry list has authored numbers at all, so both belong beside the
+          entries they govern rather than behind a stray click here. */}
+      {tables.length > 0 && (
+        <table className={styles.table}>
+          <thead>
+            <tr>
+              <th>Name</th>
+              <th>Stable id</th>
+              <th>Key type</th>
+              <th className={styles.numeric}>Entries</th>
+              <th>Emits order</th>
+              <th>Order from</th>
+              <th />
+            </tr>
+          </thead>
+          <tbody>
+            {tables.map((t) => (
+              <tr key={t.id}>
+                <td>
+                  <button
+                    type="button"
+                    className={styles.nameLink}
+                    onClick={() => setEditing(t)}
+                    title={t.description || undefined}
+                  >
+                    {t.name}
+                  </button>
+                  {t.description && <div className={styles.desc}>{t.description}</div>}
+                </td>
+                <td><code className={styles.id}>{t.id}</code></td>
+                <td><span className={styles.badge}>{t.keyType}</span></td>
+                <td className={styles.numeric}>{t.entries?.length ?? 0}</td>
+                <td>
+                  {t.emitOrder ? 'yes' : <span className={styles.muted}>no</span>}
+                </td>
+                <td>
+                  {/* Only meaningful once the order is emitted; saying so beats
+                      showing a value that decides nothing. */}
+                  {t.emitOrder
+                    ? t.customOrder ? 'authored numbers' : 'list position'
+                    : <span className={styles.muted}>—</span>}
+                </td>
+                <td className={styles.actions}>
+                  <button type="button" className="btn-ghost btn-sm" onClick={() => setEditing(t)}>Edit</button>
+                  <button type="button" className="btn-danger btn-sm" onClick={() => setDeleting(t.id)}>Delete</button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+
 
       <Modal open={showCreate} onClose={() => setShowCreate(false)} title="Add Lookup Table">
         <LookupForm

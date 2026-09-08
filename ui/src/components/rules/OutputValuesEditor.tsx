@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useId, useState } from 'react';
+import { useLookups } from '../../api/lookups';
 import type { ComputedField, FieldType, OutputField, OutputSchema } from '../../api/types';
 import {
   availableOutputFields,
@@ -41,17 +42,54 @@ export default function OutputValuesEditor({ outputs, schema, onChange, onDeclar
   const [newName, setNewName] = useState('');
   const [newType, setNewType] = useState<FieldType>('string');
 
-  const set = (name: string, raw: string) => {
-    const next = { ...(outputs ?? {}) };
-    if (raw === '') delete next[name];
-    else next[name] = raw;
-    onChange(Object.keys(next).length ? next : undefined);
+  // Read here rather than threaded through every caller: four call sites pass
+  // this editor around, and none of them cares about lookup tables.
+  const { data: lookups } = useLookups();
+  const lookupFor = (f?: OutputField) =>
+    f?.lookup ? (lookups ?? []).find((t) => t.id === f.lookup) : undefined;
+
+  // Unique per instance: several of these editors are on the page at once (one
+  // per reporting rule, plus the segment and the default), and a datalist is
+  // addressed by a document-wide id.
+  const listId = useId();
+
+  // What the field offers: the bound lookup's keys, and a computed field of the
+  // same name and type. Both are things an author would otherwise have to
+  // remember and spell exactly.
+  const suggestionsFor = (name: string, field?: OutputField) => {
+    const out: { value: string; label: string }[] = [];
+    for (const entry of lookupFor(field)?.entries ?? []) {
+      const key = String(entry.key);
+      out.push({ value: key, label: entry.value ? `${key} — ${entry.value}` : key });
+    }
+    const match = matchingComputedField(name, field, computed);
+    if (match) out.push({ value: match.name, label: `${match.name} (computed ${match.type})` });
+    return out;
   };
 
-  // A required row's remove control clears its value but the row stays
-  // (outputValueRows always includes required fields); an optional or
-  // orphaned row's key disappears entirely, so the row does too.
-  const remove = (name: string) => set(name, '');
+  // Clearing a value keeps the key. Deleting it on empty meant an optional
+  // row vanished the moment you selected its text and pressed delete — the
+  // ordinary way to replace a value — taking the field with it and leaving
+  // nothing to retype into. An empty value is not a missing field; it is a
+  // field whose value you are in the middle of writing.
+  //
+  // Safe to persist: the engine's evaluateOutputs and the validator's
+  // outputAuthoringSites both count a value as authored only when the key is
+  // present *and* non-empty, so `"severity": ""` evaluates and validates
+  // exactly as an absent key does. fieldCoverage above agrees, so the
+  // "authored on N of M" line does not credit a blank either.
+  const set = (name: string, raw: string) => {
+    onChange({ ...(outputs ?? {}), [name]: raw });
+  };
+
+  // Removing is the x button's job alone, and it takes the key out. A required
+  // field's row comes back regardless — outputValueRows always includes it —
+  // which is the point: you cannot remove an obligation, only its value.
+  const remove = (name: string) => {
+    const next = { ...(outputs ?? {}) };
+    delete next[name];
+    onChange(Object.keys(next).length ? next : undefined);
+  };
 
   const declare = () => {
     // Trim to match OutputSchemaEditor's add path. Without it " severity" and
@@ -118,30 +156,45 @@ export default function OutputValuesEditor({ outputs, schema, onChange, onDeclar
                   )}
                 </div>
                 <div>
-                  <ExpandableField
-                    value={row.value}
-                    onChange={(e) => set(row.name, e.target.value)}
-                    placeholder={row.field ? placeholderFor(row.field) : undefined}
-                    aria-label={`value for ${row.name}`}
-                  />
-                  {/* A computed field of the same name and type could supply
-                      this. Offered, not applied: clicking writes the
-                      expression into the config, so what evaluates is what an
-                      author can read here — the engine infers nothing. */}
-                  {!row.value && (() => {
-                    const match = matchingComputedField(row.name, row.field, computed);
-                    if (!match) return null;
-                    return (
-                      <button
-                        type="button"
-                        className={styles.useComputed}
-                        onClick={() => set(row.name, match.name)}
-                        title={`Set this to the computed field ${match.name} (${match.type})`}
-                      >
-                        use computed <code>{match.name}</code>
-                      </button>
-                    );
-                  })()}
+                  {/* Suggestions live in the field itself rather than in
+                      controls beneath it. A lookup key picker and a "use
+                      computed" button each added a row per value, so a leaf
+                      setting six of them was mostly chrome — and the value
+                      still had to be typed or the suggestion clicked, two ways
+                      to do one thing.
+
+                      A datalist is one control that does both: the field stays
+                      free text, because a value may legitimately be an
+                      expression computing which key applies, and the arrow
+                      offers what is known. Single-line for these, since a
+                      suggested value is a key or a field name; a value with
+                      nothing to suggest keeps the resizable field, because
+                      that is where the long templates are. */}
+                  {suggestionsFor(row.name, row.field).length > 0 ? (
+                    <>
+                      <input
+                        value={row.value}
+                        onChange={(e) => set(row.name, e.target.value)}
+                        placeholder={row.field ? placeholderFor(row.field) : undefined}
+                        aria-label={`value for ${row.name}`}
+                        list={`${listId}-${row.name}`}
+                      />
+                      <datalist id={`${listId}-${row.name}`}>
+                        {suggestionsFor(row.name, row.field).map((s) => (
+                          <option key={s.value} value={s.value}>
+                            {s.label}
+                          </option>
+                        ))}
+                      </datalist>
+                    </>
+                  ) : (
+                    <ExpandableField
+                      value={row.value}
+                      onChange={(e) => set(row.name, e.target.value)}
+                      placeholder={row.field ? placeholderFor(row.field) : undefined}
+                      aria-label={`value for ${row.name}`}
+                    />
+                  )}
                   {coverage && row.field && (() => {
                     const field = row.field;
                     const c = coverage(row.name);

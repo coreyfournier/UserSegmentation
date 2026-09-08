@@ -1,5 +1,5 @@
-import type { FieldType, Operator, Rule, Segment } from '../../api/types';
-import { OPERATOR_TYPES } from '../../api/types';
+import type { FieldType, InputSchema, Operator, Rule, Segment } from '../../api/types';
+import { LOOKUP_OPERATORS, OPERATOR_TYPES, UNARY_OPERATORS } from '../../api/types';
 
 /**
  * Which operators a field type admits, restated for the editor.
@@ -101,4 +101,51 @@ export function operatorOptions(
   }
   // The stranded value leads, so it is what the closed select displays.
   return [{ op: value, compatible: false }, ...compatible.map((op) => ({ op, compatible: true }))];
+}
+
+/**
+ * Operators that cannot compare against another field. Mirrors
+ * validation.validateValueRef: a unary operator tests its field and takes no
+ * right-hand side at all, and a lookup operator's value is a table id, which
+ * is a literal by definition.
+ */
+export function supportsValueField(op: Operator): boolean {
+  return !UNARY_OPERATORS.includes(op) && !LOOKUP_OPERATORS.includes(op);
+}
+
+/**
+ * The fields a condition may be compared against, given its left-hand field
+ * and operator.
+ *
+ * Mirrors validation.validateValueRef exactly, and the mirroring is the point:
+ * every option this omits is a save the engine would refuse, and every option
+ * it offers must be one it accepts. The rules are not simply "same type" —
+ *
+ *   in / not_in   the right-hand side is the list, so it must be an array
+ *   contains      over an array it is one element, and an array's element type
+ *                 is not declared, so anything goes; over a string it is a
+ *                 substring, which the same-type rule already covers
+ *   otherwise     both sides are compared as they are, so the types must agree
+ *
+ * The left field itself is never offered: comparing a field to itself is
+ * constant, and validation rejects it.
+ */
+export function valueFieldOptions(
+  schema: InputSchema | undefined,
+  leftField: string,
+  operator: Operator,
+): string[] {
+  if (!supportsValueField(operator)) return [];
+  const leftType = schema?.[leftField]?.type;
+  return Object.entries(schema ?? {})
+    .filter(([name, sf]) => {
+      if (name === leftField) return false;
+      if (operator === 'in' || operator === 'not_in') return sf.type === 'array';
+      if (operator === 'contains' && leftType === 'array') return true;
+      // An unknown left type cannot constrain anything — the layer declares no
+      // schema for it, and validation skips the check for the same reason.
+      return leftType === undefined || sf.type === leftType;
+    })
+    .map(([name]) => name)
+    .sort((a, b) => a.localeCompare(b));
 }

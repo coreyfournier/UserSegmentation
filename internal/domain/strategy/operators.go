@@ -23,7 +23,23 @@ func EvalCondition(cond *model.Condition, ctx map[string]interface{}, lookups ma
 	if !present {
 		return false
 	}
-	return evalOp(cond.Operator, val, cond.Value, lookups)
+
+	// The right-hand side may name another field rather than carry a literal.
+	// It resolves through the same ResolveField as the left, so a dotted path
+	// and a "layer:x" reference behave identically on both sides.
+	expected := cond.Value
+	if cond.ComparesToField() {
+		other, ok := model.ResolveField(ctx, cond.ValueField)
+		// An absent right-hand field fails the condition, mirroring the left:
+		// there is nothing to compare against, and the alternative — treating
+		// it as null and letting eq match another absent field — would make a
+		// typo look like a passing rule.
+		if !ok {
+			return false
+		}
+		expected = other
+	}
+	return evalOp(cond.Operator, val, expected, lookups)
 }
 
 // evalUnary evaluates the operators that test the field itself. A field counts

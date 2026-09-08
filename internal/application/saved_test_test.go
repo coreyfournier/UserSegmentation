@@ -155,7 +155,7 @@ func TestUpdateLayer_KeyChangeMovesItsTests(t *testing.T) {
 		t.Fatalf("create test: %v", err)
 	}
 
-	snap, err := uc.UpdateLayer("gate", model.Layer{Key: "gateway"})
+	snap, err := uc.UpdateLayer("gate", model.Layer{Key: "gateway"}, nil)
 	if err != nil {
 		t.Fatalf("rename: %v", err)
 	}

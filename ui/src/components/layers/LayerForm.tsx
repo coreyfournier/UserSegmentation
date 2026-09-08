@@ -139,6 +139,10 @@ export default function LayerForm({
   const refs = rekey.data?.references;
   const [dependsOn, setDependsOn] = useState<string[]>(initial?.dependsOn ?? []);
   const [defaultLanguage, setDefaultLanguage] = useState(initial?.defaultLanguage ?? 'en');
+  // Opt-out of running every applicable segment. Stored as the negative of
+  // what the checkbox asks, so the config's default — the field absent — is
+  // the safe behaviour rather than something a layer has to remember to ask for.
+  const [firstMatchOnly, setFirstMatchOnly] = useState(!!initial?.firstMatchOnly);
   const [inputSchema, setInputSchema] = useState<InputSchema | undefined>(initial?.inputSchema);
   const [outputSchema, setOutputSchema] = useState<OutputSchema | undefined>(initial?.outputSchema);
   // Working copies of this layer's segments, pruned as output fields are
@@ -240,6 +244,7 @@ export default function LayerForm({
             name: name.trim() || undefined,
             dependsOn: dependsOn.length ? dependsOn : undefined,
             defaultLanguage: defaultLanguage.trim() || undefined,
+            firstMatchOnly: firstMatchOnly || undefined,
             inputSchema,
             outputSchema,
           },
@@ -363,6 +368,39 @@ export default function LayerForm({
         />
         <p style={{ fontSize: 11, color: 'var(--text-muted)', margin: '4px 0 0' }}>
           Fallback locale used when a requested message language is missing.
+        </p>
+      </div>
+
+      {/* Phrased as the opt-out it is. Unchecked — the default, and what an
+          absent field means — every applicable segment runs, so forgetting
+          this produces more reporting than expected rather than silently less.
+          A segment that quietly did not run is the failure nothing in the
+          response would tell you about. */}
+      <div className="form-group">
+        <label>When several segments apply</label>
+        <label
+          style={{ display: 'flex', alignItems: 'flex-start', gap: 8, fontWeight: 'normal' }}
+        >
+          <input
+            type="checkbox"
+            checked={firstMatchOnly}
+            onChange={(e) => setFirstMatchOnly(e.target.checked)}
+            style={{ width: 'auto', marginTop: 2 }}
+          />
+          <span style={{ fontSize: 12 }}>
+            Stop at the first one
+            <span style={{ display: 'block', fontSize: 11, color: 'var(--text-muted)' }}>
+              Leave this off — the default — and every segment whose <code>when</code> passes
+              runs, with their findings merged into one list. Turn it on for a layer where the
+              segments are ordered alternatives and only the first should answer.
+            </span>
+          </span>
+        </label>
+        <p style={{ fontSize: 11, color: 'var(--text-muted)', margin: '6px 0 0' }}>
+          This only affects segments that report findings. A <code>rule</code>,{' '}
+          <code>static</code> or <code>percentage</code> segment answers with a single value,
+          so the first one to answer always ends the layer — two values would have nowhere
+          to go.
         </p>
       </div>
 

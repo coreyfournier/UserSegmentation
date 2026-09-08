@@ -166,7 +166,12 @@ export function renameOutputKey(
   const next = { ...outputs };
   const value = next[from];
   delete next[from];
-  if (to) next[to] = value;
+  // `?? ''` because `from` may not be in the map at all: a required field is
+  // always shown as a row while being absent from `outputs`, so repointing that
+  // row carries an undefined value — and a key whose value is undefined is
+  // dropped by JSON.stringify, so the row the author just created would
+  // disappear on save.
+  if (to) next[to] = value ?? '';
   return Object.keys(next).length ? next : undefined;
 }
 

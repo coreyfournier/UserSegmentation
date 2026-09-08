@@ -6,22 +6,6 @@ import type { ComputedField } from '../../api/types';
  * So position is not presentation — it decides what a formula can read.
  */
 
-/** Moves the field at `from` to `to`, returning a new array. Out-of-range
- *  indices return the input unchanged, so a caller need not guard the ends. */
-export function moveComputedField(
-  defs: ComputedField[],
-  from: number,
-  to: number,
-): ComputedField[] {
-  if (from === to) return defs;
-  if (from < 0 || from >= defs.length) return defs;
-  if (to < 0 || to >= defs.length) return defs;
-  const next = [...defs];
-  const [moved] = next.splice(from, 1);
-  next.splice(to, 0, moved);
-  return next;
-}
-
 /** Escapes a field name for use inside a RegExp — a name is author-typed and
  *  may hold characters the engine tolerates but a pattern does not. */
 function escapeForPattern(s: string): string {

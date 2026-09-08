@@ -52,8 +52,13 @@ const (
 // together, so a field path would be present only sometimes, which consumers
 // could not predict or explain.
 type Failure struct {
-	Rule     string                 `json:"rule"`
-	Message  string                 `json:"message"`
+	Rule    string `json:"rule"`
+	Message string `json:"message"`
+	// Segment is the id of the segment that reported this finding. Present
+	// only when the layer ran more than one segment, where the findings of
+	// several are merged into one list and "which check failed" no longer
+	// implies "in which segment".
+	Segment  string                 `json:"segment,omitempty"`
 	Messages map[string]string      `json:"messages,omitempty"`
 	Outputs  map[string]interface{} `json:"outputs,omitempty"`
 }

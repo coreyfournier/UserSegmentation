@@ -1,9 +1,10 @@
 import { useState, useEffect, useRef } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
-import { useLayers, useUpdateLayer } from '../../api/layers';
+import { useQueryClient } from '@tanstack/react-query';
+import { useLayers, useUpdateLayer, revisionOf } from '../../api/layers';
 import { useLookups } from '../../api/lookups';
 import { useUpdateSegment } from '../../api/segments';
-import type { FieldType, Segment, StrategyType, InputSchema, OutputField } from '../../api/types';
+import type { ConflictDetail, FieldType, Layer, Segment, StrategyType, InputSchema, OutputField } from '../../api/types';
 import { SUBJECT_KEY_FIELD } from '../../api/types';
 import StrategyPicker from './StrategyPicker';
 import StaticConfig from './StaticConfig';
@@ -21,7 +22,12 @@ import OutputValuesEditor from '../rules/OutputValuesEditor';
 import { fieldCoverage, supportsOutputSchema } from '../schema/outputSchemaRules';
 import { describeBreak, segmentRetypeBreaks } from '../rules/operatorRules';
 import ConfirmDialog from '../common/ConfirmDialog';
+import Modal from '../common/Modal';
+import LayerForm from '../layers/LayerForm';
 import ErrorBanner from '../common/ErrorBanner';
+import ConflictDialog from '../common/ConflictDialog';
+import LastChanged from '../common/LastChanged';
+import type { ApiError } from '../../api/client';
 import styles from './SegmentEditor.module.css';
 
 export default function SegmentEditor() {
@@ -36,6 +42,25 @@ export default function SegmentEditor() {
   const [pendingComputedRetype, setPendingComputedRetype] = useState<
     { field: string; next: FieldType; broken: string[]; apply: () => void } | null
   >(null);
+  // The layer editor, opened over this page. "Edit on the layer" used to
+  // navigate to /layers?edit=, which unmounted this editor and took every
+  // unsaved change with it — for a schema tweak the author only wanted so they
+  // could carry on here.
+  const [editingLayer, setEditingLayer] = useState(false);
+  // An open conflict: the layer moved under this editor, and the author has a
+  // decision to make that no default can make for them.
+  //
+  // The retry is carried with it because two different writes can conflict from
+  // this page — the segment, and the layer edited in the modal — and
+  // "overwrite" has to repeat the one that was actually refused. Storing the
+  // callback keeps that exact, rather than inferring it from which mutation
+  // errored last.
+  const [conflict, setConflict] = useState<{
+    detail: ConflictDetail;
+    subject: string;
+    retry: (force: boolean) => void;
+  } | null>(null);
+  const qc = useQueryClient();
   const { data: layers } = useLayers();
   const { data: lookups } = useLookups();
   const updateSegment = useUpdateSegment();
@@ -48,9 +73,6 @@ export default function SegmentEditor() {
   // A rule may only reference layers this one declares a dependency on, so the
   // picker offers exactly those — the UI cannot build a config validation rejects.
   const layerNames = layer?.dependsOn ?? [];
-  // "Edit on the layer" must open this segment's own layer, not just the list —
-  // LayerList reads this query param on mount and opens that layer's edit modal.
-  const editLayerHref = layerKey ? `/layers?edit=${encodeURIComponent(layerKey)}` : '/layers';
 
   const [seg, setSeg] = useState<Segment | null>(null);
   const segRef = useRef(seg);
@@ -164,24 +186,132 @@ export default function SegmentEditor() {
     setPendingComputedRetype({ field, next, broken: broken.map(describeBreak), apply });
   };
 
-  const handleSave = () => {
+  // Saves the layer from the modal, the same way the layers page does: any
+  // segment the form pruned goes first, because a layer PUT validates the whole
+  // snapshot and a segment still holding a value for the field being removed
+  // would reject the very schema change that orphaned it.
+  //
+  // The form is handed this page's in-progress segment rather than the server's
+  // copy (see initialLayer below), so if removing an output field prunes it,
+  // what gets written is the author's live work and not a stale version of it.
+  //
+  // The whole sequence is guarded by one revision: the first write carries the
+  // expectation, and each subsequent one carries what the previous write
+  // returned. Guarding only the layer PUT would let a segment prune land on a
+  // layer someone else had already changed, which is exactly the write this is
+  // meant to refuse.
+  const saveLayerFromModal = async (l: Partial<Layer>, changedSegments?: Segment[], force = false) => {
+    if (!layerKey) return;
+    let rev = force ? undefined : layer?.revision;
+    try {
+      for (const s of changedSegments ?? []) {
+        const snap = await updateSegment.mutateAsync({
+          layerKey,
+          segId: s.id,
+          segment: s,
+          revision: rev,
+        });
+        rev = revisionOf(snap, layerKey);
+        // A pruned copy of the segment being edited is now what the server
+        // holds, so the editor adopts it — otherwise local state would still
+        // carry the value that was just removed and the next save would be
+        // rejected for it.
+        if (s.id === segId) setSeg(structuredClone(s));
+      }
+      await updateLayer.mutateAsync({ key: layerKey, layer: l, revision: rev });
+      setEditingLayer(false);
+      setConflict(null);
+      // A layer key change moves this page's address, like a segment rename.
+      if (l.key && l.key !== layerKey) {
+        navigate(
+          `/layers/${encodeURIComponent(l.key)}/segments/${encodeURIComponent(segId ?? '')}`,
+          { replace: true, state: location.state },
+        );
+      }
+    } catch (e) {
+      // A conflict is offered the same choice as a segment save's, retrying
+      // this same sequence when the author accepts the overwrite. Anything
+      // else is left open; the error banners above render what failed.
+      const c = (e as ApiError).conflict;
+      if (c) {
+        setConflict({
+          detail: c,
+          subject: 'your layer changes',
+          retry: (f) => void saveLayerFromModal(l, changedSegments, f),
+        });
+      }
+    }
+  };
+
+  // What the modal edits. The segments are the server's, except for the one on
+  // screen — the form prunes segments when an output field is removed, and it
+  // should prune what the author can see rather than the version they have
+  // been editing away from.
+  const initialLayer: Layer | undefined = layer && {
+    ...layer,
+    segments: layer.segments.map((s) => (s.id === segId ? seg : s)),
+  };
+
+  // Saves the segment, guarded by the revision of the layer it was loaded from.
+  //
+  // `force` drops the guard, which is what "overwrite with mine" means: the
+  // author has been shown what they are replacing and chosen to. It is not a
+  // retry with the newer revision — that would be the same write with a
+  // different number and no decision taken.
+  const saveSegment = (force: boolean) => {
     if (!layerKey || !segId || !segRef.current) return;
+    const saving = segRef.current;
     updateSegment.mutate(
-      { layerKey, segId, segment: segRef.current },
       {
-        // Stays on the page. Saving used to navigate back to the layer list,
-        // which threw away the editor you were working in — so testing a change
-        // meant walking back in, and any search that got you here was gone.
-        // Leaving is a separate decision, made with the Close button.
-        onSuccess: () => setSavedAt(Date.now()),
+        layerKey,
+        segId,
+        segment: saving,
+        revision: force ? undefined : layer?.revision,
+      },
+      {
+        onSuccess: () => {
+          setSavedAt(Date.now());
+          setConflict(null);
+          if (saving.id !== segId) {
+            navigate(
+              `/layers/${encodeURIComponent(layerKey)}/segments/${encodeURIComponent(saving.id)}`,
+              { replace: true, state: location.state },
+            );
+          }
+        },
+        onError: (e) => {
+          // A conflict is the one failure with a decision attached, so it opens
+          // the dialog instead of joining the footer's error text.
+          const c = (e as ApiError).conflict;
+          if (c) {
+            setConflict({
+              detail: c,
+              subject: `your changes to ${saving.name || saving.id}`,
+              retry: (f) => saveSegment(f),
+            });
+          }
+        },
       }
     );
   };
+
+
+  // The last save failure, shown in the footer beside the button that caused
+  // it. Cleared when a save starts, so a stale failure never sits under a
+  // successful one. A conflict is excluded: it has its own dialog, and would
+  // otherwise be reported twice with only one of them offering a way out.
+  const saveError =
+    updateSegment.error && !(updateSegment.error as ApiError).conflict
+      ? (updateSegment.error as Error).message
+      : null;
 
   // Where Close returns to. LayerList hands over its own URL when it opens a
   // segment, so closing restores the list exactly as it was — same selected
   // layer, same search. Falls back for a segment reached by a pasted link.
   const backHref = (location.state as { from?: string } | null)?.from ?? '/layers';
+  // Where the layer crumb goes when the editor was reached by a pasted link,
+  // so it still lands on this layer rather than the top of the list.
+  const layersHref = layerKey ? `/layers?layer=${encodeURIComponent(layerKey)}` : '/layers';
 
   return (
     <div className={styles.editor}>
@@ -189,13 +319,31 @@ export default function SegmentEditor() {
         <h2>
           <span className={styles.breadcrumb} onClick={() => navigate(backHref)}>Layers</span>
           {' / '}
-          <span className={styles.breadcrumb}>{layerKey}</span>
+          {/* The layer name carried the breadcrumb styling and no handler — it
+              looked like a link and did nothing. It goes back to the list with
+              this layer selected, which is what backHref already encodes when
+              the editor was opened from there. */}
+          <span
+            className={styles.breadcrumb}
+            onClick={() => navigate(backHref.includes('layer=') ? backHref : layersHref)}
+            title={`Back to ${layer?.name || layerKey}`}
+          >
+            {layer?.name || layerKey}
+          </span>
           {' / '}
-          {seg.id}
+          {seg.name || seg.id}
         </h2>
+        {/* The layer's timestamp, not the segment's: the revision guarding this
+            save covers the whole layer, so this is the number that decides
+            whether the save is refused. */}
+        <LastChanged at={layer?.updatedAt} revision={layer?.revision} />
       </div>
 
-      {updateSegment.error && <ErrorBanner message={(updateSegment.error as Error).message} />}
+      {/* A failed segment save is reported next to the Save button rather than
+          here — this page is long, and a message at the top for a button at the
+          bottom is a message nobody sees. Layer errors stay: they come from
+          controls in the middle of the page (declaring an output field,
+          declaring subjectKey), so the top is where they happened. */}
       {updateLayer.error && <ErrorBanner message={(updateLayer.error as Error).message} />}
 
       {/* Two columns where there is room: the segment on the left, its tests
@@ -207,10 +355,56 @@ export default function SegmentEditor() {
         side={
           <section className={`card ${styles.testCard}`}>
             <h3>Tests</h3>
-            {layerKey && <LayerTests layerKey={layerKey} schema={layer?.inputSchema} />}
+            {layerKey && (
+              <LayerTests
+                layerKey={layerKey}
+                segmentId={seg.id}
+                segments={layer?.segments ?? []}
+                schema={layer?.inputSchema}
+              />
+            )}
           </section>
         }
       >
+
+      {/* Identity — first, because the id was previously uneditable through the
+          API at all and invisible here except as breadcrumb text. */}
+      <section className={`card ${styles.section}`}>
+        <h3>Identity</h3>
+        <div className="form-group">
+          <label>Name</label>
+          <input
+            value={seg.name ?? ''}
+            onChange={(e) => update({ name: e.target.value || undefined })}
+            placeholder="e.g. Employee readiness"
+          />
+          <p style={{ fontSize: 11, color: 'var(--text-muted)', margin: '4px 0 0' }}>
+            The friendly label, shown here and in the layer&rsquo;s segment list. Nothing
+            references it, so it can be changed freely.
+          </p>
+        </div>
+        <div className="form-group">
+          <label>Segment ID</label>
+          <input
+            value={seg.id}
+            onChange={(e) => update({ id: e.target.value })}
+            aria-invalid={!seg.id.trim()}
+          />
+          <p style={{ fontSize: 11, color: 'var(--text-muted)', margin: '4px 0 0' }}>
+            The stable identity: unique within this layer, how the admin API addresses this
+            segment, and what appears in a <code>reason</code> and in any warning it
+            produces. Unlike a layer key it is not restricted to letters and digits — a
+            segment is never an object name in the response.
+          </p>
+          {seg.id !== segId && (
+            <p style={{ fontSize: 11, color: 'var(--danger)', margin: '4px 0 0' }}>
+              Renaming from <code>{segId}</code> on save. Nothing inside the config refers
+              to a segment by id, so there is nothing to update — but a saved test or a
+              consumer reading <code>reason</code> may mention the old one.
+            </p>
+          )}
+        </div>
+      </section>
 
       {/* Strategy */}
       <section className={`card ${styles.section}`}>
@@ -231,7 +425,7 @@ export default function SegmentEditor() {
         <p className={styles.layerNote}>
           Declared on layer <strong>{layerKey}</strong> — every segment in it shares this
           schema.{' '}
-          <button type="button" className="btn-ghost btn-sm" onClick={() => navigate(editLayerHref)}>
+          <button type="button" className="btn-ghost btn-sm" onClick={() => setEditingLayer(true)}>
             Edit on the layer
           </button>
         </p>
@@ -268,7 +462,7 @@ export default function SegmentEditor() {
             <p className={styles.layerNote}>
               Declared on layer <strong>{layerKey}</strong> — every segment in it shares this
               schema.{' '}
-              <button type="button" className="btn-ghost btn-sm" onClick={() => navigate(editLayerHref)}>
+              <button type="button" className="btn-ghost btn-sm" onClick={() => setEditingLayer(true)}>
                 Edit on the layer
               </button>
             </p>
@@ -499,20 +693,67 @@ export default function SegmentEditor() {
 
       {/* Footer, inside the form column: these act on the segment, and a
           right-aligned footer spanning an uncapped page would put Save at the
-          far edge of a wide monitor, nowhere near the form. */}
+          far edge of a wide monitor, nowhere near the form.
+
+          Pinned to the bottom of the viewport, and carrying its own failure
+          message. The segment is long enough that Save was often offscreen and
+          the error always was — the outcome of pressing a button belongs where
+          the button is. */}
       <div className={styles.footer}>
-        {/* "Close" rather than "Cancel": saving no longer leaves the page, so
-            this is how you leave — and it discards nothing that was saved. */}
-        <button type="button" className="btn-ghost" onClick={() => navigate(backHref)}>Close</button>
-        {savedAt !== null && !updateSegment.isPending && (
-          <span className={styles.saved} role="status">Saved</span>
+        {saveError && (
+          <div className={styles.footerError} role="alert">
+            <strong>Save failed.</strong> {saveError}
+          </div>
         )}
-        <button type="button" className="btn-primary" onClick={handleSave} disabled={updateSegment.isPending}>
-          {updateSegment.isPending ? 'Saving...' : 'Save'}
-        </button>
+        <div className={styles.footerActions}>
+          {/* "Close" rather than "Cancel": saving no longer leaves the page, so
+              this is how you leave — and it discards nothing that was saved. */}
+          <button type="button" className="btn-ghost" onClick={() => navigate(backHref)}>Close</button>
+          {savedAt !== null && !saveError && !updateSegment.isPending && (
+            <span className={styles.saved} role="status">Saved</span>
+          )}
+          <button
+            type="button"
+            className="btn-primary"
+            onClick={() => saveSegment(false)}
+            disabled={updateSegment.isPending}
+          >
+            {updateSegment.isPending ? 'Saving...' : saveError ? 'Save again' : 'Save'}
+          </button>
+        </div>
       </div>
 
       </SplitPane>
+
+      {/* The layer's own editor, over this page rather than instead of it.
+          Closing it leaves the segment exactly as it was; saving refreshes the
+          read-only schema tables through the layers query, so the change is
+          visible here without a navigation. */}
+      <Modal open={editingLayer} onClose={() => setEditingLayer(false)} title="Edit Layer">
+        {initialLayer && (
+          <LayerForm
+            initial={initialLayer}
+            allLayers={layers ?? []}
+            submitLabel="Save"
+            onSubmit={saveLayerFromModal}
+            onCancel={() => setEditingLayer(false)}
+          />
+        )}
+      </Modal>
+
+      <ConflictDialog
+        conflict={conflict?.detail ?? null}
+        subject={conflict?.subject}
+        onOverwrite={() => conflict?.retry(true)}
+        onDiscard={() => {
+          // Adopt what is stored. The query is refetched because this editor's
+          // copy of the layer is as stale as the write that was refused.
+          setConflict(null);
+          setSeg(null);
+          qc.invalidateQueries({ queryKey: ['layers'] });
+        }}
+        onCancel={() => setConflict(null)}
+      />
 
       <ConfirmDialog
         open={!!pendingComputedRetype}

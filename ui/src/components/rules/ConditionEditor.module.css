@@ -13,8 +13,19 @@
   padding: 6px 8px;
 }
 
+/* The value slot: its control, then the mode switch, on one line. Aligned to
+   the top rather than centred, so the switch stays level with the control's
+   first line when a warning or a key adder grows the column beneath it. */
 .value {
   flex: 1;
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.control {
+  flex: 1;
+  min-width: 0;
 }
 
 /* The value control is an input, a select, or an ExpandableField (a textarea)
@@ -34,4 +45,42 @@
   font-size: 12px;
   font-style: italic;
   color: var(--text-muted);
+}
+
+/* Key adder for a list operator on a lookup-bound field. Appends and resets,
+   so it reads as an action rather than as the condition's current value — the
+   text field beside it holds that. */
+.keyAdd {
+  margin-top: 3px;
+  font-size: 11px;
+  padding: 2px 6px;
+  width: auto;
+  max-width: 100%;
+}
+
+/* A condition that cannot match, said plainly under the control that caused
+   it. Danger rather than muted: this is a rule that looks configured and is
+   not, which is worse than one that is obviously incomplete. */
+.warn {
+  margin-top: 4px;
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--danger);
+}
+
+/* The literal/field switch. Deliberately quiet — it is a mode change, not the
+   condition's content, and it sits beside the value it governs.
+   The top padding matches the control's own, so the two share a baseline
+   instead of the switch riding above the text next to it. */
+.modeToggle {
+  flex: none;
+  padding: 6px 0 0;
+  border: none;
+  background: none;
+  font-size: 11px;
+  line-height: 1.2;
+  white-space: nowrap;
+  color: var(--primary);
+  cursor: pointer;
+  text-decoration: underline;
 }

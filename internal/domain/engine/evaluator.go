@@ -44,7 +44,12 @@ type EvalResult struct {
 // Execution order comes from each layer's DependsOn edges, not from any ordinal
 // field. When filterLayers is set, only those layers and everything they
 // transitively depend on are evaluated; the rest never run.
-func (e *Evaluator) Evaluate(snap *model.Snapshot, ctx map[string]interface{}, filterLayers []string, languages []string, renderAll bool, now time.Time) *EvalResult {
+func (e *Evaluator) Evaluate(snap *model.Snapshot, ctx map[string]interface{}, filterLayers []string, languages []string, renderAll bool, now time.Time, opts ...EvalOption) *EvalResult {
+	var options evalOptions
+	for _, opt := range opts {
+		opt(&options)
+	}
+
 	result := &EvalResult{
 		Layers: make(map[string]*LayerResult, len(snap.Layers)),
 	}
@@ -103,7 +108,17 @@ func (e *Evaluator) Evaluate(snap *model.Snapshot, ctx map[string]interface{}, f
 				Message: fmt.Sprintf("layer skipped: dependency %q did not resolve", blocker),
 			})
 		} else {
-			lr = e.evaluateLayer(layer, evalCtx, languages, renderAll, lookups, now)
+			// A segment restriction applies only to the layers the caller
+			// asked to see. A layer evaluated because something depends on it
+			// runs in full — narrowing it would change what the layer under
+			// test is resolving against.
+			only := options.segments
+			if filterSet != nil {
+				if _, requested := filterSet[layer.Key]; !requested {
+					only = nil
+				}
+			}
+			lr = e.evaluateLayer(layer, evalCtx, languages, renderAll, lookups, now, only)
 		}
 		statuses[layer.Key] = lr.Status
 
@@ -130,7 +145,7 @@ func (e *Evaluator) Evaluate(snap *model.Snapshot, ctx map[string]interface{}, f
 	return result
 }
 
-func (e *Evaluator) evaluateLayer(layer *model.Layer, ctx map[string]interface{}, languages []string, renderAll bool, lookups map[string]model.LookupTable, now time.Time) *LayerResult {
+func (e *Evaluator) evaluateLayer(layer *model.Layer, ctx map[string]interface{}, languages []string, renderAll bool, lookups map[string]model.LookupTable, now time.Time, onlySegments map[string]struct{}) *LayerResult {
 	lr := &LayerResult{Status: unresolvedStatus(layer)}
 
 	// Resolved once for the layer: it comes from the context, which does not
@@ -143,8 +158,21 @@ func (e *Evaluator) evaluateLayer(layer *model.Layer, ctx map[string]interface{}
 		defaultLang = "en"
 	}
 
+	// The segments that reported something, in evaluation order. Its length is
+	// what decides whether findings need stamping with a segment id at all —
+	// a layer whose single segment reported looks exactly as it always has.
+	var contributed []string
+
 	for i := range layer.Segments {
 		seg := &layer.Segments[i]
+
+		// Segment restriction (OnlySegments), checked before anything else so a
+		// segment outside it cannot warn, resolve, or end the loop.
+		if onlySegments != nil {
+			if _, ok := onlySegments[seg.ID]; !ok {
+				continue
+			}
+		}
 
 		// Promotion time gating
 		if !seg.Promotion.IsActive(now) {
@@ -224,12 +252,7 @@ func (e *Evaluator) evaluateLayer(layer *model.Layer, ctx map[string]interface{}
 			continue
 		}
 		if res, ok := strat.Evaluate(seg, evalCtx); ok {
-			lr.Status = res.Status
-			if lr.Status == "" {
-				lr.Status = model.StatusResolved
-			}
-			lr.Failures = res.Failures
-			lr.Assignment = &model.Assignment{
+			assignment := &model.Assignment{
 				Segment:  res.Segment,
 				Strategy: seg.Strategy,
 				Reason:   res.Reason,
@@ -238,9 +261,37 @@ func (e *Evaluator) evaluateLayer(layer *model.Layer, ctx map[string]interface{}
 				Outputs:  res.Outputs,
 			}
 			lr.Warnings = append(lr.Warnings, renderWarnings(seg.ID, res.RenderErrors)...)
-			lr.Warnings = append(lr.Warnings, validation.CheckRequiredOutputs(seg, layer.OutputSchema, lr.Assignment, lr.Failures)...)
-			return dedupRequiredFieldWarnings(lr)
+			// Checked against this segment's own findings, not the accumulated
+			// list: the question is whether *this* segment emitted the fields
+			// it declared.
+			lr.Warnings = append(lr.Warnings, validation.CheckRequiredOutputs(seg, layer.OutputSchema, assignment, res.Failures)...)
+
+			lr.Failures = append(lr.Failures, tagFailures(res.Failures, seg.ID)...)
+			lr.Assignment = mergeAssignment(lr.Assignment, assignment)
+			contributed = append(contributed, seg.ID)
+
+			// A segment that answers with a value ends the layer: the layer has
+			// one answer, and a second value would have nowhere to go — not in
+			// the response, not in "layer:x", not in a dependency's gate. A
+			// segment that resolves none — a checklist — contributes its
+			// findings and the next applicable segment gets its turn, unless
+			// the layer opted out of that.
+			if res.Segment != "" || layer.FirstMatchOnly {
+				// A value is the layer's answer, so it sets the status outright
+				// rather than merging with what earlier findings implied.
+				lr.Status = res.Status
+				if lr.Status == "" {
+					lr.Status = model.StatusResolved
+				}
+				return finishLayer(lr, contributed)
+			}
+
+			lr.Status = mergeStatus(lr.Status, res.Status, len(contributed) == 1)
 		}
+	}
+
+	if len(contributed) > 0 {
+		return finishLayer(lr, contributed)
 	}
 
 	return dedupRequiredFieldWarnings(lr)

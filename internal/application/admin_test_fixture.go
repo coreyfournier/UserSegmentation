@@ -11,6 +11,20 @@ import (
 // than admin_test.go because Go would treat the latter as a test file and
 // refuse to build it into the package.
 
+// sameTestSlot reports whether two tests occupy the same naming slot: the same
+// layer, the same segment, and the same name ignoring case and surrounding
+// space.
+//
+// Segment is part of the slot because two segments in one layer are two
+// different things to test, and each wants its own "happy path". Before this,
+// the second one saved took the first one's name — and, through the editor,
+// its context with it.
+func sameTestSlot(a, b model.SavedTest) bool {
+	return a.Layer == b.Layer &&
+		a.Segment == b.Segment &&
+		strings.EqualFold(strings.TrimSpace(a.Name), strings.TrimSpace(b.Name))
+}
+
 // ListTests returns the saved tests, optionally narrowed to one layer.
 func (uc *AdminUseCase) ListTests(layerKey string) []model.SavedTest {
 	snap := uc.store.Get()
@@ -44,12 +58,16 @@ func (uc *AdminUseCase) CreateTest(t model.SavedTest) (*model.Snapshot, error) {
 	}
 
 	snap := uc.cloneSnapshot()
-	if uc.findLayer(snap, t.Layer) < 0 {
+	li := uc.findLayer(snap, t.Layer)
+	if li < 0 {
 		return nil, fmt.Errorf("layer %q not found", t.Layer)
 	}
+	if t.Segment != "" && !hasSegment(&snap.Layers[li], t.Segment) {
+		return nil, fmt.Errorf("layer %q has no segment %q", t.Layer, t.Segment)
+	}
 	for _, existing := range snap.Tests {
-		if existing.Layer == t.Layer && strings.EqualFold(strings.TrimSpace(existing.Name), strings.TrimSpace(t.Name)) {
-			return nil, fmt.Errorf("layer %q already has a test named %q", t.Layer, existing.Name)
+		if sameTestSlot(existing, t) {
+			return nil, fmt.Errorf("%s already has a test named %q", testSlotLabel(t), existing.Name)
 		}
 	}
 
@@ -57,7 +75,10 @@ func (uc *AdminUseCase) CreateTest(t model.SavedTest) (*model.Snapshot, error) {
 	for _, existing := range snap.Tests {
 		taken[existing.ID] = true
 	}
-	base := slugify(t.Layer + "-" + t.Name)
+	// The segment is part of the id as well as of the uniqueness rule, so two
+	// segments' identically named tests read as different things in the file
+	// rather than as "name" and "name-2".
+	base := slugify(t.Layer + "-" + t.Segment + "-" + t.Name)
 	if base == "" {
 		return nil, fmt.Errorf("could not derive a valid id from name %q", t.Name)
 	}
@@ -71,8 +92,8 @@ func (uc *AdminUseCase) CreateTest(t model.SavedTest) (*model.Snapshot, error) {
 }
 
 // UpdateTest replaces a saved test's name, context and rendering options. The
-// id and the layer it is filed under are immutable: moving a test to another
-// layer would silently change what it exercises, and is better expressed as
+// id, the layer and the segment it is filed under are all immutable: moving a
+// test would silently change what it exercises, and is better expressed as
 // deleting it and saving a new one where you meant.
 func (uc *AdminUseCase) UpdateTest(id string, updated model.SavedTest) (*model.Snapshot, error) {
 	uc.mu.Lock()
@@ -94,13 +115,16 @@ func (uc *AdminUseCase) UpdateTest(id string, updated model.SavedTest) (*model.S
 		return nil, fmt.Errorf("test %q not found", id)
 	}
 
-	layer := snap.Tests[idx].Layer
+	// The slot is the stored test's layer and segment with the new name: a
+	// rename may not collide, and neither field is movable (see below).
+	slot := snap.Tests[idx]
+	slot.Name = updated.Name
 	for i, existing := range snap.Tests {
 		if i == idx {
 			continue
 		}
-		if existing.Layer == layer && strings.EqualFold(strings.TrimSpace(existing.Name), strings.TrimSpace(updated.Name)) {
-			return nil, fmt.Errorf("layer %q already has a test named %q", layer, existing.Name)
+		if sameTestSlot(existing, slot) {
+			return nil, fmt.Errorf("%s already has a test named %q", testSlotLabel(slot), existing.Name)
 		}
 	}
 
@@ -136,4 +160,22 @@ func (uc *AdminUseCase) DeleteTest(id string) (*model.Snapshot, error) {
 	}
 	snap.Tests = kept
 	return uc.commitSnapshot(snap)
+}
+
+// testSlotLabel names where a test is filed, for an error a person reads.
+func testSlotLabel(t model.SavedTest) string {
+	if t.Segment == "" {
+		return fmt.Sprintf("layer %q", t.Layer)
+	}
+	return fmt.Sprintf("segment %q in layer %q", t.Segment, t.Layer)
+}
+
+// hasSegment reports whether the layer holds a segment with this id.
+func hasSegment(l *model.Layer, id string) bool {
+	for i := range l.Segments {
+		if l.Segments[i].ID == id {
+			return true
+		}
+	}
+	return false
 }

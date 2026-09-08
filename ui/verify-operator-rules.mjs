@@ -37,7 +37,7 @@ writeFileSync(
   readFileSync(emitted, 'utf8').replace("'../../api/types'", "'../../api/types.js'"),
 );
 
-const { operatorSupports, segmentRetypeBreaks, layerRetypeBreaks, describeBreak, operatorOptions } =
+const { operatorSupports, segmentRetypeBreaks, layerRetypeBreaks, describeBreak, operatorOptions, valueFieldOptions, supportsValueField } =
   await import(pathToFileURL(join(out, 'components', 'rules', 'operatorRules.js')).href);
 
 // --- operatorSupports ---
@@ -167,3 +167,52 @@ assert.equal(names(numeric)[0], 'eq', 'a compatible value does not lead the list
 assert.equal(operatorOptions('gte', undefined).length, 13);
 
 console.log('operator picker options OK');
+
+// --- comparing against another field -----------------------------------
+// These must mirror validation.validateValueRef in the Go service exactly.
+// Every option omitted here is a save the engine would refuse; every option
+// offered must be one it accepts. Drift in either direction is a UI that lies
+// about what can be configured.
+const refSchema = {
+  hoursWorked: { type: 'number', required: false },
+  minHours: { type: 'number', required: false },
+  bonusHours: { type: 'number', required: false },
+  tier: { type: 'string', required: false },
+  targetTier: { type: 'string', required: false },
+  tags: { type: 'array', required: false },
+  active: { type: 'boolean', required: false },
+};
+
+// Same type, and never the field itself — comparing a field to itself is
+// constant, and the validator rejects it.
+assert.deepEqual(valueFieldOptions(refSchema, 'hoursWorked', 'gte'), ['bonusHours', 'minHours']);
+assert.deepEqual(valueFieldOptions(refSchema, 'tier', 'eq'), ['targetTier']);
+assert.deepEqual(valueFieldOptions(refSchema, 'active', 'eq'), []);
+
+// A list operator's right-hand side is the list, so only arrays qualify —
+// never the left field's own type.
+assert.deepEqual(valueFieldOptions(refSchema, 'tier', 'in'), ['tags']);
+assert.deepEqual(valueFieldOptions(refSchema, 'hoursWorked', 'not_in'), ['tags']);
+
+// contains over an array compares one element, and an array's element type is
+// not declared, so nothing can be excluded.
+assert.equal(valueFieldOptions(refSchema, 'tags', 'contains').length, 6);
+// contains over a string is a substring test, so the same-type rule applies.
+assert.deepEqual(valueFieldOptions(refSchema, 'tier', 'contains'), ['targetTier']);
+
+// Operators with no right-hand side to point anywhere.
+for (const op of ['is_null', 'is_null_or_empty', 'in_lookup', 'not_in_lookup']) {
+  assert.equal(supportsValueField(op), false, `${op} cannot compare against a field`);
+  assert.deepEqual(valueFieldOptions(refSchema, 'tier', op), [], `${op} offers nothing`);
+}
+for (const op of ['eq', 'neq', 'gt', 'gte', 'lt', 'lte', 'in', 'not_in', 'contains']) {
+  assert.equal(supportsValueField(op), true, `${op} can compare against a field`);
+}
+
+// An undeclared left field constrains nothing — the layer has no type for it,
+// and validation skips the check for the same reason.
+assert.equal(valueFieldOptions(refSchema, 'notDeclared', 'eq').length, 7);
+// No schema at all means nothing to offer, so the editor shows no switch.
+assert.deepEqual(valueFieldOptions(undefined, 'tier', 'eq'), []);
+
+console.log('value-field options OK');

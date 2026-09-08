@@ -134,6 +134,10 @@ func rejectLegacyExpressionKeys(data []byte) error {
 // it lives in the config source and not in domain validation — a
 // database-backed source would get the same guarantee from a unique index.
 //
+// Applied by both Load and Save, which is what makes that comparison honest: an
+// index constrains every write, not only every read. Save used to skip it, so
+// the admin API could persist a collision that the next Load refused.
+//
 // Only top-level rules are checked. A checklist item is one rule; the tree
 // beneath it builds that item's condition and never reports on its own, so the
 // branches of an And/Or need no name at all.
@@ -146,7 +150,9 @@ func checkRuleNameUniqueness(snap *model.Snapshot) error {
 			if seg.Strategy != model.StrategyChecklist {
 				continue
 			}
-			where := fmt.Sprintf("layer %q segment %q", layer.Name, seg.ID)
+			// Keyed by the layer's stable key, not its friendly name: the name is
+			// optional, so this read "layer \"\"" for any layer without one.
+			where := fmt.Sprintf("layer %q segment %q", layer.Key, seg.ID)
 
 			for i := range seg.Rules {
 				name := seg.Rules[i].RuleName
@@ -173,6 +179,22 @@ func checkRuleNameUniqueness(snap *model.Snapshot) error {
 // Stamps last_modified here in the repository layer since timestamps
 // are a file-persistence concern, not needed by other storage backends.
 func (fs *FileSource) Save(snap *model.Snapshot) error {
+	// Enforced on the way in as well as on the way out. Load has always
+	// rejected a duplicate; Save did not, so the admin API could write config
+	// this very source would then refuse to read — the file on disk parted
+	// company with the snapshot being served, and the failure surfaced later as
+	// a reload the watcher could not apply or a process that would not start.
+	//
+	// This is the unique index the doc comment on the check describes: a
+	// constraint the store applies to every write, whoever makes it.
+	//
+	// Before anything is marshalled or written, so a rejected save leaves the
+	// file exactly as it was. AdminUseCase.commitSnapshot saves before swapping
+	// the store, so the in-memory snapshot is left alone too.
+	if err := checkRuleNameUniqueness(snap); err != nil {
+		return err
+	}
+
 	now := time.Now().UTC()
 	snap.LastModified = &now
 

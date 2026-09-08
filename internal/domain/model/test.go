@@ -20,7 +20,22 @@ type SavedTest struct {
 	// exactly one layer, which is what makes "run this layer's tests" a
 	// question with an answer.
 	Layer string `json:"layer"`
-	// Name is the author's label, unique within the layer.
+	// Segment is the id of the segment within that layer the test is aimed at,
+	// and the run is scoped to it (see EvaluateRequest.Segments).
+	//
+	// Filing by layer alone was not enough once a layer held more than one
+	// segment. The panel is shown inside a segment's editor, so every test in
+	// the layer appeared to belong to whichever segment was open — and because
+	// names only had to be unique per layer, saving a test for the second
+	// segment could rename and overwrite the first segment's test of the same
+	// name.
+	//
+	// Empty means the test predates this field and is filed against the layer
+	// as a whole: it runs every segment, which is what it did when it was
+	// written. Nothing rewrites those, because guessing which segment an old
+	// test meant would change what it exercises.
+	Segment string `json:"segment,omitempty"`
+	// Name is the author's label, unique within the layer and segment.
 	Name string `json:"name"`
 	// Context is the evaluation context to send, verbatim.
 	//

@@ -293,3 +293,65 @@
   color: var(--text-muted);
   margin-bottom: 6px;
 }
+
+/* Says what editing the name will do. The field is the same one used to name a
+   new test, so with a test selected its effect has to be stated rather than
+   inferred. */
+.renameHint {
+  margin: 4px 0 8px;
+  font-size: 11px;
+  color: var(--text-muted);
+  line-height: 1.5;
+}
+
+/* Run timing. Muted and tabular: it is reference, not the outcome, and a
+   column of it should line up digit for digit. */
+.timing {
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.rowTiming {
+  width: 56px;
+  flex: none;
+  text-align: right;
+  overflow: hidden;
+}
+
+/* Inside the row the slot already positions it, so the auto margin the result
+   line relies on would only fight the fixed width. */
+.rowTiming .timing {
+  margin-left: 0;
+}
+
+/* A test that is not filed against any segment. Marked wherever it appears,
+   because it is the one row whose run is not scoped the way its neighbours are. */
+.wholeLayer {
+  margin-left: 6px;
+  padding: 0 4px;
+  border-radius: 3px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+  vertical-align: middle;
+}
+
+/* Which segment reported a finding, when several ran. Leads the row so a
+   merged list reads as grouped even though it is one flat list. */
+.fromSegment {
+  display: inline-block;
+  margin-right: 6px;
+  padding: 0 4px;
+  border-radius: 3px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  font-size: 9px;
+  color: var(--text-muted);
+  vertical-align: middle;
+}

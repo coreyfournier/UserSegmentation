@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { apiFetch } from './client';
+import { apiFetch, ifMatch } from './client';
 import type { Segment, Snapshot } from './types';
 
 export function useSegments(layerKey: string) {
@@ -14,10 +14,10 @@ export function useSegments(layerKey: string) {
 export function useCreateSegment() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ layerKey, segment }: { layerKey: string; segment: Segment }) =>
+    mutationFn: ({ layerKey, segment, revision }: { layerKey: string; segment: Segment; revision?: number }) =>
       apiFetch<Snapshot>(
         `/v1/admin/layers/${encodeURIComponent(layerKey)}/segments`,
-        { method: 'POST', body: JSON.stringify(segment) }
+        { method: 'POST', headers: ifMatch(revision), body: JSON.stringify(segment) }
       ),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['layers'] });
@@ -33,14 +33,18 @@ export function useUpdateSegment() {
       layerKey,
       segId,
       segment,
+      revision,
     }: {
       layerKey: string;
       segId: string;
       segment: Segment;
+      // The owning layer's revision: a segment write advances it, so it is
+      // what guards the write. Omitted to save unconditionally.
+      revision?: number;
     }) =>
       apiFetch<Snapshot>(
         `/v1/admin/layers/${encodeURIComponent(layerKey)}/segments/${encodeURIComponent(segId)}`,
-        { method: 'PUT', body: JSON.stringify(segment) }
+        { method: 'PUT', headers: ifMatch(revision), body: JSON.stringify(segment) }
       ),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['layers'] });

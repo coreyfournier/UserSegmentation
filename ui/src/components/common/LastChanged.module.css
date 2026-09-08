@@ -1,0 +1,11 @@
+.chip {
+  font-size: 0.75rem;
+  color: var(--text-muted, #6b7280);
+  white-space: nowrap;
+}
+
+.block {
+  display: block;
+  font-size: 0.75rem;
+  color: var(--text-muted, #6b7280);
+}

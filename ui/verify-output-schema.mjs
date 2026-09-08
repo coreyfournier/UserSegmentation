@@ -214,6 +214,11 @@ assert.deepEqual(renameOutputKey({ a: '1' }, 'a', 'a'), { a: '1' });
 // Emptying yields undefined so the key is omitted from JSON.
 assert.equal(renameOutputKey({ a: '1' }, 'a', ''), undefined);
 assert.equal(renameOutputKey(undefined, 'a', 'b'), undefined);
+// Repointing a row whose field was never in the map (a required field is shown
+// as a row while absent from outputs) yields an empty value, not undefined —
+// JSON.stringify drops an undefined value, which would delete the row on save.
+assert.deepEqual(renameOutputKey({}, 'severity', 'title'), { title: '' });
+assert.deepEqual(renameOutputKey({ a: '1' }, 'severity', 'title'), { a: '1', title: '' });
 
 console.log('output schema rules OK');
 

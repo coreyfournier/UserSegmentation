@@ -255,3 +255,110 @@ func TestFileSource_SaveAtomic(t *testing.T) {
 		}
 	}
 }
+
+// Save enforces rule-name uniqueness, not only Load.
+//
+// Without this the admin API could persist config the very same source would
+// then refuse to read: the file on disk parted company with the snapshot being
+// served, and the failure appeared later as a reload the watcher could not
+// apply, or a process that would not start.
+func TestFileSource_SaveRejectsDuplicateRuleName(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "segments.json")
+	fs := NewFileSource(path)
+
+	good := &model.Snapshot{Version: 1, Layers: []model.Layer{{
+		Key: "diagnostics",
+		Segments: []model.Segment{{
+			ID:       "checks",
+			Strategy: model.StrategyChecklist,
+			Rules: []model.Rule{
+				{RuleName: "first", Condition: &model.Condition{Field: "x", Operator: model.OpIsNull}},
+				{RuleName: "second", Condition: &model.Condition{Field: "x", Operator: model.OpIsNull}},
+			},
+		}},
+	}}}
+	if err := fs.Save(good); err != nil {
+		t.Fatalf("unique names must save: %v", err)
+	}
+
+	before, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read: %v", err)
+	}
+
+	bad := &model.Snapshot{Version: 2, Layers: []model.Layer{{
+		Key: "diagnostics",
+		Segments: []model.Segment{{
+			ID:       "checks",
+			Strategy: model.StrategyChecklist,
+			Rules: []model.Rule{
+				{RuleName: "same", Condition: &model.Condition{Field: "x", Operator: model.OpIsNull}},
+				{RuleName: "same", Condition: &model.Condition{Field: "x", Operator: model.OpIsNull}},
+			},
+		}},
+	}}}
+	err = fs.Save(bad)
+	if err == nil {
+		t.Fatal("expected a duplicate rule name to be refused")
+	}
+	if !strings.Contains(err.Error(), `duplicate checklist ruleName "same"`) {
+		t.Errorf("expected an error naming the collision, got: %v", err)
+	}
+
+	// Refused before anything is written, so the file is untouched.
+	after, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read: %v", err)
+	}
+	if string(after) != string(before) {
+		t.Error("a refused save must leave the file exactly as it was")
+	}
+}
+
+// The collision is across the whole config, not only within one segment: a
+// finding names its rule and nothing else, so two segments cannot both claim
+// the same name.
+func TestFileSource_SaveRejectsDuplicateAcrossSegments(t *testing.T) {
+	fs := NewFileSource(filepath.Join(t.TempDir(), "segments.json"))
+
+	snap := &model.Snapshot{Version: 1, Layers: []model.Layer{{
+		Key: "diagnostics",
+		Segments: []model.Segment{
+			{ID: "a", Strategy: model.StrategyChecklist, Rules: []model.Rule{
+				{RuleName: "shared", Condition: &model.Condition{Field: "x", Operator: model.OpIsNull}},
+			}},
+			{ID: "b", Strategy: model.StrategyChecklist, Rules: []model.Rule{
+				{RuleName: "shared", Condition: &model.Condition{Field: "x", Operator: model.OpIsNull}},
+			}},
+		},
+	}}}
+	if err := fs.Save(snap); err == nil {
+		t.Error("expected a collision across segments to be refused")
+	}
+}
+
+// Only reporting rules are named. The branches of an And/Or build one item's
+// condition and never report, so several may legitimately be nameless.
+func TestFileSource_SaveAllowsNamelessNestedRules(t *testing.T) {
+	fs := NewFileSource(filepath.Join(t.TempDir(), "segments.json"))
+
+	snap := &model.Snapshot{Version: 1, Layers: []model.Layer{{
+		Key: "diagnostics",
+		Segments: []model.Segment{{
+			ID:       "checks",
+			Strategy: model.StrategyChecklist,
+			Rules: []model.Rule{{
+				RuleName: "outer",
+				Operator: model.CompositeOr,
+				Rules: []model.Rule{
+					{Condition: &model.Condition{Field: "x", Operator: model.OpIsNull}},
+					{Condition: &model.Condition{Field: "y", Operator: model.OpIsNull}},
+				},
+			}},
+		}},
+	}}}
+	if err := fs.Save(snap); err != nil {
+		t.Errorf("nameless nested rules must save: %v", err)
+	}
+}

@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import type { LookupTable, LookupEntry, FieldType } from '../../api/types';
+import { moveItem } from '../../utils/move';
 import styles from './LookupForm.module.css';
 
 interface Props {
@@ -129,8 +130,8 @@ export default function LookupForm({ initial, onSubmit, onCancel, submitLabel = 
         </label>
         <p style={{ fontSize: 11, color: 'var(--text-muted)', margin: '4px 0 0' }}>
           {customOrder
-            ? 'The list is authored by number, so drag-to-reorder is off. Numbers may skip — that is how one ordering spans several tables.'
-            : 'Order is inferred from list position. Turn this on to hand-author the numbers instead.'}
+            ? 'The number decides the order, so the move arrows are off. Numbers may skip — that is how one ordering spans several tables.'
+            : 'Order is list position: use the arrows to arrange it. Turn this on to hand-author the numbers instead.'}
         </p>
       </div>
 
@@ -138,6 +139,7 @@ export default function LookupForm({ initial, onSubmit, onCancel, submitLabel = 
         <label>Entries</label>
         {entries.length > 0 && (
           <div className={customOrder ? `${styles.entryHead} ${styles.ordered}` : styles.entryHead}>
+            {!customOrder && <span />}
             <span className={styles.colLabel}>Key (matched)</span>
             <span className={styles.colLabel}>Value (description, optional)</span>
             {customOrder && <span className={styles.colLabel}>Order</span>}
@@ -146,6 +148,35 @@ export default function LookupForm({ initial, onSubmit, onCancel, submitLabel = 
         )}
         {entries.map((e, i) => (
           <div key={i} className={customOrder ? `${styles.entryRow} ${styles.ordered}` : styles.entryRow}>
+            {/* Position is the emitted order unless the numbers are
+                hand-authored, and there was no way to change position — so
+                turning on "emit order" gave an order that could not be
+                arranged. In custom mode the number decides instead, so these
+                would claim an effect they do not have. */}
+            {!customOrder && (
+              <span className={styles.reorder}>
+                <button
+                  type="button"
+                  className="btn-ghost btn-sm"
+                  onClick={() => setEntries((es) => moveItem(es, i, i - 1))}
+                  disabled={i === 0}
+                  title="Move up — emitted earlier"
+                  aria-label={`Move entry ${i + 1} up`}
+                >
+                  ↑
+                </button>
+                <button
+                  type="button"
+                  className="btn-ghost btn-sm"
+                  onClick={() => setEntries((es) => moveItem(es, i, i + 1))}
+                  disabled={i === entries.length - 1}
+                  title="Move down — emitted later"
+                  aria-label={`Move entry ${i + 1} down`}
+                >
+                  ↓
+                </button>
+              </span>
+            )}
             <input
               type={keyType === 'number' ? 'number' : 'text'}
               value={e.key === undefined || e.key === null ? '' : String(e.key)}

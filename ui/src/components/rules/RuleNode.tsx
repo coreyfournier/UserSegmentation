@@ -176,6 +176,12 @@ export default function RuleNode({ rule, path, onChange, onDelete, index, total,
         <button type="button" className="btn-danger btn-sm" onClick={onDelete}>x</button>
       </div>
 
+      {/* The logic first, then what it reports — the same order whether this
+          node's logic is one condition or a group of nested rules. Children
+          used to be rendered last, so a leaf read condition-then-outputs while
+          a group read outputs-then-children, and the same two things swapped
+          places depending on the node you were looking at. Overrides render
+          through this component too, so they follow suit. */}
       {isLeaf && rule.condition && (
         <div className={styles.exprWrap}>
           <ConditionEditor
@@ -185,39 +191,6 @@ export default function RuleNode({ rule, path, onChange, onDelete, index, total,
             layerNames={layerNames}
           />
         </div>
-      )}
-
-      {/* Only a reporting rule emits a record, so only a reporting rule gets
-          output values — and "reporting" means top-level, in both strategies.
-          A checklist reports every top-level rule, leaf or And/Or group alike;
-          a rule segment reports whichever top-level rule wins. Nothing nested
-          reports in either: an And/Or group reports once, under its own name,
-          and its branches only contribute to that one condition. Depth is the
-          test, not leafness — gating on (perRuleMessages || !isLeaf) would let
-          a leaf inside a checklist's And/Or group author values the engine
-          never reads, which is dead config nothing would flag. */}
-      {onDeclareOutput && depth === 0 && (
-        <OutputValuesEditor
-          outputs={rule.outputs}
-          schema={outputSchema ?? {}}
-          onChange={(o) => onChange({ ...rule, outputs: o })}
-          onDeclare={onDeclareOutput}
-        />
-      )}
-
-      {/* Under first-match strategies only the winning top-level rule's message
-          is ever rendered, so nested editors would be dead config. A checklist
-          is the opposite: every check that fires carries its own message. */}
-      {(depth === 0 || perRuleMessages) && (
-        <MessagesEditor
-          value={rule.messages}
-          onChange={(m) => onChange({ ...rule, messages: m })}
-          hint={
-            perRuleMessages
-              ? "Localized text reported when this check fires. Use ${field} for variables and formulas."
-              : "Rendered when this rule wins. Use ${field} for variables and formulas."
-          }
-        />
       )}
 
       {!isLeaf && (
@@ -239,6 +212,55 @@ export default function RuleNode({ rule, path, onChange, onDelete, index, total,
             <button type="button" className="btn-ghost btn-sm" onClick={addGroup}>+ Add Group</button>
           </div>
         </div>
+      )}
+
+      {/* Only a reporting rule emits a record, so only a reporting rule gets
+          output values — and "reporting" means top-level, in both strategies.
+          A checklist reports every top-level rule, leaf or And/Or group alike;
+          a rule segment reports whichever top-level rule wins. Nothing nested
+          reports in either: an And/Or group reports once, under its own name,
+          and its branches only contribute to that one condition. Depth is the
+          test, not leafness — gating on (perRuleMessages || !isLeaf) would let
+          a leaf inside a checklist's And/Or group author values the engine
+          never reads, which is dead config nothing would flag. */}
+      {onDeclareOutput && depth === 0 && (
+        // Framed and labelled as this rule's own. Rendered bare, a rule
+        // setting six values was a wall of controls with nothing tying them to
+        // the rule above — and nothing saying they belong to this rule rather
+        // than to the segment.
+        <div className={styles.outputs}>
+          <div className={styles.outputsHead}>
+            <span className={styles.outputsTitle}>
+              Output values for <code>{rule.ruleName || '(unnamed)'}</code>
+            </span>
+            {Object.keys(rule.outputs ?? {}).length > 0 && (
+              <span className={styles.outputsCount}>
+                {Object.keys(rule.outputs ?? {}).length} set
+              </span>
+            )}
+          </div>
+          <OutputValuesEditor
+            outputs={rule.outputs}
+            schema={outputSchema ?? {}}
+            onChange={(o) => onChange({ ...rule, outputs: o })}
+            onDeclare={onDeclareOutput}
+          />
+        </div>
+      )}
+
+      {/* Under first-match strategies only the winning top-level rule's message
+          is ever rendered, so nested editors would be dead config. A checklist
+          is the opposite: every check that fires carries its own message. */}
+      {(depth === 0 || perRuleMessages) && (
+        <MessagesEditor
+          value={rule.messages}
+          onChange={(m) => onChange({ ...rule, messages: m })}
+          hint={
+            perRuleMessages
+              ? "Localized text reported when this check fires. Use ${field} for variables and formulas."
+              : "Rendered when this rule wins. Use ${field} for variables and formulas."
+          }
+        />
       )}
     </div>
   );

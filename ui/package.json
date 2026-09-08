@@ -12,7 +12,9 @@
     "verify:output-schema": "node verify-output-schema.mjs",
     "verify:layer-keys": "node verify-layer-keys.mjs",
     "verify:computed-fields": "node verify-computed-fields.mjs",
-    "verify:operator-rules": "node verify-operator-rules.mjs"
+    "verify:operator-rules": "node verify-operator-rules.mjs",
+    "verify:time": "node verify-time.mjs",
+    "verify:context-values": "node verify-context-values.mjs"
   },
   "dependencies": {
     "@tanstack/react-query": "^5.90.21",

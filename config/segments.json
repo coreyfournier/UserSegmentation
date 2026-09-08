@@ -1,10 +1,11 @@
 {
-  "version": 191,
-  "last_modified": "2026-09-07T02:46:36.907269713Z",
+  "version": 254,
+  "last_modified": "2026-09-07T23:46:16.114179733Z",
   "layers": [
     {
       "key": "baseTier",
       "name": "base-tier",
+      "revision": 0,
       "segments": [
         {
           "id": "user-tier",
@@ -28,6 +29,7 @@
     {
       "key": "ctRule",
       "name": "CT Rule",
+      "revision": 0,
       "segments": [
         {
           "id": "IsCT",
@@ -72,6 +74,7 @@
     {
       "key": "riskRating",
       "name": "Risk Rating",
+      "revision": 0,
       "segments": [
         {
           "id": "IsRisky",
@@ -117,6 +120,7 @@
     {
       "key": "dSDsd",
       "name": "dSDsd",
+      "revision": 0,
       "segments": [
         {
           "id": "expression test",
@@ -127,6 +131,7 @@
     {
       "key": "experiments",
       "name": "experiments",
+      "revision": 0,
       "dependsOn": [
         "baseTier"
       ],
@@ -171,6 +176,7 @@
     {
       "key": "promotions",
       "name": "promotions",
+      "revision": 0,
       "dependsOn": [
         "baseTier"
       ],
@@ -232,6 +238,7 @@
     {
       "key": "features",
       "name": "features",
+      "revision": 0,
       "dependsOn": [
         "baseTier"
       ],
@@ -275,6 +282,7 @@
     {
       "key": "ctFeeOverride",
       "name": "CT Compliance (Max Fee)",
+      "revision": 0,
       "segments": [
         {
           "id": "ct-fee",
@@ -350,6 +358,7 @@
     {
       "key": "ewaEligibility",
       "name": "ewa-eligibility",
+      "revision": 0,
       "segments": [
         {
           "id": "ewa-eligibility",
@@ -411,6 +420,7 @@
     {
       "key": "ewaRisk",
       "name": "ewa-risk",
+      "revision": 0,
       "segments": [
         {
           "id": "ewa-risk",
@@ -509,6 +519,7 @@
     {
       "key": "transferFee",
       "name": "transfer-fee",
+      "revision": 0,
       "segments": [
         {
           "id": "july4-promo",
@@ -557,6 +568,7 @@
     {
       "key": "companyIdentity",
       "name": "company-identity",
+      "revision": 0,
       "segments": [
         {
           "id": "all-types",
@@ -595,6 +607,7 @@
     {
       "key": "companyPayrollSetup",
       "name": "company-payroll-setup",
+      "revision": 0,
       "dependsOn": [
         "companyIdentity"
       ],
@@ -720,6 +733,7 @@
     {
       "key": "employeeReadiness",
       "name": "employee-readiness",
+      "revision": 0,
       "dependsOn": [
         "companyPayrollSetup"
       ],
@@ -790,6 +804,7 @@
     {
       "key": "companyValidation",
       "name": "CompanyValidation",
+      "revision": 0,
       "segments": [
         {
           "id": "BalanceCalculation",
@@ -845,15 +860,19 @@
     {
       "key": "tAGates",
       "name": "T\u0026A Gates",
+      "revision": 25,
+      "updatedAt": "2026-09-07T23:42:44.978698046Z",
       "segments": [
         {
-          "id": "Gate 1",
+          "id": "Stage1",
+          "name": "Stage 1 Gates",
           "when": {
             "ruleName": "ProductCheck",
+            "enabled": true,
             "condition": {
               "field": "ProductType",
               "operator": "eq",
-              "value": "TimeAndAttendance"
+              "value": "T\u0026A"
             }
           },
           "strategy": "checklist",
@@ -861,29 +880,71 @@
             "mappings": {},
             "default": ""
           },
+          "computed": [
+            {
+              "name": "MinimumConsecutivePayCycles",
+              "type": "number",
+              "formula": "2"
+            },
+            {
+              "name": "HasMinimumConsecutivePayCycles",
+              "type": "boolean",
+              "formula": "ConsecutivePaycyclesEmployeed \u003e MinimumConsecutivePayCycles"
+            }
+          ],
           "rules": [
             {
-              "ruleName": "DepositAccountCheck",
-              "operator": "Or",
-              "rules": [
-                {
-                  "ruleName": "",
-                  "condition": {
-                    "field": "HasDepositAccount",
-                    "operator": "is_null"
-                  }
-                },
-                {
-                  "ruleName": "",
-                  "condition": {
-                    "field": "HasDepositAccount",
-                    "operator": "eq",
-                    "value": false
-                  }
-                }
-              ],
+              "ruleName": "WorkHistory2Cycles",
+              "condition": {
+                "field": "ConsecutivePaycyclesEmployeed",
+                "operator": "lt",
+                "valueField": "MinimumConsecutivePayCycles"
+              },
               "messages": {
-                "en": "An account for deposits are required"
+                "en": "You must have at least ${MinimumConsecutivePayCycles} consecutive pay cycles worked."
+              },
+              "outputs": {
+                "RiskReason": "no_income_signal"
+              }
+            },
+            {
+              "ruleName": "No NSF or derogatory",
+              "condition": {
+                "field": "AccountHasNsfDerogatory",
+                "operator": "eq",
+                "value": true
+              },
+              "outputs": {
+                "RiskReason": "banking_history_disqualifying"
+              }
+            }
+          ]
+        },
+        {
+          "id": "Stage2Gates",
+          "name": "Stage 2 Gates",
+          "when": {
+            "ruleName": "",
+            "condition": {
+              "field": "ProductType",
+              "operator": "eq",
+              "value": "T\u0026A"
+            }
+          },
+          "strategy": "checklist",
+          "rules": [
+            {
+              "ruleName": "Recurring direct deposit",
+              "condition": {
+                "field": "AccountHasRecurringDirectDeposit",
+                "operator": "eq",
+                "value": false
+              },
+              "messages": {
+                "en": "Your bank account doesn't have any direct deposits on a frequent basis."
+              },
+              "outputs": {
+                "RiskReason": "no_income_signal"
               }
             }
           ]
@@ -891,23 +952,61 @@
       ],
       "defaultLanguage": "en",
       "inputSchema": {
+        "AccountHasNsfDerogatory": {
+          "type": "boolean",
+          "required": true
+        },
+        "AccountHasPriorReturns": {
+          "type": "boolean",
+          "required": false
+        },
+        "AccountHasRecurringDirectDeposit": {
+          "type": "boolean",
+          "required": true
+        },
+        "AccountIsLinked": {
+          "type": "boolean",
+          "required": false
+        },
+        "ConsecutivePaycyclesEmployeed": {
+          "type": "number",
+          "required": true
+        },
         "HasDepositAccount": {
           "type": "boolean",
           "required": false
         },
+        "IsDelinquent": {
+          "type": "boolean",
+          "required": true
+        },
+        "PriorChargeOffs": {
+          "type": "number",
+          "required": true
+        },
         "ProductType": {
           "type": "string",
-          "required": true
+          "required": true,
+          "lookup": "producttype"
+        }
+      },
+      "outputSchema": {
+        "RiskReason": {
+          "type": "string",
+          "lookup": "riskreasoncodes"
         }
       }
     },
     {
       "key": "balanceDiagnosis",
       "name": "Balance Diagnosis",
+      "revision": 1,
+      "updatedAt": "2026-09-07T23:46:16.112768163Z",
       "segments": [
         {
-          "id": "CheckEmployeeSyncFailed",
-          "strategy": "rule",
+          "id": "CompanyHealthDiagnoser",
+          "name": "Company Health Diagnoser",
+          "strategy": "checklist",
           "rules": [
             {
               "ruleName": "CheckEmployeeSyncFailed",
@@ -920,9 +1019,44 @@
                 "en": "We're seeing a sync issue between your employer's payroll system and Tapcheck that's affecting all employees. Our integrations team is looking into it."
               },
               "outputs": {
+                "Category": "DataSync",
                 "Description": "Company Health reports employee sync status as Failed. The result code is '${ResultCode}'.",
+                "Severity": "Critical",
                 "Signals": "[{Name: \"EmployeeStatus\", Value: EmployeeStatus}, {Name: \"EmployeeCount\", Value: EmployeeCount}, {Name: \"EmployeeReason\", Value: EmployeeReason}]",
                 "TechnicalExplanation": "Company Health Service sets EmployeeStatus via PayrollEmployeesLoadedEvent — Failed means the payroll-to-Tapcheck employee sync pipeline failed. This affects ALL employees at the company because no employee records can be updated."
+              }
+            },
+            {
+              "ruleName": "CheckPaycheckSyncFailed",
+              "operator": "Or",
+              "rules": [
+                {
+                  "ruleName": "",
+                  "condition": {
+                    "field": "UsesPaychecks",
+                    "operator": "eq",
+                    "value": true
+                  }
+                },
+                {
+                  "ruleName": "",
+                  "condition": {
+                    "field": "PaycheckSyncStatus",
+                    "operator": "eq",
+                    "value": "Failed"
+                  }
+                }
+              ],
+              "messages": {
+                "en": "There's an issue importing paycheck history from your employer's payroll system. Our team is working to fix the connection."
+              },
+              "outputs": {
+                "Category": "DataSync",
+                "Description": "Company Health reports paycheck sync status as Failed.",
+                "DiagnosisType": "PaycheckSyncFailed",
+                "Severity": "Critical",
+                "Signals": "[{Name: \"PaycheckSyncStatus\", Value: PaycheckSyncStatus}, \n{Name: \"PaycheckSyncReason\", Value: PaycheckSyncReason},\n{Name: \"PaycheckCount\", Value: PaycheckCount}]",
+                "TechnicalExplanation": "Company Health Service sets PaycheckSyncStatus via PaychecksImportedEvent — Failed means historical paycheck data can't import from payroll. Only checked when UsesPaychecks = true. Affects calc methods that depend on paycheck history."
               }
             }
           ],
@@ -959,6 +1093,18 @@
           "type": "number",
           "required": false
         },
+        "PaycheckCount": {
+          "type": "number",
+          "required": false
+        },
+        "PaycheckSyncReason": {
+          "type": "string",
+          "required": false
+        },
+        "PaycheckSyncStatus": {
+          "type": "string",
+          "required": false
+        },
         "ResultCode": {
           "type": "string",
           "required": false,
@@ -966,6 +1112,10 @@
         },
         "UserEmployerIds": {
           "type": "array",
+          "required": false
+        },
+        "UsesPaychecks": {
+          "type": "boolean",
           "required": false
         }
       },
@@ -1109,6 +1259,10 @@
         {
           "key": "AccessibleWageZeroDespiteDays",
           "order": 5
+        },
+        {
+          "key": "PaycheckSyncFailed",
+          "order": 6
         }
       ]
     },
@@ -1118,7 +1272,7 @@
       "keyType": "string",
       "entries": [
         {
-          "key": "Info",
+          "key": "Critical",
           "order": 0
         },
         {
@@ -1126,10 +1280,11 @@
           "order": 1
         },
         {
-          "key": "Critical",
+          "key": "Info",
           "order": 2
         }
-      ]
+      ],
+      "emitOrder": true
     },
     {
       "id": "diagnosticcategory",
@@ -1192,6 +1347,59 @@
           "order": 4
         }
       ]
+    },
+    {
+      "id": "riskreasoncodes",
+      "name": "RiskReasonCodes",
+      "keyType": "string",
+      "entries": [
+        {
+          "key": "insufficient_work_history",
+          "order": 0
+        },
+        {
+          "key": "prior_chargeoff",
+          "order": 1
+        },
+        {
+          "key": "past_due_advance",
+          "order": 2
+        },
+        {
+          "key": "no_income_signal",
+          "order": 3
+        },
+        {
+          "key": "banking_history_disqualifying",
+          "order": 4
+        },
+        {
+          "key": "bank_link_revoked",
+          "order": 5
+        }
+      ]
+    },
+    {
+      "id": "producttype",
+      "name": "ProductType",
+      "keyType": "string",
+      "entries": [
+        {
+          "key": "T\u0026A",
+          "value": "Time and Attendance",
+          "order": 0
+        },
+        {
+          "key": "Precision",
+          "value": "Precision",
+          "order": 1
+        },
+        {
+          "key": "Express",
+          "value": "Express",
+          "order": 2
+        }
+      ]
     }
   ],
   "tests": [
@@ -1249,10 +1457,103 @@
         "GrossPay": 5,
         "NetPay": "2",
         "PayCycleId": 1234,
+        "PaycheckCount": 3,
+        "PaycheckSyncStatus": "Failed",
         "ResultCode": "NoBalanceAvailable",
         "UserEmployerIds": [
           "123456448"
-        ]
+        ],
+        "UsesPaychecks": false
+      }
+    },
+    {
+      "id": "balancediagnosis-checkpaychecksyncfailed",
+      "layer": "balanceDiagnosis",
+      "name": "CheckPaycheckSyncFailed",
+      "context": {
+        "EmployeeCount": 5,
+        "EmployeeId": 1234,
+        "EmployeeReason": "Failed",
+        "EmployeeStatus": "Failed",
+        "GrossPay": 5,
+        "NetPay": "2",
+        "PayCycleId": 1234,
+        "PaycheckCount": 3,
+        "PaycheckSyncStatus": "Failed",
+        "ResultCode": "NoBalanceAvailable",
+        "UserEmployerIds": [
+          "123456448"
+        ],
+        "UsesPaychecks": true
+      }
+    },
+    {
+      "id": "balancediagnosis-checkpaychecksyncfailed-sucess",
+      "layer": "balanceDiagnosis",
+      "name": "CheckPaycheckSyncFailed - Success",
+      "context": {
+        "EmployeeCount": 5,
+        "EmployeeId": 1234,
+        "EmployeeReason": "Failed",
+        "EmployeeStatus": "Success",
+        "GrossPay": 5,
+        "NetPay": "2",
+        "PayCycleId": 1234,
+        "PaycheckCount": 3,
+        "PaycheckSyncStatus": "Success",
+        "ResultCode": "NoBalanceAvailable",
+        "UserEmployerIds": [
+          "123456448"
+        ],
+        "UsesPaychecks": false
+      }
+    },
+    {
+      "id": "tagates-recurring-direct-deposit",
+      "layer": "tAGates",
+      "name": "WorkHistory2Cycles",
+      "context": {
+        "AccountHasNsfDerogatory": false,
+        "AccountHasPriorReturns": false,
+        "AccountHasRecurringDirectDeposit": false,
+        "AccountIsLinked": true,
+        "ConsecutivePaycyclesEmployeed": 1,
+        "HasDepositAccount": false,
+        "IsDelinquent": false,
+        "PriorChargeOffs": 0,
+        "ProductType": "T\u0026A"
+      }
+    },
+    {
+      "id": "tagates-no-prior-charge-off",
+      "layer": "tAGates",
+      "name": "No NSF or derogatory",
+      "context": {
+        "AccountHasNsfDerogatory": true,
+        "AccountHasPriorReturns": false,
+        "AccountHasRecurringDirectDeposit": false,
+        "AccountIsLinked": true,
+        "ConsecutivePaycyclesEmployeed": 2,
+        "HasDepositAccount": false,
+        "IsDelinquent": false,
+        "PriorChargeOffs": 0,
+        "ProductType": "T\u0026A"
+      }
+    },
+    {
+      "id": "tagates-recurring-direct-deposit-2",
+      "layer": "tAGates",
+      "name": "Recurring direct deposit",
+      "context": {
+        "AccountHasNsfDerogatory": false,
+        "AccountHasPriorReturns": false,
+        "AccountHasRecurringDirectDeposit": false,
+        "AccountIsLinked": true,
+        "ConsecutivePaycyclesEmployeed": 2,
+        "HasDepositAccount": true,
+        "IsDelinquent": false,
+        "PriorChargeOffs": 0,
+        "ProductType": "T\u0026A"
       }
     }
   ]
