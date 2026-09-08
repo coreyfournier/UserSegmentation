@@ -1,6 +1,6 @@
 {
-  "version": 254,
-  "last_modified": "2026-09-07T23:46:16.114179733Z",
+  "version": 257,
+  "last_modified": "2026-09-08T13:58:11.793539163Z",
   "layers": [
     {
       "key": "baseTier",
@@ -1000,8 +1000,8 @@
     {
       "key": "balanceDiagnosis",
       "name": "Balance Diagnosis",
-      "revision": 1,
-      "updatedAt": "2026-09-07T23:46:16.112768163Z",
+      "revision": 2,
+      "updatedAt": "2026-09-08T13:57:21.245471617Z",
       "segments": [
         {
           "id": "CompanyHealthDiagnoser",
@@ -1028,7 +1028,7 @@
             },
             {
               "ruleName": "CheckPaycheckSyncFailed",
-              "operator": "Or",
+              "operator": "And",
               "rules": [
                 {
                   "ruleName": "",
@@ -1458,12 +1458,12 @@
         "NetPay": "2",
         "PayCycleId": 1234,
         "PaycheckCount": 3,
-        "PaycheckSyncStatus": "Failed",
+        "PaycheckSyncStatus": "Good",
         "ResultCode": "NoBalanceAvailable",
         "UserEmployerIds": [
           "123456448"
         ],
-        "UsesPaychecks": false
+        "UsesPaychecks": true
       }
     },
     {
@@ -1474,7 +1474,7 @@
         "EmployeeCount": 5,
         "EmployeeId": 1234,
         "EmployeeReason": "Failed",
-        "EmployeeStatus": "Failed",
+        "EmployeeStatus": "Good",
         "GrossPay": 5,
         "NetPay": "2",
         "PayCycleId": 1234,
