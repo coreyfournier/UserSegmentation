@@ -342,16 +342,15 @@
   vertical-align: middle;
 }
 
-/* Which segment reported a finding, when several ran. Leads the row so a
-   merged list reads as grouped even though it is one flat list. */
-.fromSegment {
-  display: inline-block;
-  margin-right: 6px;
-  padding: 0 4px;
-  border-radius: 3px;
-  background: var(--bg);
-  border: 1px solid var(--border);
-  font-size: 9px;
+/* Which segment a group of findings came from. A heading rather than a tag per
+   row: the response is one flat list, but what the author is reading it for is
+   what each segment said. */
+.findingGroup {
+  margin: 8px 0 2px;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
   color: var(--text-muted);
-  vertical-align: middle;
+  border-bottom: 1px solid var(--border);
 }

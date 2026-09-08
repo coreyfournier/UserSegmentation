@@ -2,7 +2,8 @@ import { useState } from 'react';
 import { useTests, useCreateTest, useUpdateTest, useDeleteTest } from '../../api/tests';
 import { apiFetch } from '../../api/client';
 import { duration } from '../../utils/time';
-import type { EvaluateResponse, InputSchema, LayerResult, SavedTest, Segment } from '../../api/types';
+import { formatOutput } from './outputFormat';
+import type { EvaluateResponse, Failure, InputSchema, LayerResult, SavedTest, Segment } from '../../api/types';
 import ContextEditor from './ContextEditor';
 import ConfirmDialog from '../common/ConfirmDialog';
 import ErrorBanner from '../common/ErrorBanner';
@@ -47,6 +48,25 @@ export interface TestRunResult {
 
 /** Key for the unsaved draft's own result. Not a valid test id — ids are slugs. */
 const DRAFT_KEY = 'draft:unsaved';
+
+/**
+ * Groups findings by the segment that reported them, preserving the order the
+ * engine returned.
+ *
+ * The key is "" when the response carries no segment, which is the case for a
+ * layer that ran only one — there is then a single group and no heading, so a
+ * single-segment run reads exactly as it always did.
+ */
+function groupFindings(failures: Failure[]): [string, Failure[]][] {
+  const groups: [string, Failure[]][] = [];
+  for (const f of failures) {
+    const key = f.segment ?? '';
+    const last = groups[groups.length - 1];
+    if (last && last[0] === key) last[1].push(f);
+    else groups.push([key, [f]]);
+  }
+  return groups;
+}
 
 export default function LayerTests({ layerKey, segmentId, segments, schema }: Props) {
   const { data: allTests } = useTests(layerKey);
@@ -324,7 +344,7 @@ export default function LayerTests({ layerKey, segmentId, segments, schema }: Pr
                   <tr key={k}>
                     <td className={styles.outKey}>{k}</td>
                     <td className={styles.outVal}>
-                      {typeof v === 'object' ? JSON.stringify(v) : String(v)}
+                      {formatOutput(v)}
                     </td>
                   </tr>
                 ))}
@@ -332,18 +352,45 @@ export default function LayerTests({ layerKey, segmentId, segments, schema }: Pr
             </table>
           )}
 
+          {/* Findings, grouped under the segment that reported them whenever
+              the layer ran more than one. Grouping rather than a tag per row:
+              a merged list is one flat array in the response, but the thing an
+              author is reading it for is "what did each stage say", and a
+              heading answers that at a glance where a repeated inline label
+              does not. A single-segment run has nothing to group, so it stays
+              a plain list — the segment is already in the reason. */}
           {r.layerResult.failures && r.layerResult.failures.length > 0 && (
-            <ul className={styles.failures}>
-              {r.layerResult.failures.map((f) => (
-                <li key={f.segment ? `${f.segment}/${f.rule}` : f.rule}>
-                  {/* Only set when the layer ran more than one segment, which
-                      is exactly when "which check failed" stops implying
-                      "in which segment". */}
-                  {f.segment && <span className={styles.fromSegment}>{f.segment}</span>}
-                  <code>{f.rule}</code> {f.message}
-                </li>
+            <>
+              {groupFindings(r.layerResult.failures).map(([segment, findings]) => (
+                <div key={segment}>
+                  {segment && <div className={styles.findingGroup}>{segment}</div>}
+                  <ul className={styles.failures}>
+                    {findings.map((f) => (
+                      <li key={`${segment}/${f.rule}`}>
+                        <code>{f.rule}</code> {f.message}
+                        {/* The record this finding emitted. A checklist puts
+                            its outputs here, per finding, never on the layer —
+                            so the table above is always empty for one, and
+                            without this the emitted record was visible only in
+                            the raw response. */}
+                        {f.outputs && Object.keys(f.outputs).length > 0 && (
+                          <table className={styles.outputs}>
+                            <tbody>
+                              {Object.entries(f.outputs).map(([k, v]) => (
+                                <tr key={k}>
+                                  <td className={styles.outKey}>{k}</td>
+                                  <td className={styles.outVal}>{formatOutput(v)}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        )}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
               ))}
-            </ul>
+            </>
           )}
 
           {!r.layerResult.outputs && !r.layerResult.failures?.length && (
