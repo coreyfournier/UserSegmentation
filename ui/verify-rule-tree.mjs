@@ -26,7 +26,7 @@ execFileSync(
 // Emitted .js needs this marker to be loaded as ESM.
 writeFileSync(join(out, 'package.json'), '{"type":"module"}');
 
-const { moveRule, canDrop } = await import(
+const { moveRule, canDrop, toGroup, toLeaf } = await import(
   pathToFileURL(join(out, 'components', 'rules', 'ruleTree.js')).href
 );
 
@@ -115,6 +115,52 @@ const is = (label, actual, expected) => {
   const before = show(t);
   moveRule(t, [1], [0, 0]);
   check('input left untouched', show(t), before);
+}
+
+
+// --- converting a check to a group and back ----------------------------
+// The conversion exists because a predicate is capped at one root: there is no
+// second slot to add a group into and drag the check across, so without this a
+// single condition could never become an And/Or.
+{
+  const check = {
+    ruleName: 'ProductCheck',
+    enabled: true,
+    condition: { field: 'ProductType', operator: 'eq', value: 'T&A' },
+  };
+
+  // The condition survives as the group's first child. Losing it would mean
+  // retyping what the author had already written, which is the whole reason
+  // they would not use the conversion.
+  const grouped = toGroup(check, 'And');
+  assert.equal(grouped.operator, 'And');
+  assert.equal(grouped.condition, undefined);
+  assert.deepEqual(grouped.rules, [{ ruleName: '', condition: check.condition }]);
+  // Everything that identifies the node stays on the node that keeps its place.
+  assert.equal(grouped.ruleName, 'ProductCheck');
+  assert.equal(grouped.enabled, true);
+  // The original is untouched — the editor holds it until onChange lands.
+  assert.deepEqual(check.condition, { field: 'ProductType', operator: 'eq', value: 'T&A' });
+
+  // Switching operator on an existing group is just the operator.
+  const or = toGroup(grouped, 'Or');
+  assert.equal(or.operator, 'Or');
+  assert.deepEqual(or.rules, grouped.rules);
+
+  // An empty group converts back to a blank check.
+  const empty = { ruleName: 'g', operator: 'And', rules: [] };
+  const backToCheck = toLeaf(empty);
+  assert.equal(backToCheck.operator, undefined);
+  assert.equal(backToCheck.rules, undefined);
+  assert.deepEqual(backToCheck.condition, { field: '', operator: 'eq', value: '' });
+
+  // A group with children refuses: absorbing several conditions into one is
+  // not something the conversion can do honestly, so it deletes nothing. The
+  // picker disables the option too — this is the second line of defence.
+  const populated = { ruleName: 'g', operator: 'And', rules: [check] };
+  assert.deepEqual(toLeaf(populated), populated);
+
+  passed += 10;
 }
 
 console.log(`rule tree: ${passed} assertions passed`);

@@ -5,7 +5,7 @@ import MessagesEditor from './MessagesEditor';
 import OutputValuesEditor from './OutputValuesEditor';
 import RuleList from './RuleList';
 import { useRuleDrag } from './RuleDragContext';
-import { describeRule, samePath, type RulePath } from './ruleTree';
+import { describeRule, samePath, toGroup, toLeaf, type RulePath } from './ruleTree';
 import styles from './RuleNode.module.css';
 
 const DEPTH_COLORS = ['#3b82f6', '#22c55e', '#f97316', '#8b5cf6', '#ec4899'];
@@ -27,9 +27,19 @@ interface Props {
   /** The segment's output schema. Present only when the segment declares one. */
   outputSchema?: OutputSchema;
   onDeclareOutput?: (name: string, field: OutputField) => void;
+  /**
+   * This tree is an applicability predicate (a segment's `when`) rather than a
+   * list of reporting rules.
+   *
+   * A predicate is only ever asked "does this hold?", so the fields a rule
+   * carries for reporting — successEvent, errorMessage, messages — are read by
+   * nothing when they sit on a `when`. Rendering editors for them would invite
+   * writing config the engine never looks at.
+   */
+  predicate?: boolean;
 }
 
-export default function RuleNode({ rule, path, onChange, onDelete, index, total, onMove, depth = 0, schema, layerNames, perRuleMessages = false, outputSchema, onDeclareOutput }: Props) {
+export default function RuleNode({ rule, path, onChange, onDelete, index, total, onMove, depth = 0, schema, layerNames, perRuleMessages = false, outputSchema, onDeclareOutput, predicate = false }: Props) {
   const color = DEPTH_COLORS[depth % DEPTH_COLORS.length];
   const isLeaf = !!rule.condition;
 
@@ -119,19 +129,41 @@ export default function RuleNode({ rule, path, onChange, onDelete, index, total,
             </button>
           </span>
         )}
-        {isLeaf ? (
-          <span className={styles.badge} style={{ background: color }}>LEAF</span>
-        ) : (
-          <select
-            className={styles.opSelect}
-            value={rule.operator ?? 'And'}
-            onChange={(e) => onChange({ ...rule, operator: e.target.value as CompositeOperator })}
-            style={{ borderColor: color, color }}
-          >
-            <option value="And">AND</option>
-            <option value="Or">OR</option>
-          </select>
-        )}
+        {/* What this node is, and the one control that changes it.
+
+            A leaf used to be an inert LEAF badge, so a check could never become
+            a group: you added a group beside it and dragged it in. That works
+            in a rules list, but a predicate is capped at one root — there is
+            nowhere to add the group — so a single condition could never grow
+            into an And/Or without being deleted and retyped.
+
+            Converting a leaf keeps its condition as the new group's first
+            child, so nothing written is lost. Converting back is offered only
+            while the group has no children, because absorbing several
+            conditions into one is not a thing this control could do honestly. */}
+        <select
+          className={styles.opSelect}
+          value={isLeaf ? 'Leaf' : rule.operator ?? 'And'}
+          aria-label="node type"
+          title={
+            isLeaf
+              ? 'A single condition. Switch to AND/OR to group it with others.'
+              : 'A group of conditions.'
+          }
+          onChange={(e) => {
+            const next = e.target.value;
+            onChange(
+              next === 'Leaf' ? toLeaf(rule) : toGroup(rule, next as CompositeOperator),
+            );
+          }}
+          style={{ borderColor: color, color }}
+        >
+          <option value="Leaf" disabled={!isLeaf && childCount > 0}>
+            CHECK
+          </option>
+          <option value="And">AND</option>
+          <option value="Or">OR</option>
+        </select>
         <input
           className={styles.ruleName}
           value={rule.ruleName}
@@ -139,8 +171,9 @@ export default function RuleNode({ rule, path, onChange, onDelete, index, total,
           placeholder="rule name"
         />
         {/* A checklist resolves no segment value, so successEvent is dead
-            config there. */}
-        {!isLeaf && !perRuleMessages && (
+            config there. Neither does a predicate: it is asked whether it
+            holds, and nothing reads what it would have reported. */}
+        {!isLeaf && !perRuleMessages && !predicate && (
           <input
             className={styles.small}
             value={rule.successEvent ?? ''}
@@ -151,7 +184,7 @@ export default function RuleNode({ rule, path, onChange, onDelete, index, total,
         {/* errorMessage is the text reported when a check fires, so under a
             checklist every rule needs it — including leaves, which are the
             common case. Elsewhere it stays where it has always been. */}
-        {(perRuleMessages || !isLeaf) && (
+        {(perRuleMessages || !isLeaf) && !predicate && (
           <input
             className={perRuleMessages ? styles.message : styles.small}
             value={rule.errorMessage ?? ''}
@@ -206,6 +239,7 @@ export default function RuleNode({ rule, path, onChange, onDelete, index, total,
             perRuleMessages={perRuleMessages}
             outputSchema={outputSchema}
             onDeclareOutput={onDeclareOutput}
+            predicate={predicate}
           />
           <div className={styles.addButtons}>
             <button type="button" className="btn-ghost btn-sm" onClick={addLeaf}>+ Add Check</button>
@@ -250,8 +284,9 @@ export default function RuleNode({ rule, path, onChange, onDelete, index, total,
 
       {/* Under first-match strategies only the winning top-level rule's message
           is ever rendered, so nested editors would be dead config. A checklist
-          is the opposite: every check that fires carries its own message. */}
-      {(depth === 0 || perRuleMessages) && (
+          is the opposite: every check that fires carries its own message. A
+          predicate reports nothing at all, so it has neither. */}
+      {(depth === 0 || perRuleMessages) && !predicate && (
         <MessagesEditor
           value={rule.messages}
           onChange={(m) => onChange({ ...rule, messages: m })}

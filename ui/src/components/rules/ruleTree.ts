@@ -1,4 +1,4 @@
-import type { Rule } from '../../api/types';
+import type { CompositeOperator, Rule } from '../../api/types';
 
 /**
  * Address of a node in the rule tree: the index at each level, from the root
@@ -125,4 +125,41 @@ export function describeRule(rule: Rule): string {
     return rule.ruleName || `${field || 'field'} ${operator}`;
   }
   return rule.ruleName || `${rule.operator ?? 'And'} group`;
+}
+
+/**
+ * Turns a single check into a group of the given operator, keeping the check
+ * as the group's first child.
+ *
+ * Preserving the condition is the whole point: the alternative an author has
+ * without this is to delete the check and retype it inside a new group, and a
+ * conversion that quietly dropped what they had written would be worse than
+ * not offering one. The rule's own name, enabled flag and everything else stay
+ * on the group, which is the node that keeps its place in the tree.
+ */
+export function toGroup(rule: Rule, operator: CompositeOperator): Rule {
+  if (!rule.condition) return { ...rule, operator };
+  return {
+    ...rule,
+    condition: undefined,
+    operator,
+    rules: [{ ruleName: '', condition: rule.condition }],
+  };
+}
+
+/**
+ * Turns an empty group back into a check.
+ *
+ * Only empty: absorbing several conditions into one is not something this can
+ * do honestly, so the caller disables the option while the group has children
+ * and this refuses it too rather than deleting them.
+ */
+export function toLeaf(rule: Rule): Rule {
+  if (rule.rules && rule.rules.length > 0) return rule;
+  return {
+    ...rule,
+    operator: undefined,
+    rules: undefined,
+    condition: { field: '', operator: 'eq', value: '' },
+  };
 }

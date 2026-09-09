@@ -17,6 +17,8 @@ interface Props {
   /** The segment's output schema. Present only when the segment declares one. */
   outputSchema?: OutputSchema;
   onDeclareOutput?: (name: string, field: OutputField) => void;
+  /** This tree is a segment's `when` predicate — see RuleNode. */
+  predicate?: boolean;
 }
 
 /**
@@ -34,6 +36,7 @@ export default function RuleList({
   perRuleMessages = false,
   outputSchema,
   onDeclareOutput,
+  predicate = false,
 }: Props) {
   const update = (index: number, rule: Rule) => {
     const next = [...rules];
@@ -76,6 +79,7 @@ export default function RuleList({
             perRuleMessages={perRuleMessages}
             outputSchema={outputSchema}
             onDeclareOutput={onDeclareOutput}
+            predicate={predicate}
           />
         </Fragment>
       ))}

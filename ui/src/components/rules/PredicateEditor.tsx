@@ -34,25 +34,25 @@ export default function PredicateEditor({ value, onChange, schema, layerNames, h
       {open && (
         <div className={styles.body}>
           <p className={styles.hint}>{hint}</p>
-          {value ? (
-            <RuleTreeBuilder
-              rules={[value]}
-              onChange={(rules) => onChange(rules[0])}
-              schema={schema}
-              layerNames={layerNames}
-              label=""
-              hint="Delete the condition to make this apply unconditionally."
-              maxRules={1}
-            />
-          ) : (
-            <button
-              type="button"
-              className="btn-ghost btn-sm"
-              onClick={() => onChange({ ruleName: '', condition: { field: '', operator: 'eq', value: '' } })}
-            >
-              + Add condition
-            </button>
-          )}
+          {/* The same builder whether or not a condition exists yet, so an
+              empty predicate offers "+ Add Group" as readily as "+ Add Check".
+              It used to have its own button that always made a check, and with
+              the tree capped at one root that left no way to reach a group at
+              all — the cap means "one question", not "one condition". */}
+          <RuleTreeBuilder
+            rules={value ? [value] : []}
+            onChange={(rules) => onChange(rules[0])}
+            schema={schema}
+            layerNames={layerNames}
+            label=""
+            hint={
+              value
+                ? 'Delete the condition to make this apply unconditionally. Use AND/OR to test several things.'
+                : 'Add one check, or a group to test several things together.'
+            }
+            maxRules={1}
+            predicate
+          />
         </div>
       )}
     </div>
