@@ -65,9 +65,9 @@ type LayerResultDTO struct {
 type FailureDTO struct {
 	Rule    string `json:"rule"`
 	Message string `json:"message,omitempty"`
-	// Segment names which segment reported this finding, present only when the
-	// layer ran more than one — otherwise it would repeat the same answer on
-	// every row.
+	// Segment names which segment reported this finding. Always present: a
+	// layer can merge the findings of several segments into this one list, and
+	// a field that appeared only then could not be relied on.
 	Segment  string                 `json:"segment,omitempty"`
 	Messages map[string]string      `json:"messages,omitempty"`
 	Outputs  map[string]interface{} `json:"outputs,omitempty"`

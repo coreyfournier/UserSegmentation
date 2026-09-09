@@ -97,25 +97,30 @@ func TestAllSegments_FirstMatchOnlyStopsAtOne(t *testing.T) {
 	if len(lr.Failures) != 1 || lr.Failures[0].Rule != "S1" {
 		t.Fatalf("expected only stage1's finding, got %+v", lr.Failures)
 	}
-	// One contributor, so nothing is stamped and the reason is unchanged.
-	if lr.Failures[0].Segment != "" {
-		t.Errorf("a single-segment result should carry no segment stamp: %+v", lr.Failures[0])
+	// Stamped even though only one segment ran: the field belongs to the
+	// finding, not to the layer's shape.
+	if lr.Failures[0].Segment != "stage1" {
+		t.Errorf("finding should name its segment: %+v", lr.Failures[0])
 	}
+	// One contributor, so the reason keeps the strategy's own form.
 	if lr.Assignment.Reason != "checklist:stage1" {
 		t.Errorf("reason = %q, want the single-segment form", lr.Assignment.Reason)
 	}
 }
 
-// A layer whose one segment reports looks exactly as it always did: no stamp,
-// no joined reason. This is what keeps every existing config's response stable.
-func TestAllSegments_SingleSegmentUnchanged(t *testing.T) {
+// A layer with one segment stamps its findings too. The stamp is a property of
+// the finding — where it came from — so it cannot depend on how many other
+// segments the layer happens to hold, or adding one would rewrite the response
+// for findings unrelated to the addition.
+func TestAllSegments_SingleSegmentStillStamped(t *testing.T) {
 	layer := gatesChecklistLayer(false)
 	layer.Segments = layer.Segments[:1]
 	lr := gatesResult(t, layer, map[string]interface{}{"productType": "T&A", "age": 15.0})
 
-	if len(lr.Failures) != 1 || lr.Failures[0].Segment != "" {
+	if len(lr.Failures) != 1 || lr.Failures[0].Segment != "stage1" {
 		t.Errorf("unexpected findings %+v", lr.Failures)
 	}
+	// The reason still names the strategy, which the bare segment id would lose.
 	if lr.Assignment.Reason != "checklist:stage1" {
 		t.Errorf("reason = %q", lr.Assignment.Reason)
 	}
@@ -134,8 +139,8 @@ func TestAllSegments_WhenStillGatesIndividually(t *testing.T) {
 	if len(lr.Failures) != 1 || lr.Failures[0].Rule != "S2" {
 		t.Errorf("only stage2 applies, got %+v", lr.Failures)
 	}
-	if lr.Failures[0].Segment != "" {
-		t.Error("one contributor needs no stamp")
+	if lr.Failures[0].Segment != "stage2" {
+		t.Errorf("the finding should name the segment that reported it: %+v", lr.Failures[0])
 	}
 }
 

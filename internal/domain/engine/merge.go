@@ -8,10 +8,12 @@ import (
 
 // tagFailures stamps each finding with the segment that reported it.
 //
-// Always applied while accumulating, and undone by finishLayer when only one
-// segment contributed — a layer with a single checklist segment then reports
-// exactly what it always did, and the field appears only where it says
-// something the reader could not otherwise work out.
+// Every finding carries it, not only those from a layer that ran several
+// segments. It was conditional at first, to keep a single-segment layer's
+// response byte-identical to what it had always been — but that made the field
+// a property of the layer's shape rather than of the finding, so a consumer
+// could not rely on it and adding a second segment silently changed the
+// response of every finding in the layer.
 func tagFailures(failures []model.Failure, segID string) []model.Failure {
 	if len(failures) == 0 {
 		return nil
@@ -24,16 +26,14 @@ func tagFailures(failures []model.Failure, segID string) []model.Failure {
 	return out
 }
 
-// finishLayer completes a layer result: it drops the per-finding segment stamps
-// when only one segment reported, and names every contributor in the reason.
+// finishLayer completes a layer result by naming every contributing segment in
+// the reason, where more than one contributed.
+//
+// The single-contributor reason is left as the strategy wrote it
+// ("checklist:stage1"), which already names the segment — rewriting it to the
+// bare id would drop the strategy the reason exists to report.
 func finishLayer(lr *LayerResult, contributed []string) *LayerResult {
-	if len(contributed) < 2 {
-		for i := range lr.Failures {
-			lr.Failures[i].Segment = ""
-		}
-		return dedupRequiredFieldWarnings(lr)
-	}
-	if lr.Assignment != nil {
+	if len(contributed) > 1 && lr.Assignment != nil {
 		lr.Assignment.Reason = strings.Join(contributed, " + ")
 	}
 	return dedupRequiredFieldWarnings(lr)

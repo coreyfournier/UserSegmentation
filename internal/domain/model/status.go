@@ -54,10 +54,14 @@ const (
 type Failure struct {
 	Rule    string `json:"rule"`
 	Message string `json:"message"`
-	// Segment is the id of the segment that reported this finding. Present
-	// only when the layer ran more than one segment, where the findings of
-	// several are merged into one list and "which check failed" no longer
-	// implies "in which segment".
+	// Segment is the id of the segment that reported this finding.
+	//
+	// Always set, for every finding of every checklist — a layer may run
+	// several segments and merge their findings into one list, and a field
+	// that appeared only in that case would be a property of the layer's
+	// shape rather than of the finding. A consumer could not rely on it, and
+	// adding a second segment to a layer would silently change the response
+	// for findings that had nothing to do with the addition.
 	Segment  string                 `json:"segment,omitempty"`
 	Messages map[string]string      `json:"messages,omitempty"`
 	Outputs  map[string]interface{} `json:"outputs,omitempty"`
