@@ -98,13 +98,30 @@ export default function LayerTests({ layerKey, segmentId, segments, schema }: Pr
   const [expanded, setExpanded] = useState<string | null>(null);
   const [deleting, setDeleting] = useState<SavedTest | null>(null);
 
-  // A test with no segment predates per-segment filing and runs the whole
-  // layer, so it is listed in the segment view too: it exercises this segment
-  // among the others, and hiding it would make it look deleted.
+  // A test with no segment is assigned to none, so it is listed under every
+  // one — there is nothing saying it belongs anywhere else, and hiding it from
+  // the segment view would make it look deleted. Tests written before they
+  // were kept per segment are the ones like this.
   const tests = (allTests ?? []).filter(
     (t) => t.layer === layerKey && (scope === 'layer' || !t.segment || t.segment === segmentId),
   );
   const selected = tests.find((t) => t.id === selectedId) ?? null;
+
+  /**
+   * What a run is scoped to, taken from the tab above the list.
+   *
+   * The tab governs the run, not just which tests are listed. It was a list
+   * filter at first and the run was scoped by the test's own `segment` — which
+   * meant a tab labelled "This segment" ran the whole layer for any test filed
+   * before segments existed, and nothing on screen explained why. One control,
+   * one meaning: "This segment" runs this segment, "Whole layer" runs them all.
+   *
+   * A test's `segment` still decides where it is filed — which group it appears
+   * under, and what its name has to be unique against — but no longer what a
+   * run does, so a test written before per-segment filing needs no migration
+   * to be run against one segment.
+   */
+  const runScope = () => (scope === 'segment' ? segmentId : undefined);
 
   const segmentLabel = (id: string) => {
     const s = segments.find((x) => x.id === id);
@@ -185,10 +202,11 @@ export default function LayerTests({ layerKey, segmentId, segments, schema }: Pr
         body: JSON.stringify({
           context,
           layers: [layer],
-          // Scoped to the segment the test is filed against. Without this the
-          // layer resolves to whichever segment applies first, so a test aimed
-          // at the second one silently reported on the first — the second
-          // could not be exercised at all.
+          // Scoped by the tab above the list (see runScope). Without a scope
+          // the layer resolves to whichever segments apply, so a run aimed at
+          // one of them reports on all of them — and before segment scoping
+          // existed at all, a segment behind one that always answers could not
+          // be exercised at any price.
           segments: segment ? [segment] : undefined,
           languages: languages?.length ? languages : undefined,
           render_all: renderAll || undefined,
@@ -213,12 +231,12 @@ export default function LayerTests({ layerKey, segmentId, segments, schema }: Pr
   // when confirming what a change did — the reason to run it at all.
   const runOne = async (t: SavedTest, context?: Record<string, unknown>) => {
     setExpanded(t.id);
-    await run(t.id, t.layer, t.segment, context ?? t.context ?? {}, t.languages, t.renderAll);
+    await run(t.id, t.layer, runScope(), context ?? t.context ?? {}, t.languages, t.renderAll);
   };
 
   const runDraft = async () => {
     setExpanded(DRAFT_KEY);
-    await run(DRAFT_KEY, layerKey, segmentId, draft);
+    await run(DRAFT_KEY, layerKey, runScope(), draft);
   };
 
   // Sequential rather than parallel: these all write to the same result map,
@@ -234,7 +252,12 @@ export default function LayerTests({ layerKey, segmentId, segments, schema }: Pr
     if (!selected) return;
     const trimmed = name.trim();
     if (!trimmed) return;
-    updateTest.mutate({ id: selected.id, test: { ...selected, name: trimmed, context: draft } });
+    // draftMeta last: it holds the edited languages and render-all, and
+    // spreading `selected` alone would save the stored values back over them.
+    updateTest.mutate({
+      id: selected.id,
+      test: { ...selected, name: trimmed, context: draft, ...draftMeta },
+    });
   };
 
   const saveAsNew = () => {
@@ -363,11 +386,36 @@ export default function LayerTests({ layerKey, segmentId, segments, schema }: Pr
             <>
               {groupFindings(r.layerResult.failures).map(([segment, findings]) => (
                 <div key={segment}>
-                  {segment && <div className={styles.findingGroup}>{segment}</div>}
+                  {/* Shown for one segment as readily as for several: the
+                      engine stamps every finding, and a heading that came and
+                      went with the layer's segment count would make the reader
+                      work out which case they were looking at. Friendly name,
+                      with the id it resolves from on hover — the id is what
+                      the response carries and what a saved test is filed
+                      under. */}
+                  {segment && (
+                    <div className={styles.findingGroup} title={segment}>
+                      {segmentLabel(segment)}
+                    </div>
+                  )}
                   <ul className={styles.failures}>
                     {findings.map((f) => (
                       <li key={`${segment}/${f.rule}`}>
                         <code>{f.rule}</code> {f.message}
+                        {/* The localized set, present only when the run asked
+                            for languages. Shown per language rather than
+                            folded into the line above, because the point of
+                            asking for them is to compare what each caller
+                            gets — including which ones fell back. */}
+                        {f.messages && Object.keys(f.messages).length > 0 && (
+                          <ul className={styles.messages}>
+                            {Object.entries(f.messages).map(([lang, text]) => (
+                              <li key={lang}>
+                                <span className={styles.langTag}>{lang}</span> {text}
+                              </li>
+                            ))}
+                          </ul>
+                        )}
                         {/* The record this finding emitted. A checklist puts
                             its outputs here, per finding, never on the layer —
                             so the table above is always empty for one, and
@@ -443,9 +491,24 @@ export default function LayerTests({ layerKey, segmentId, segments, schema }: Pr
         </button>
       </div>
 
+      {/* What the tab above actually does to a run, stated rather than
+          implied. Which segment answers a layer is otherwise invisible: a
+          layer resolves to the first one that applies, so a run that was not
+          scoped can report on a segment you are not looking at. */}
       <p className={styles.note}>
-        Runs the configuration as saved — save your changes first, or the result reflects
-        the version before them.
+        {scope === 'segment' ? (
+          <>
+            Runs <strong>{segmentLabel(segmentId)}</strong> only — other segments of this
+            layer are passed over, even ones that would normally answer first.
+          </>
+        ) : (
+          <>
+            Runs the <strong>whole layer</strong>: every segment that applies, findings
+            merged.
+          </>
+        )}{' '}
+        Against the configuration as saved — save your changes first, or the result
+        reflects the version before them.
         {ranCount > 0 && ` ${ranCount} of ${tests.length} run.`}
       </p>
 
@@ -467,7 +530,7 @@ export default function LayerTests({ layerKey, segmentId, segments, schema }: Pr
                 <div className={styles.group}>
                   {/* An unscoped test is not filed against any segment: it
                       predates per-segment filing and runs them all. */}
-                  {segment === '' ? 'whole layer' : segmentLabel(segment)}
+                  {segment === '' ? 'no segment' : segmentLabel(segment)}
                   {segment === segmentId && <span className={styles.here}>editing</span>}
                 </div>
               )}
@@ -483,14 +546,19 @@ export default function LayerTests({ layerKey, segmentId, segments, schema }: Pr
                         onClick={() => select(t)}
                         title={
                           t.segment
-                            ? `Runs ${segmentLabel(t.segment)} only`
-                            : 'Runs the whole layer — filed before tests were kept per segment'
+                            ? `Filed under ${segmentLabel(t.segment)}`
+                            : 'This test is not assigned to a segment, so it is listed under ' +
+                              'every one. Tests written before they were kept per segment are ' +
+                              'like this. It does not affect what a run covers — the tab above ' +
+                              'decides that.'
                         }
                       >
                         {t.name}
-                        {/* Called out in the segment view too, where it is the
-                            one row that does not run only this segment. */}
-                        {!t.segment && <span className={styles.wholeLayer}>whole layer</span>}
+                        {/* Where the test is filed, which is no longer what a
+                            run covers — the tab decides that. Still worth
+                            showing: it is why this row appears under every
+                            segment rather than one. */}
+                        {!t.segment && <span className={styles.wholeLayer}>no segment</span>}
                       </button>
                       {/* The outcome sits between the name and the controls, so
                           a column of them reads down the panel at a glance —
@@ -583,6 +651,45 @@ export default function LayerTests({ layerKey, segmentId, segments, schema }: Pr
             instead.
           </p>
         )}
+
+        {/* Message rendering. A saved test has carried these two fields since
+            it existed, but nothing could set them — so a run never asked for a
+            language, the engine never built the localized `messages` map, and
+            the only way to see an authored `en` message was the flattened
+            `message` the default language produces. That is the whole reason
+            these fields are on the model. */}
+        <label className={styles.label}>Messages</label>
+        <div className={styles.langRow}>
+          <input
+            className={styles.lang}
+            value={(draftMeta.languages ?? []).join(', ')}
+            onChange={(e) =>
+              setDraftMeta((m) => ({
+                ...m,
+                languages: e.target.value
+                  .split(',')
+                  .map((s) => s.trim())
+                  .filter(Boolean),
+              }))
+            }
+            placeholder="en, es — blank for none"
+            aria-label="languages to render"
+            title="Language codes to render messages in. The layer's defaultLanguage fills a gap."
+          />
+          <label className={styles.langAll}>
+            <input
+              type="checkbox"
+              checked={!!draftMeta.renderAll}
+              onChange={(e) => setDraftMeta((m) => ({ ...m, renderAll: e.target.checked || undefined }))}
+              style={{ width: 'auto' }}
+            />
+            <span>every language</span>
+          </label>
+        </div>
+        <p className={styles.langHint}>
+          Leave both empty and a finding carries only its rendered <code>message</code>. Name a
+          language, or tick every one, to see the localized set a caller would receive.
+        </p>
 
         <label className={styles.label}>Context</label>
         <ContextEditor value={draft} onChange={setDraft} schemas={schema ? [schema] : []} />

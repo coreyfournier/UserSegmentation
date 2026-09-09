@@ -327,8 +327,9 @@
   margin-left: 0;
 }
 
-/* A test that is not filed against any segment. Marked wherever it appears,
-   because it is the one row whose run is not scoped the way its neighbours are. */
+/* A test assigned to no segment. Marked because it is the one row that appears
+   under every segment rather than one — not because a run treats it
+   differently, which the tab above decides for all of them alike. */
 .wholeLayer {
   margin-left: 6px;
   padding: 0 4px;
@@ -353,4 +354,56 @@
   letter-spacing: 0.05em;
   color: var(--text-muted);
   border-bottom: 1px solid var(--border);
+}
+
+/* Message-rendering controls: which languages a run asks for. */
+.langRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.lang {
+  flex: 1;
+  min-width: 0;
+  font-size: 12px;
+  padding: 5px 8px;
+}
+
+.langAll {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex: none;
+  font-size: 11px;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.langHint {
+  margin: 4px 0 12px;
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--text-muted);
+}
+
+/* The localized messages a finding rendered, one per language. */
+.messages {
+  margin: 4px 0 0;
+  padding-left: 14px;
+  list-style: none;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.langTag {
+  display: inline-block;
+  min-width: 20px;
+  padding: 0 4px;
+  margin-right: 4px;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  background: var(--bg);
+  font-size: 9px;
+  text-transform: uppercase;
 }
